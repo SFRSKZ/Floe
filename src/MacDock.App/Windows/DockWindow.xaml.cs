@@ -103,6 +103,7 @@ public partial class DockWindow : Window
     private readonly Rectangle _clockDivider = new();
     private WeatherWidgetWindow? _weatherWidget;
     private MediaWidgetWindow? _mediaWidget;
+    private PreviewWindow? _preview;
 
     private bool _widgetRenderingHooked;
     private readonly DispatcherTimer _clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -963,6 +964,7 @@ public partial class DockWindow : Window
         _hoveredIndex = -1;
         _tooltipTimer.Stop();
         _tooltip.IsOpen = false;
+        HidePreview();
         EnsureAnimation();
     }
 
@@ -993,12 +995,30 @@ public partial class DockWindow : Window
 
         _hoveredIndex = index;
         _tooltip.IsOpen = false;
+        HidePreview();
         _tooltipTimer.Stop();
 
         if (index >= 0)
         {
             _tooltipTimer.Start();
         }
+    }
+
+    private void HidePreview()
+    {
+        _preview?.Close3();
+    }
+
+    private void ShowPreview(IconSlot slot)
+    {
+        _preview ??= new PreviewWindow();
+        _preview.Show();
+        _preview.ShowFor(slot.Item.Windows);
+
+        var left = slot.Center - (_preview.Width / 2);
+        left = Math.Max(8, Math.Min(left, SystemParameters.PrimaryScreenWidth - _preview.Width - 8));
+        _preview.Left = left;
+        _preview.Top = Top + RestTop - _preview.Height - 10;
     }
 
     private void ShowTooltip()
@@ -1010,6 +1030,13 @@ public partial class DockWindow : Window
         }
 
         var slot = _slots[_hoveredIndex];
+
+        if (slot.Item.Windows.Count > 0)
+        {
+            ShowPreview(slot);
+            return;
+        }
+
         _tooltipText.Text = slot.Item.Name;
         _tooltip.PlacementTarget = slot.Button;
         _tooltip.IsOpen = true;
