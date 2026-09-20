@@ -88,6 +88,13 @@ public partial class App : Application
                     dock.PreviewHover(hoverX);
                 }
 
+                var auraArg = e.Args
+                    .FirstOrDefault(a => a.StartsWith("--aura=", StringComparison.OrdinalIgnoreCase))?["--aura=".Length..];
+                if (auraArg is not null)
+                {
+                    dock.PreviewAura(auraArg);
+                }
+
                 var backgroundArg = e.Args
                     .FirstOrDefault(a => a.StartsWith("--renderbg=", StringComparison.OrdinalIgnoreCase))?["--renderbg=".Length..];
                 RenderDock(dock, renderPath, backgroundArg);

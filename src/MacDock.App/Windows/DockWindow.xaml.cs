@@ -69,9 +69,8 @@ public partial class DockWindow : Window
     private readonly SolidColorBrush _runningDotBrush = new(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF));
     private readonly Grid _auraGrid = new();
     private readonly Image[] _auraImages = new Image[3];
-    private readonly DispatcherTimer _auraTimer = new() { Interval = TimeSpan.FromMilliseconds(40) };
-    private readonly Stopwatch _auraWatch = new();
-    private static readonly double[] AuraPeak = { 1.0, 1.0, 1.0 };
+    private readonly DropShadowEffect[] _auraEffects = new DropShadowEffect[3];
+    private readonly DoubleAnimation[] _auraDirAnims = new DoubleAnimation[3];
     private string _activeProcess = string.Empty;
     private int _activeIndex = -1;
     private int _separatorIndex = -1;
@@ -305,12 +304,40 @@ public partial class DockWindow : Window
 
         _glowLayer.Children.Add(_glow);
 
-        _auraImages[0] = new Image { Width = IconBox, Height = IconBox, Stretch = Stretch.Uniform, Effect = new DropShadowEffect { Color = Color.FromRgb(0x5B, 0xC8, 0xFF), ShadowDepth = 0, BlurRadius = 30, Opacity = 0.55 } };
-        _auraImages[1] = new Image { Width = IconBox, Height = IconBox, Stretch = Stretch.Uniform, Effect = new DropShadowEffect { Color = Color.FromRgb(0xA8, 0x55, 0xF7), ShadowDepth = 0, BlurRadius = 18, Opacity = 0.7 } };
-        _auraImages[2] = new Image { Width = IconBox, Height = IconBox, Stretch = Stretch.Uniform, Effect = new DropShadowEffect { Color = Color.FromRgb(0x34, 0xE0, 0x7A), ShadowDepth = 0, BlurRadius = 9, Opacity = 0.95 } };
-        foreach (var image in _auraImages)
+        var auraColors = new[]
         {
+            Color.FromRgb(0x5B, 0xC8, 0xFF),
+            Color.FromRgb(0xA8, 0x55, 0xF7),
+            Color.FromRgb(0x34, 0xE0, 0x7A),
+        };
+
+        for (var k = 0; k < auraColors.Length; k++)
+        {
+            var start = k * 120.0;
+            var effect = new DropShadowEffect
+            {
+                Color = auraColors[k],
+                ShadowDepth = 9,
+                Direction = start,
+                BlurRadius = 16,
+                Opacity = 0.9,
+            };
+
+            _auraEffects[k] = effect;
+            _auraDirAnims[k] = new DoubleAnimation(start, start + 360, TimeSpan.FromSeconds(3.4))
+            {
+                RepeatBehavior = RepeatBehavior.Forever,
+            };
+
+            var image = new Image
+            {
+                Width = IconBox,
+                Height = IconBox,
+                Stretch = Stretch.Uniform,
+                Effect = effect,
+            };
             RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
+            _auraImages[k] = image;
             _auraGrid.Children.Add(image);
         }
 
@@ -320,7 +347,7 @@ public partial class DockWindow : Window
         _auraGrid.RenderTransformOrigin = new Point(0.5, 1.0);
         _auraGrid.RenderTransform = new ScaleTransform(1, 1);
         _auraGrid.Visibility = Visibility.Collapsed;
-        _auraGrid.Opacity = 0.92;
+        _auraGrid.Opacity = 0.95;
         _glowLayer.Children.Add(_auraGrid);
 
         Root.Children.Insert(1, _glowLayer);
@@ -340,7 +367,6 @@ public partial class DockWindow : Window
         _hideTimer.Tick += HideTimer_Tick;
         _runningTimer.Tick += (_, _) => RefreshRunning();
         _tooltipTimer.Tick += (_, _) => ShowTooltip();
-        _auraTimer.Tick += (_, _) => AnimateAura();
 
         Loaded += (_, _) =>
         {
@@ -1223,6 +1249,13 @@ public partial class DockWindow : Window
         UpdateGlow();
     }
 
+    public void PreviewAura(string processName)
+    {
+        _activeProcess = processName;
+        UpdateAura();
+        Log($"preview aura idx={_activeIndex} vis={_auraGrid.Visibility}");
+    }
+
     private void DockIcon_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not DockItemViewModel item)
@@ -1648,7 +1681,11 @@ public partial class DockWindow : Window
     {
         StopAnimation();
         StopWidgetRendering();
-        _auraTimer.Stop();
+        for (var k = 0; k < _auraEffects.Length; k++)
+        {
+            _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, null);
+        }
+
         _foregroundHook?.Dispose();
         _windowHook?.Dispose();
         _backdropCapture?.Dispose();
@@ -2133,48 +2170,22 @@ public partial class DockWindow : Window
         if (_activeIndex < 0 || _slots[_activeIndex].Item.Icon is not { } icon)
         {
             _auraGrid.Visibility = Visibility.Collapsed;
-            if (_auraTimer.IsEnabled)
+            for (var k = 0; k < _auraEffects.Length; k++)
             {
-                _auraTimer.Stop();
+                _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, null);
             }
 
             return;
         }
 
-        foreach (var image in _auraImages)
+        for (var k = 0; k < _auraImages.Length; k++)
         {
-            image.Source = icon;
+            _auraImages[k].Source = icon;
+            _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, _auraDirAnims[k]);
         }
 
         _auraGrid.Visibility = Visibility.Visible;
         PositionAura(_slots[_activeIndex]);
-
-        _auraWatch.Restart();
-        if (!_auraTimer.IsEnabled)
-        {
-            _auraTimer.Start();
-        }
-
-        AnimateAura();
-    }
-
-    private void AnimateAura()
-    {
-        if (_auraGrid.Visibility != Visibility.Visible)
-        {
-            _auraTimer.Stop();
-            _auraWatch.Stop();
-            return;
-        }
-
-        var t = _auraWatch.Elapsed.TotalSeconds;
-        const double omega = 2.6;
-        for (var k = 0; k < _auraImages.Length; k++)
-        {
-            var phase = (t * omega) - (k * (2 * Math.PI / 3));
-            var wave = 0.5 + (0.5 * Math.Sin(phase));
-            _auraImages[k].Opacity = AuraPeak[k] * wave;
-        }
     }
 
     private void PositionAura(IconSlot slot)
@@ -2228,6 +2239,9 @@ public partial class DockWindow : Window
         public TranslateTransform Translate { get; }
     }
 }
+
+
+
 
 
 
