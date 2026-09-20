@@ -27,6 +27,7 @@ public partial class DockWindow : Window
     private const double IconBox = 54;
     private const double Spacing = 8;
     private const double PadX = 14;
+    private const double SeparatorExtra = 16;
     private const double PadY = 9;
     private const double ClockWidth = 104;
     private const double ClockGap = 14;
@@ -68,8 +69,22 @@ public partial class DockWindow : Window
     private readonly SolidColorBrush _runningDotBrush = new(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF));
     private readonly Grid _auraGrid = new();
     private readonly Image[] _auraImages = new Image[3];
+    private readonly DispatcherTimer _auraTimer = new() { Interval = TimeSpan.FromMilliseconds(40) };
+    private readonly Stopwatch _auraWatch = new();
+    private static readonly double[] AuraPeak = { 1.0, 1.0, 1.0 };
     private string _activeProcess = string.Empty;
     private int _activeIndex = -1;
+    private int _separatorIndex = -1;
+    private readonly Rectangle _separator = new()
+    {
+        Width = 2,
+        Height = 26,
+        Fill = new SolidColorBrush(Color.FromArgb(0x6E, 0xFF, 0xFF, 0xFF)),
+        IsHitTestVisible = false,
+        Visibility = Visibility.Collapsed,
+    };
+
+    private bool HasSeparator => _separatorIndex > 0 && _separatorIndex < Items.Count;
     private readonly ScaleTransform _rootScale = new(1, 1);
     private bool _renderingHooked;
     private long _lastTick;
@@ -325,6 +340,7 @@ public partial class DockWindow : Window
         _hideTimer.Tick += HideTimer_Tick;
         _runningTimer.Tick += (_, _) => RefreshRunning();
         _tooltipTimer.Tick += (_, _) => ShowTooltip();
+        _auraTimer.Tick += (_, _) => AnimateAura();
 
         Loaded += (_, _) =>
         {
@@ -589,12 +605,26 @@ public partial class DockWindow : Window
     {
         _slots.Clear();
         IconLayer.Children.Clear();
+        IconLayer.Children.Add(_separator);
 
         var count = Items.Count;
-        var restContent = count == 0 ? 0 : (count * IconBox) + ((count - 1) * Spacing);
+
+        _separatorIndex = -1;
+        for (var i = 1; i < count; i++)
+        {
+            if (!Items[i].IsPinned)
+            {
+                _separatorIndex = i;
+                break;
+            }
+        }
+
+        var extra = HasSeparator ? SeparatorExtra : 0;
+
+        var restContent = count == 0 ? 0 : (count * IconBox) + ((count - 1) * Spacing) + extra;
         _capsuleWidth = PadX + restContent + ClockGap + ClockWidth + ClockPad;
 
-        var maxContent = count == 0 ? 0 : (count * IconBox * HoverMaxScale) + ((count - 1) * Spacing);
+        var maxContent = count == 0 ? 0 : (count * IconBox * HoverMaxScale) + ((count - 1) * Spacing) + extra;
         _windowWidth = PadX + maxContent + ClockGap + ClockWidth + ClockPad + (2 * EdgeMargin);
         _restCapsuleLeft = (_windowWidth - _capsuleWidth) / 2;
         _restCapsuleWidth = _capsuleWidth;
@@ -608,7 +638,8 @@ public partial class DockWindow : Window
         for (var i = 0; i < count; i++)
         {
             var item = Items[i];
-            var centerLocal = PadX + (i * (IconBox + Spacing)) + (IconBox / 2);
+            var localExtra = HasSeparator && i >= _separatorIndex ? SeparatorExtra : 0;
+            var centerLocal = PadX + (i * (IconBox + Spacing)) + localExtra + (IconBox / 2);
 
             var image = new Image
             {
@@ -725,7 +756,7 @@ public partial class DockWindow : Window
             return;
         }
 
-        var total = Spacing * (count - 1);
+        var total = Spacing * (count - 1) + (HasSeparator ? SeparatorExtra : 0);
         for (var i = 0; i < count; i++)
         {
             total += IconBox * scales[i];
@@ -733,8 +764,15 @@ public partial class DockWindow : Window
 
         var startX = _capsuleLeft + PadX;
         var x = startX;
+        var separatorX = double.NaN;
         for (var i = 0; i < count; i++)
         {
+            if (HasSeparator && i == _separatorIndex)
+            {
+                separatorX = x + (SeparatorExtra / 2);
+                x += SeparatorExtra;
+            }
+
             var width = IconBox * scales[i];
             var center = x + (width / 2);
             var slot = _slots[i];
@@ -747,6 +785,17 @@ public partial class DockWindow : Window
             slot.Scale.ScaleY = scales[i];
 
             x += width + Spacing;
+        }
+
+        if (HasSeparator && !double.IsNaN(separatorX))
+        {
+            _separator.Visibility = Visibility.Visible;
+            Canvas.SetLeft(_separator, separatorX - (_separator.Width / 2));
+            Canvas.SetTop(_separator, IconBottom - (IconBox / 2) - (_separator.Height / 2));
+        }
+        else
+        {
+            _separator.Visibility = Visibility.Collapsed;
         }
 
         var clockLeft = startX + total + ClockGap;
@@ -771,7 +820,7 @@ public partial class DockWindow : Window
             return;
         }
 
-        var total = Spacing * (count - 1);
+        var total = Spacing * (count - 1) + (HasSeparator ? SeparatorExtra : 0);
         for (var i = 0; i < count; i++)
         {
             total += IconBox * scales[i];
@@ -1599,6 +1648,7 @@ public partial class DockWindow : Window
     {
         StopAnimation();
         StopWidgetRendering();
+        _auraTimer.Stop();
         _foregroundHook?.Dispose();
         _windowHook?.Dispose();
         _backdropCapture?.Dispose();
@@ -2083,6 +2133,11 @@ public partial class DockWindow : Window
         if (_activeIndex < 0 || _slots[_activeIndex].Item.Icon is not { } icon)
         {
             _auraGrid.Visibility = Visibility.Collapsed;
+            if (_auraTimer.IsEnabled)
+            {
+                _auraTimer.Stop();
+            }
+
             return;
         }
 
@@ -2093,6 +2148,33 @@ public partial class DockWindow : Window
 
         _auraGrid.Visibility = Visibility.Visible;
         PositionAura(_slots[_activeIndex]);
+
+        _auraWatch.Restart();
+        if (!_auraTimer.IsEnabled)
+        {
+            _auraTimer.Start();
+        }
+
+        AnimateAura();
+    }
+
+    private void AnimateAura()
+    {
+        if (_auraGrid.Visibility != Visibility.Visible)
+        {
+            _auraTimer.Stop();
+            _auraWatch.Stop();
+            return;
+        }
+
+        var t = _auraWatch.Elapsed.TotalSeconds;
+        const double omega = 2.6;
+        for (var k = 0; k < _auraImages.Length; k++)
+        {
+            var phase = (t * omega) - (k * (2 * Math.PI / 3));
+            var wave = 0.5 + (0.5 * Math.Sin(phase));
+            _auraImages[k].Opacity = AuraPeak[k] * wave;
+        }
     }
 
     private void PositionAura(IconSlot slot)
