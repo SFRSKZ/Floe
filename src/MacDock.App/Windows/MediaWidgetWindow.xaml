@@ -1,0 +1,103 @@
+<Window x:Class="MacDock.App.Windows.MediaWidgetWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="MacDockMedia"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        SizeToContent="Width"
+        Height="68"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True">
+
+    <Window.Resources>
+        <Style x:Key="WidgetButton" TargetType="Button">
+            <Setter Property="Width" Value="40" />
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg"
+                                Background="#1FFFFFFF"
+                                CornerRadius="12"
+                                BorderBrush="#26FFFFFF"
+                                BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#33FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#44FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="Root" RenderTransformOrigin="0.5,1.0">
+        <Grid.RenderTransform>
+            <ScaleTransform x:Name="RootScale" />
+        </Grid.RenderTransform>
+
+        <Rectangle x:Name="Backdrop" Stretch="Fill" IsHitTestVisible="False">
+            <Rectangle.Fill>
+                <ImageBrush x:Name="BackdropBrush" Stretch="Fill" />
+            </Rectangle.Fill>
+        </Rectangle>
+
+        <Border CornerRadius="16" BorderThickness="1" Padding="14,6" Margin="0">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#3DFFFFFF" Offset="0" />
+                    <GradientStop Color="#1AFFFFFF" Offset="0.08" />
+                    <GradientStop Color="#1C1A1C24" Offset="0.42" />
+                    <GradientStop Color="#420A0C14" Offset="1" />
+                </LinearGradientBrush>
+            </Border.Background>
+            <Border.BorderBrush>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#4DFFFFFF" Offset="0" />
+                    <GradientStop Color="#1FFFFFFF" Offset="0.5" />
+                    <GradientStop Color="#26FFFFFF" Offset="1" />
+                </LinearGradientBrush>
+            </Border.BorderBrush>
+
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Width="170" VerticalAlignment="Center">
+                    <TextBlock Text="ŞU ÇALAN" Foreground="#88FFFFFF" FontSize="9" FontWeight="SemiBold" />
+                    <TextBlock x:Name="MediaTitle" Text="—" Foreground="White" FontSize="13" FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                    <TextBlock x:Name="MediaArtist" Text="" Foreground="#B0FFFFFF" FontSize="11"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+
+                <Rectangle Width="1" Fill="#22FFFFFF" Margin="12,6" />
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="PreviousButton" Style="{StaticResource WidgetButton}" ToolTip="Önceki">
+                        <TextBlock Text="⏮" FontSize="16" />
+                    </Button>
+                    <Button x:Name="PlayPauseButton" Style="{StaticResource WidgetButton}" Margin="8,0" ToolTip="Oynat / Duraklat">
+                        <TextBlock Text="⏯" FontSize="16" />
+                    </Button>
+                    <Button x:Name="NextButton" Style="{StaticResource WidgetButton}" ToolTip="Sonraki">
+                        <TextBlock Text="⏭" FontSize="16" />
+                    </Button>
+                    <Button x:Name="SettingsButton" Style="{StaticResource WidgetButton}" Margin="8,0,0,0" ToolTip="Hızlı Ayarlar (ses/ağ)">
+                        <TextBlock Text="⚙" FontSize="16" />
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

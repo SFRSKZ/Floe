@@ -1,0 +1,69 @@
+using System;
+using System.IO;
+using System.Windows.Media;
+using MacDock.App.Services;
+using MacDock.Core.Models;
+
+namespace MacDock.App.ViewModels;
+
+public sealed class DockItemViewModel
+{
+    public DockItemViewModel(DockApp app, bool isPinned = true, IntPtr window = default)
+    {
+        App = app;
+        IsPinned = isPinned;
+        ProcessName = ExtractProcessName(AppLauncher.ResolveTarget(app));
+
+        Icon = IconService.GetIcon(app);
+        if (Icon is null && window != IntPtr.Zero)
+        {
+            Icon = IconService.GetWindowIcon(window);
+        }
+
+        Glow = IconService.GetGlowColor(app);
+    }
+
+    public DockApp App { get; }
+
+    public string Name => App.Name;
+
+    public ImageSource? Icon { get; }
+
+    public Color Glow { get; }
+
+    public bool IsPinned { get; }
+
+    public string ProcessName { get; }
+
+    public bool IsRunning { get; set; }
+
+    private static string ExtractProcessName(string target)
+    {
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            return string.Empty;
+        }
+
+        if (target.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
+        {
+            var bang = target.LastIndexOf('!');
+            if (bang >= 0 && bang < target.Length - 1)
+            {
+                return target[(bang + 1)..];
+            }
+
+            var segment = target.TrimEnd('\\');
+            var slash = segment.LastIndexOf('\\');
+            var last = slash >= 0 ? segment[(slash + 1)..] : segment;
+            var underscore = last.IndexOf('_');
+            if (underscore > 0)
+            {
+                last = last[..underscore];
+            }
+
+            return last;
+        }
+
+        return Path.GetFileNameWithoutExtension(target);
+    }
+}
