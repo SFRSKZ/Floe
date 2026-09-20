@@ -52,12 +52,17 @@ public partial class DockWindow : Window
     private static readonly double IconBottom = WindowHeight - PadY;
 
     private readonly List<IconSlot> _slots = new();
+    private IconSlot? _dragSlot;
+    private Point _dragStart;
+    private bool _isDragging;
     private readonly Dictionary<string, DockItemViewModel> _pinned = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<DockItemViewModel> _pinnedList = new();
     private readonly DispatcherTimer _hideTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
     private readonly DispatcherTimer _runningTimer = new() { Interval = TimeSpan.FromMilliseconds(2500) };
     private readonly DispatcherTimer _foregroundTimer = new() { Interval = TimeSpan.FromMilliseconds(3000) };
     private readonly DispatcherTimer _runningDebounce = new() { Interval = TimeSpan.FromMilliseconds(600) };
+    private readonly DispatcherTimer _fullscreenTimer = new() { Interval = TimeSpan.FromMilliseconds(1000) };
+    private bool _fullscreenHidden;
     private EventHooks.Hook? _foregroundHook;
     private EventHooks.Hook? _windowHook;
     private readonly SolidColorBrush _runningDotBrush = new(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF));
@@ -324,6 +329,9 @@ public partial class DockWindow : Window
             }
 
             EnsureWidgets();
+
+            _fullscreenTimer.Tick += (_, _) => UpdateFullscreenState();
+            _fullscreenTimer.Start();
         };
     }
 
@@ -398,7 +406,7 @@ public partial class DockWindow : Window
         var self = Process.GetCurrentProcess().Id;
         var windows = AppWindows.Enumerate(self);
 
-        var running = new Dictionary<string, (string Path, IntPtr Window)>(StringComparer.OrdinalIgnoreCase);
+        var grouped = new Dictionary<string, (string Path, List<IntPtr> Windows)>(StringComparer.OrdinalIgnoreCase);
         foreach (var window in windows)
         {
             if (IsHelperProcess(window.ProcessName))
@@ -406,23 +414,41 @@ public partial class DockWindow : Window
                 continue;
             }
 
-            running.TryAdd(window.ProcessName, (window.ProcessPath, window.Hwnd));
+            if (!grouped.TryGetValue(window.ProcessName, out var entry))
+            {
+                entry = (window.ProcessPath, new List<IntPtr>());
+                grouped[window.ProcessName] = entry;
+            }
+
+            entry.Windows.Add(window.Hwnd);
         }
 
         foreach (var pinned in _pinnedList)
         {
-            pinned.IsRunning = running.ContainsKey(pinned.ProcessName);
+            if (grouped.TryGetValue(pinned.ProcessName, out var entry))
+            {
+                pinned.IsRunning = true;
+                pinned.Windows = entry.Windows;
+            }
+            else
+            {
+                pinned.IsRunning = false;
+                pinned.Windows = Array.Empty<IntPtr>();
+            }
         }
 
         var unpinned = new List<DockItemViewModel>();
-        foreach (var name in running.Keys
+        foreach (var name in grouped.Keys
             .Where(name => !_pinned.ContainsKey(name))
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
         {
+            var entry = grouped[name];
             var vm = new DockItemViewModel(
-                new DockApp { Name = name, Target = running[name].Path },
+                new DockApp { Name = name, Target = entry.Path },
                 isPinned: false,
-                window: running[name].Window);
+                window: entry.Windows.Count > 0 ? entry.Windows[0] : IntPtr.Zero);
+
+            vm.Windows = entry.Windows;
 
             if (vm.Icon is not null)
             {
@@ -525,8 +551,16 @@ public partial class DockWindow : Window
             };
             button.Click += DockIcon_Click;
 
-            _slots.Add(new IconSlot(button, dot, item, centerLocal, scale, translate));
+            var slot = new IconSlot(button, dot, item, centerLocal, scale, translate);
+            _slots.Add(slot);
             IconLayer.Children.Add(button);
+
+            if (item.IsPinned)
+            {
+                button.PreviewMouseLeftButtonDown += (_, e) => DragStart(slot, e);
+                button.PreviewMouseMove += (_, e) => DragMove(e);
+                button.PreviewMouseLeftButtonUp += (_, e) => DragEnd(e);
+            }
         }
 
         var scales = ComputeScales(_currentHoverX);
@@ -904,6 +938,11 @@ public partial class DockWindow : Window
 
     private void Window_PreviewMouseMove(object sender, MouseEventArgs e)
     {
+        if (_isDragging)
+        {
+            return;
+        }
+
         var position = e.GetPosition(this);
         _targetHoverX = Math.Min(_windowWidth, Math.Max(0, position.X));
         _targetBulge = MaxBulge;
@@ -1012,16 +1051,21 @@ public partial class DockWindow : Window
             return;
         }
 
+        // group: cycle through the windows of the same app
+        if (item.Windows.Count > 0)
+        {
+            var hwnd = item.NextWindow();
+            var activated = WindowActivator.Activate(hwnd);
+            Log($"click {item.Name} -> cycle window {hwnd} ok={activated}");
+            return;
+        }
+
         var result = AppLauncher.LaunchOrActivate(item.App);
         Log($"click {item.Name} -> {result.Message}");
 
-        if (result.Started)
+        if (result.Started && _slots.FirstOrDefault(s => ReferenceEquals(s.Item, item)) is { } slot)
         {
-            var slot = _slots.FirstOrDefault(s => ReferenceEquals(s.Item, item));
-            if (slot is not null)
-            {
-                Bounce(slot);
-            }
+            Bounce(slot);
         }
     }
 
@@ -1036,6 +1080,102 @@ public partial class DockWindow : Window
         animation.KeyFrames.Add(new EasingDoubleKeyFrame(-IconBox * 0.2, KeyTime.FromPercent(0.78)));
         animation.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromPercent(1.0)));
         slot.Translate.BeginAnimation(TranslateTransform.YProperty, animation);
+    }
+
+    private void DragStart(IconSlot slot, MouseButtonEventArgs e)
+    {
+        if (!slot.Item.IsPinned)
+        {
+            return;
+        }
+
+        _dragSlot = slot;
+        _dragStart = e.GetPosition(this);
+        _isDragging = false;
+        _tooltip.IsOpen = false;
+        slot.Button.CaptureMouse();
+    }
+
+    private void DragMove(MouseEventArgs e)
+    {
+        if (_dragSlot is null)
+        {
+            return;
+        }
+
+        var position = e.GetPosition(this);
+        if (!_isDragging)
+        {
+            if (Math.Abs(position.X - _dragStart.X) < 6 && Math.Abs(position.Y - _dragStart.Y) < 6)
+            {
+                return;
+            }
+
+            _isDragging = true;
+        }
+
+        e.Handled = true;
+        Canvas.SetLeft(_dragSlot.Button, position.X - (IconBox / 2));
+        Canvas.SetZIndex(_dragSlot.Button, 1000);
+    }
+
+    private void DragEnd(MouseButtonEventArgs e)
+    {
+        if (_dragSlot is null)
+        {
+            return;
+        }
+
+        var slot = _dragSlot;
+        _dragSlot = null;
+        slot.Button.ReleaseMouseCapture();
+        Canvas.SetZIndex(slot.Button, 0);
+
+        if (!_isDragging)
+        {
+            return;
+        }
+
+        _isDragging = false;
+        var position = e.GetPosition(this);
+
+        if (position.Y > IconBottom + (IconBox * 0.5))
+        {
+            Unpin(slot.Item);
+            return;
+        }
+
+        var current = _pinnedList.IndexOf(slot.Item);
+        var target = ComputeDropIndex(position.X);
+        if (current >= 0 && target != current && target != current + 1)
+        {
+            _pinnedList.RemoveAt(current);
+            if (target > current)
+            {
+                target--;
+            }
+
+            target = Math.Clamp(target, 0, _pinnedList.Count);
+            _pinnedList.Insert(target, slot.Item);
+            SavePinned();
+        }
+
+        RefreshRunning();
+    }
+
+    private int ComputeDropIndex(double x)
+    {
+        var index = 0;
+        var pinnedCount = Math.Min(_pinnedList.Count, _slots.Count);
+        for (var i = 0; i < pinnedCount; i++)
+        {
+            if (x > _restCapsuleLeft + _slots[i].CenterLocal)
+            {
+                index = i + 1;
+            }
+        }
+
+        return index;
     }
 
     private void ApplyMenuStyle(ContextMenu menu)
@@ -1734,6 +1874,38 @@ public partial class DockWindow : Window
 
         _backdropBitmap.WritePixels(new Int32Rect(0, 0, width, height), pixels, stride, 0);
     }
+
+    private void UpdateFullscreenState()
+    {
+        var fullscreen = ScreenInput.IsForegroundFullscreen();
+        if (fullscreen == _fullscreenHidden)
+        {
+            return;
+        }
+
+        _fullscreenHidden = fullscreen;
+
+        if (fullscreen)
+        {
+            _widgetsHiddenForFullscreen = _weatherWidget?.IsVisible ?? false;
+            _weatherWidget?.Hide();
+            _mediaWidget?.Hide();
+            Hide();
+        }
+        else
+        {
+            Show();
+            Reposition();
+            if (_widgetsHiddenForFullscreen)
+            {
+                _weatherWidget?.Show();
+                _mediaWidget?.Show();
+                ArrangeWidgets();
+            }
+        }
+    }
+
+    private bool _widgetsHiddenForFullscreen;
 
     private void ScheduleRunningRefresh()
     {

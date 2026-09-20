@@ -37,6 +37,22 @@ public sealed class DockItemViewModel
 
     public bool IsRunning { get; set; }
 
+    public IReadOnlyList<IntPtr> Windows { get; set; } = Array.Empty<IntPtr>();
+
+    private int _cycle;
+
+    public IntPtr NextWindow()
+    {
+        if (Windows.Count == 0)
+        {
+            return IntPtr.Zero;
+        }
+
+        var handle = Windows[_cycle % Windows.Count];
+        _cycle++;
+        return handle;
+    }
+
     private static string ExtractProcessName(string target)
     {
         if (string.IsNullOrWhiteSpace(target))
