@@ -5,14 +5,16 @@ using MacDock.Core.Models;
 
 namespace MacDock.App.Services;
 
+public readonly record struct LaunchResult(string Message, bool Started);
+
 public static class AppLauncher
 {
-    public static string LaunchOrActivate(DockApp app)
+    public static LaunchResult LaunchOrActivate(DockApp app)
     {
         var target = ResolveTarget(app);
         if (string.IsNullOrWhiteSpace(target))
         {
-            return $"no-target:{app.Name}";
+            return new LaunchResult($"no-target:{app.Name}", false);
         }
 
         if (target.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
@@ -20,11 +22,11 @@ public static class AppLauncher
             try
             {
                 Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = target, UseShellExecute = true });
-                return $"launched:{target}";
+                return new LaunchResult($"launched:{target}", true);
             }
             catch (Exception ex)
             {
-                return $"launch-failed:{ex.Message}";
+                return new LaunchResult($"launch-failed:{ex.Message}", false);
             }
         }
 
@@ -33,8 +35,8 @@ public static class AppLauncher
         if (existing != IntPtr.Zero)
         {
             return WindowActivator.Activate(existing)
-                ? $"activated:{processName}"
-                : $"activate-failed:{processName}";
+                ? new LaunchResult($"activated:{processName}", false)
+                : new LaunchResult($"activate-failed:{processName}", false);
         }
 
         try
@@ -49,11 +51,11 @@ public static class AppLauncher
                 UseShellExecute = true,
             });
 
-            return $"launched:{processName}";
+            return new LaunchResult($"launched:{processName}", true);
         }
         catch (Exception ex)
         {
-            return $"launch-failed:{processName}:{ex.Message}";
+            return new LaunchResult($"launch-failed:{processName}:{ex.Message}", false);
         }
     }
 

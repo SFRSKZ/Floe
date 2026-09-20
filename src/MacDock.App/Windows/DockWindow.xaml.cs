@@ -503,6 +503,12 @@ public partial class DockWindow : Window
             grid.Children.Add(image);
             grid.Children.Add(dot);
 
+            var scale = new ScaleTransform(1, 1);
+            var translate = new TranslateTransform(0, 0);
+            var transformGroup = new TransformGroup();
+            transformGroup.Children.Add(scale);
+            transformGroup.Children.Add(translate);
+
             var button = new Button
             {
                 Width = IconBox,
@@ -515,11 +521,11 @@ public partial class DockWindow : Window
                 Padding = new Thickness(0),
                 Template = CreateButtonTemplate(),
                 RenderTransformOrigin = new Point(0.5, 1.0),
-                RenderTransform = new ScaleTransform(1, 1),
+                RenderTransform = transformGroup,
             };
             button.Click += DockIcon_Click;
 
-            _slots.Add(new IconSlot(button, dot, item, centerLocal));
+            _slots.Add(new IconSlot(button, dot, item, centerLocal, scale, translate));
             IconLayer.Children.Add(button);
         }
 
@@ -598,9 +604,8 @@ public partial class DockWindow : Window
             Canvas.SetLeft(slot.Button, center - (IconBox / 2));
             Canvas.SetTop(slot.Button, IconBottom - IconBox);
 
-            var transform = (ScaleTransform)slot.Button.RenderTransform;
-            transform.ScaleX = scales[i];
-            transform.ScaleY = scales[i];
+            slot.Scale.ScaleX = scales[i];
+            slot.Scale.ScaleY = scales[i];
 
             x += width + Spacing;
         }
@@ -1001,14 +1006,36 @@ public partial class DockWindow : Window
 
     private void DockIcon_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is DockItemViewModel item)
-        {
-            Log($"click {item.Name} -> {AppLauncher.LaunchOrActivate(item.App)}");
-        }
-        else
+        if ((sender as FrameworkElement)?.DataContext is not DockItemViewModel item)
         {
             Log("click (no item)");
+            return;
         }
+
+        var result = AppLauncher.LaunchOrActivate(item.App);
+        Log($"click {item.Name} -> {result.Message}");
+
+        if (result.Started)
+        {
+            var slot = _slots.FirstOrDefault(s => ReferenceEquals(s.Item, item));
+            if (slot is not null)
+            {
+                Bounce(slot);
+            }
+        }
+    }
+
+    private void Bounce(IconSlot slot)
+    {
+        var animation = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = TimeSpan.FromMilliseconds(700),
+        };
+        animation.KeyFrames.Add(new EasingDoubleKeyFrame(-IconBox * 0.42, KeyTime.FromPercent(0.28)));
+        animation.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromPercent(0.6)));
+        animation.KeyFrames.Add(new EasingDoubleKeyFrame(-IconBox * 0.2, KeyTime.FromPercent(0.78)));
+        animation.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromPercent(1.0)));
+        slot.Translate.BeginAnimation(TranslateTransform.YProperty, animation);
     }
 
     private void ApplyMenuStyle(ContextMenu menu)
@@ -1762,10 +1789,10 @@ public partial class DockWindow : Window
     {
         Canvas.SetLeft(_auraGrid, Canvas.GetLeft(slot.Button));
         Canvas.SetTop(_auraGrid, Canvas.GetTop(slot.Button));
-        if (_auraGrid.RenderTransform is ScaleTransform aura && slot.Button.RenderTransform is ScaleTransform icon)
+        if (_auraGrid.RenderTransform is ScaleTransform aura)
         {
-            aura.ScaleX = icon.ScaleX;
-            aura.ScaleY = icon.ScaleY;
+            aura.ScaleX = slot.Scale.ScaleX;
+            aura.ScaleY = slot.Scale.ScaleY;
         }
     }
 
@@ -1784,12 +1811,14 @@ public partial class DockWindow : Window
 
     private sealed class IconSlot
     {
-        public IconSlot(Button button, Ellipse dot, DockItemViewModel item, double centerLocal)
+        public IconSlot(Button button, Ellipse dot, DockItemViewModel item, double centerLocal, ScaleTransform scale, TranslateTransform translate)
         {
             Button = button;
             Dot = dot;
             Item = item;
             CenterLocal = centerLocal;
+            Scale = scale;
+            Translate = translate;
         }
 
         public Button Button { get; }
@@ -1801,6 +1830,10 @@ public partial class DockWindow : Window
         public double CenterLocal { get; }
 
         public double Center { get; set; }
+
+        public ScaleTransform Scale { get; }
+
+        public TranslateTransform Translate { get; }
     }
 }
 
