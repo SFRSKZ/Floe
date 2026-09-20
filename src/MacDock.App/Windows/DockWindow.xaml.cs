@@ -104,6 +104,8 @@ public partial class DockWindow : Window
     private WeatherWidgetWindow? _weatherWidget;
     private MediaWidgetWindow? _mediaWidget;
     private PreviewWindow? _preview;
+    private HwndSource? _source;
+    private IntPtr _trayIcon;
 
     private bool _widgetRenderingHooked;
     private readonly DispatcherTimer _clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -333,6 +335,9 @@ public partial class DockWindow : Window
 
             _fullscreenTimer.Tick += (_, _) => UpdateFullscreenState();
             _fullscreenTimer.Start();
+
+            _trayIcon = TrayNotification.LoadAppIcon(Environment.ProcessPath ?? string.Empty);
+            TrayNotification.Add(_hwnd, "MacDock", _trayIcon);
         };
     }
 
@@ -345,6 +350,73 @@ public partial class DockWindow : Window
         if (BlurBackdrop)
         {
             WindowAffinity.ExcludeFromCapture(_hwnd);
+        }
+
+        _source = HwndSource.FromHwnd(_hwnd);
+        _source?.AddHook(WndProc);
+    }
+
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == TrayNotification.CallbackMessage)
+        {
+            var evt = lParam.ToInt32() & 0xFFFF;
+            if (evt == TrayNotification.WmLeftButtonUp)
+            {
+                ToggleDockVisible();
+                handled = true;
+            }
+            else if (evt == TrayNotification.WmRightButtonUp)
+            {
+                ShowTrayMenu();
+                handled = true;
+            }
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private void ToggleDockVisible()
+    {
+        if (IsVisible)
+        {
+            Hide();
+            _weatherWidget?.Hide();
+            _mediaWidget?.Hide();
+        }
+        else
+        {
+            Show();
+            Reposition();
+            _weatherWidget?.Show();
+            _mediaWidget?.Show();
+            ArrangeWidgets();
+        }
+    }
+
+    private void ShowTrayMenu()
+    {
+        var (x, y) = ScreenInput.GetCursorPosition();
+        var items = new List<string>
+        {
+            IsVisible ? "Dock'u gizle" : "Dock'u göster",
+            AutoStart.IsEnabled() ? "Açılışta başlatmayı kapat" : "Açılışta başlat",
+            "-",
+            "Çıkış",
+        };
+
+        var index = TrayNotification.ShowMenu(_hwnd, x, y, items);
+        switch (index)
+        {
+            case 0:
+                ToggleDockVisible();
+                break;
+            case 1:
+                AutoStart.Toggle();
+                break;
+            case 3:
+                Application.Current.Shutdown();
+                break;
         }
     }
 
@@ -1498,6 +1570,13 @@ public partial class DockWindow : Window
         _foregroundHook?.Dispose();
         _windowHook?.Dispose();
         _backdropCapture?.Dispose();
+        TrayNotification.Remove(_hwnd, "MacDock", _trayIcon);
+        if (_trayIcon != IntPtr.Zero)
+        {
+            TrayNotification.DestroyAppIcon(_trayIcon);
+        }
+
+        _source?.RemoveHook(WndProc);
         base.OnClosed(e);
     }
 
