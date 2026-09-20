@@ -46,11 +46,15 @@ public partial class MediaWidgetWindow : Window, IBubbleWidget
         {
             MediaTitle.Text = "—";
             MediaArtist.Text = string.Empty;
+            Artwork.Source = null;
+            ProgressScale.ScaleX = 0;
             return;
         }
 
         MediaTitle.Text = media.Title;
         MediaArtist.Text = media.Artist;
+        Artwork.Source = media.Artwork;
+        ProgressScale.ScaleX = media.Progress;
     }
 }
 

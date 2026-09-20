@@ -55,7 +55,7 @@
             </Rectangle.Fill>
         </Rectangle>
 
-        <Border CornerRadius="16" BorderThickness="1" Padding="14,6" Margin="0">
+        <Border CornerRadius="16" BorderThickness="1" Padding="12,6" Margin="0">
             <Border.Background>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                     <GradientStop Color="#3DFFFFFF" Offset="0" />
@@ -73,12 +73,25 @@
             </Border.BorderBrush>
 
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <StackPanel Width="170" VerticalAlignment="Center">
+                <Border Width="46" Height="46" CornerRadius="10" Background="#1FFFFFFF" ClipToBounds="True">
+                    <Image x:Name="Artwork" Stretch="UniformToFill" />
+                </Border>
+
+                <StackPanel Width="156" Margin="10,0,0,0" VerticalAlignment="Center">
                     <TextBlock Text="ŞU ÇALAN" Foreground="#88FFFFFF" FontSize="9" FontWeight="SemiBold" />
                     <TextBlock x:Name="MediaTitle" Text="—" Foreground="White" FontSize="13" FontWeight="SemiBold"
                                TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
                     <TextBlock x:Name="MediaArtist" Text="" Foreground="#B0FFFFFF" FontSize="11"
                                TextTrimming="CharacterEllipsis" />
+                    <Grid Height="3" Margin="0,5,0,0">
+                        <Border Background="#33FFFFFF" CornerRadius="1.5" />
+                        <Border x:Name="ProgressFill" Background="#DDFFFFFF" CornerRadius="1.5"
+                                HorizontalAlignment="Stretch" RenderTransformOrigin="0,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform x:Name="ProgressScale" ScaleX="0" />
+                            </Border.RenderTransform>
+                        </Border>
+                    </Grid>
                 </StackPanel>
 
                 <Rectangle Width="1" Fill="#22FFFFFF" Margin="12,6" />
@@ -93,7 +106,7 @@
                     <Button x:Name="NextButton" Style="{StaticResource WidgetButton}" ToolTip="Sonraki">
                         <TextBlock Text="⏭" FontSize="16" />
                     </Button>
-                    <Button x:Name="SettingsButton" Style="{StaticResource WidgetButton}" Margin="8,0,0,0" ToolTip="Hızlı Ayarlar (ses/ağ)">
+                    <Button x:Name="SettingsButton" Style="{StaticResource WidgetButton}" Margin="8,0,0,0" ToolTip="Hızlı Ayarlar">
                         <TextBlock Text="⚙" FontSize="16" />
                     </Button>
                 </StackPanel>

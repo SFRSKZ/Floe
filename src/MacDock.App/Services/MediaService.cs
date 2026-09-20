@@ -1,8 +1,11 @@
+using System.IO;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Windows.Media.Control;
 
 namespace MacDock.App.Services;
 
-public sealed record MediaInfo(string Title, string Artist);
+public sealed record MediaInfo(string Title, string Artist, double Progress, ImageSource? Artwork);
 
 public static class MediaService
 {
@@ -22,7 +25,50 @@ public static class MediaService
                 return null;
             }
 
-            return new MediaInfo(properties.Title ?? string.Empty, properties.Artist ?? string.Empty);
+            var progress = 0.0;
+            try
+            {
+                var timeline = session.GetTimelineProperties();
+                var total = (timeline.EndTime - timeline.StartTime).TotalSeconds;
+                if (total > 0)
+                {
+                    progress = Math.Clamp((timeline.Position - timeline.StartTime).TotalSeconds / total, 0, 1);
+                }
+            }
+            catch
+            {
+                // timeline may be unavailable
+            }
+
+            return new MediaInfo(
+                properties.Title ?? string.Empty,
+                properties.Artist ?? string.Empty,
+                progress,
+                await ReadArtworkAsync(properties));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static async Task<ImageSource?> ReadArtworkAsync(GlobalSystemMediaTransportControlsSessionMediaProperties properties)
+    {
+        try
+        {
+            if (properties.Thumbnail is null)
+            {
+                return null;
+            }
+
+            using var stream = await properties.Thumbnail.OpenReadAsync();
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.StreamSource = stream.AsStreamForRead();
+            image.EndInit();
+            image.Freeze();
+            return image;
         }
         catch
         {
