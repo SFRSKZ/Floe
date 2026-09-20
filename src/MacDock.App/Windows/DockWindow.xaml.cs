@@ -84,6 +84,7 @@ public partial class DockWindow : Window
     private readonly Path _glass = new() { IsHitTestVisible = false };
     private readonly Path _sheen = new() { IsHitTestVisible = false };
     private readonly Path _specular = new() { IsHitTestVisible = false };
+    private readonly Rectangle _grain = new() { IsHitTestVisible = false };
     private readonly Path _rim = new() { IsHitTestVisible = false };
     private readonly Ellipse _glow = new() { IsHitTestVisible = false, Width = 220, Height = 86 };
     private readonly LinearGradientBrush _glowBrush = new() { StartPoint = new Point(0, 0.5), EndPoint = new Point(1, 0.5) };
@@ -255,7 +256,7 @@ public partial class DockWindow : Window
 
         _glow.Fill = _glowBrush;
         _glow.Visibility = Visibility.Collapsed;
-        _backdrop.Effect = new BlurEffect { Radius = 16, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Performance };
+        _backdrop.Effect = new BlurEffect { Radius = MacDock.App.Services.BlurSettings.Radius, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Performance };
         _backdrop.Width = _windowWidth;
         _backdrop.Height = WindowHeight;
         Canvas.SetLeft(_backdrop, 0);
@@ -275,6 +276,17 @@ public partial class DockWindow : Window
         ShapeLayer.Children.Add(_rim);
         ShapeLayer.Children.Add(_sheen);
         ShapeLayer.Children.Add(_specular);
+
+        _grain.Fill = new ImageBrush(MakeNoiseBitmap())
+        {
+            TileMode = TileMode.Tile,
+            ViewportUnits = BrushMappingMode.Absolute,
+            Viewport = new Rect(0, 0, 64, 64),
+            Stretch = Stretch.None,
+        };
+        _grain.Opacity = MacDock.App.Services.BlurSettings.GrainOpacity;
+        _grain.Clip = _shapeGeometry;
+        ShapeLayer.Children.Add(_grain);
 
         _glowLayer.Children.Add(_glow);
 
@@ -418,6 +430,26 @@ public partial class DockWindow : Window
                 Application.Current.Shutdown();
                 break;
         }
+    }
+
+    private static BitmapSource MakeNoiseBitmap()
+    {
+        const int size = 64;
+        var random = new Random(20260921);
+        var pixels = new byte[size * size * 4];
+
+        for (var i = 0; i < size * size; i++)
+        {
+            var value = (byte)random.Next(0, 256);
+            pixels[(i * 4) + 0] = value;
+            pixels[(i * 4) + 1] = value;
+            pixels[(i * 4) + 2] = value;
+            pixels[(i * 4) + 3] = 255;
+        }
+
+        var bitmap = BitmapSource.Create(size, size, 96, 96, PixelFormats.Bgra32, null, pixels, size * 4);
+        bitmap.Freeze();
+        return bitmap;
     }
 
     private static Brush BuildGlassBrush()
@@ -2114,6 +2146,7 @@ public partial class DockWindow : Window
         public TranslateTransform Translate { get; }
     }
 }
+
 
 
 

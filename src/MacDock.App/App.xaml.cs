@@ -51,6 +51,13 @@ public partial class App : Application
             TaskbarController.Show();
         }
 
+        var blurArg = e.Args
+            .FirstOrDefault(a => a.StartsWith("--blur=", StringComparison.OrdinalIgnoreCase))?["--blur=".Length..];
+        if (blurArg is not null && double.TryParse(blurArg, out var blurRadius) && blurRadius > 0)
+        {
+            MacDock.App.Services.BlurSettings.Radius = blurRadius;
+        }
+
         var renderPath = e.Args
             .FirstOrDefault(a => a.StartsWith("--render=", StringComparison.OrdinalIgnoreCase))?["--render=".Length..];
 

@@ -45,7 +45,7 @@ public sealed class BubbleController
         _backdrop = backdrop;
         _brush = brush;
         _scale = scale;
-        _backdrop.Effect = new BlurEffect { Radius = 16, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Performance };
+        _backdrop.Effect = new BlurEffect { Radius = BlurSettings.Radius, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Performance };
     }
 
     public bool Blur { get; set; } = true;
@@ -263,5 +263,6 @@ public sealed class BubbleController
         }
     }
 }
+
 
 
