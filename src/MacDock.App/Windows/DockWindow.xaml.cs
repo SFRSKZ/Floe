@@ -138,6 +138,7 @@ public partial class DockWindow : Window
     private bool _settingsOpen;
     private SettingsWindow? _settings;
     private VeilWindow? _veil;
+    private DesktopButtonWindow? _desktopButton;
     private readonly DispatcherTimer _tooltipTimer = new() { Interval = TimeSpan.FromMilliseconds(420) };
 
     private readonly Path _glass = new() { IsHitTestVisible = false };
@@ -146,6 +147,7 @@ public partial class DockWindow : Window
     private readonly Rectangle _grain = new() { IsHitTestVisible = false };
     private readonly Path _rim = new() { IsHitTestVisible = false };
     private readonly Ellipse _glow = new() { IsHitTestVisible = false, Width = 220, Height = 86 };
+
     private readonly Ellipse _dropRing = new()
     {
         IsHitTestVisible = false,
@@ -473,6 +475,7 @@ public partial class DockWindow : Window
         AuraSettings.Load();
         AuraSettings.Changed += OnAuraSettingsChanged;
 
+        LocationChanged += (_, _) => PositionDesktopButton();
         _hideTimer.Tick += HideTimer_Tick;
         _runningTimer.Tick += (_, _) => RefreshRunning();
         _tooltipTimer.Tick += (_, _) => ShowTooltip();
@@ -566,6 +569,7 @@ public partial class DockWindow : Window
             Hide();
             _weatherWidget?.Hide();
             _mediaWidget?.Hide();
+            _desktopButton?.Hide();
         }
         else
         {
@@ -962,6 +966,8 @@ public partial class DockWindow : Window
         {
             PositionSpectral(_slots[_activeIndex]);
         }
+
+        PositionDesktopButton();
     }
 
     private void UpdateCapsule(IReadOnlyList<double> scales)
@@ -1805,6 +1811,7 @@ public partial class DockWindow : Window
         _shown = true;
         _outsideTicks = 0;
         AnimateTop(ShownTop);
+        PositionDesktopButton();
     }
 
     private void HideDock()
@@ -1816,6 +1823,7 @@ public partial class DockWindow : Window
 
         _shown = false;
         AnimateTop(HiddenTop);
+        PositionDesktopButton();
     }
 
     private void AnimateTop(double target)
@@ -1845,6 +1853,9 @@ public partial class DockWindow : Window
         var left = rect.Left + ((centerDip - halfDip) * pxPerDip);
         var right = rect.Left + ((centerDip + halfDip) * pxPerDip);
 
+        // include the desktop button (separate window) to the right
+        right += 100 * pxPerDip;
+
         var (x, y) = ScreenInput.GetCursorPosition();
         return x >= left - 6 && x <= right + 6 && y >= rect.Top - 10 && y <= rect.Bottom + 6;
     }
@@ -1854,6 +1865,38 @@ public partial class DockWindow : Window
         Left = (SystemParameters.PrimaryScreenWidth - ActualWidth) / 2;
         Top = _shown ? ShownTop : HiddenTop;
         PositionWidgets();
+        PositionDesktopButton();
+    }
+
+    private void PositionDesktopButton()
+    {
+        _desktopButton ??= CreateDesktopButton();
+
+        var right = ToScreenX(_capsuleLeft + _capsuleWidth) + 16;
+        var centerY = Top + IconBottom - (IconBox / 2);
+        _desktopButton.Left = right;
+        _desktopButton.Top = centerY - (_desktopButton.Height / 2);
+
+        if (_shown && !_fullscreenHidden && IsVisible)
+        {
+            if (!_desktopButton.IsVisible)
+            {
+                _desktopButton.Show();
+            }
+        }
+        else if (_desktopButton.IsVisible)
+        {
+            _desktopButton.Hide();
+        }
+    }
+
+    private DesktopButtonWindow CreateDesktopButton()
+    {
+        var button = new DesktopButtonWindow();
+        button.Clicked += DesktopController.ShowDesktop;
+        button.Show();
+        button.Hide();
+        return button;
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
@@ -1890,6 +1933,7 @@ public partial class DockWindow : Window
 
         DesktopController.UnregisterHotKey(_hwnd, DesktopController.HotkeyIdVeil);
         _veil?.HideVeil();
+        _desktopButton?.Close();
         _foregroundHook?.Dispose();
         _windowHook?.Dispose();
         _alertHook?.Dispose();
@@ -2433,6 +2477,7 @@ public partial class DockWindow : Window
         }
 
         _fullscreenHidden = fullscreen;
+        PositionDesktopButton();
 
         if (fullscreen)
         {
