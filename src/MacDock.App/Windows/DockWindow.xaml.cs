@@ -1906,7 +1906,10 @@ public partial class DockWindow : Window
         var centerY = Top + RestTop + (RestBarHeight / 2);
         var top = centerY - (_desktopButton.Height / 2);
 
-        if (Math.Abs(_desktopButtonX - right) > 0.5 || Math.Abs(_desktopButtonY - top) > 0.5)
+        if (double.IsNaN(_desktopButtonX)
+            || double.IsNaN(_desktopButtonY)
+            || Math.Abs(_desktopButtonX - right) > 0.5
+            || Math.Abs(_desktopButtonY - top) > 0.5)
         {
             _desktopButton.Left = right;
             _desktopButton.Top = top;
