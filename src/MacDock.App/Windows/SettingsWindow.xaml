@@ -76,14 +76,30 @@
             CornerRadius="14"
             Padding="18">
         <StackPanel Width="330">
-            <TextBlock Text="Aura"
+            <TextBlock Text="İkon efekti"
                        Foreground="#F2FFFFFF"
                        FontSize="15"
                        FontWeight="SemiBold" />
-            <TextBlock Text="Aktif ikonun çevresindeki renkler"
+            <TextBlock Text="Aktif ikonun çevresindeki parlama"
                        Foreground="#8AFFFFFF"
                        FontSize="11.5"
-                       Margin="0,2,0,14" />
+                       Margin="0,2,0,12" />
+
+            <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="EffectGlow" Style="{StaticResource ModeToggle}" Content="Işıltı" />
+                <RadioButton x:Name="EffectBurst" Style="{StaticResource ModeToggle}" Content="Yıldız alanı" />
+            </StackPanel>
+
+            <Rectangle Height="1" Fill="#1EFFFFFF" Margin="0,16,0,14" />
+
+            <TextBlock Text="Renkler"
+                       Foreground="#F2FFFFFF"
+                       FontSize="15"
+                       FontWeight="SemiBold" />
+            <TextBlock Text="Efektin kullandığı renkler"
+                       Foreground="#8AFFFFFF"
+                       FontSize="11.5"
+                       Margin="0,2,0,12" />
 
             <StackPanel Orientation="Horizontal">
                 <RadioButton x:Name="ModePalette" Style="{StaticResource ModeToggle}" Content="Palet" />

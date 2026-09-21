@@ -14,6 +14,12 @@ public enum AuraColorMode
     Icon,
 }
 
+public enum AuraEffect
+{
+    Glow,
+    Burst,
+}
+
 public sealed class AuraPalette
 {
     public AuraPalette(string name, Color first, Color second, Color third)
@@ -51,6 +57,8 @@ public static class AuraSettings
 
     public static AuraColorMode Mode { get; private set; } = AuraColorMode.Palette;
 
+    public static AuraEffect Effect { get; private set; } = AuraEffect.Glow;
+
     public static int PaletteIndex { get; private set; }
 
     public static void Load()
@@ -69,6 +77,7 @@ public static class AuraSettings
             }
 
             Mode = Enum.TryParse<AuraColorMode>(model.Mode, true, out var mode) ? mode : AuraColorMode.Palette;
+            Effect = Enum.TryParse<AuraEffect>(model.Effect, true, out var effect) ? effect : AuraEffect.Glow;
             PaletteIndex = Math.Clamp(model.PaletteIndex, 0, Palettes.Count - 1);
         }
         catch
@@ -85,6 +94,18 @@ public static class AuraSettings
         }
 
         Mode = mode;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetEffect(AuraEffect effect)
+    {
+        if (Effect == effect)
+        {
+            return;
+        }
+
+        Effect = effect;
         Save();
         Changed?.Invoke();
     }
@@ -126,6 +147,7 @@ public static class AuraSettings
             File.WriteAllText(ConfigPath, JsonSerializer.Serialize(new Model
             {
                 Mode = Mode.ToString(),
+                Effect = Effect.ToString(),
                 PaletteIndex = PaletteIndex,
             }));
         }
@@ -140,6 +162,8 @@ public static class AuraSettings
     private sealed class Model
     {
         public string Mode { get; set; } = nameof(AuraColorMode.Palette);
+
+        public string Effect { get; set; } = nameof(AuraEffect.Glow);
 
         public int PaletteIndex { get; set; }
     }

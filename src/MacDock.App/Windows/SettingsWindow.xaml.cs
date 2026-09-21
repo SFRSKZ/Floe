@@ -20,6 +20,11 @@ public partial class SettingsWindow : Window
         AuraSettings.Load();
         BuildPaletteRows();
 
+        EffectGlow.IsChecked = AuraSettings.Effect == AuraEffect.Glow;
+        EffectBurst.IsChecked = AuraSettings.Effect == AuraEffect.Burst;
+        EffectGlow.Checked += (_, _) => AuraSettings.SetEffect(AuraEffect.Glow);
+        EffectBurst.Checked += (_, _) => AuraSettings.SetEffect(AuraEffect.Burst);
+
         ModePalette.IsChecked = AuraSettings.Mode == AuraColorMode.Palette;
         ModeIcon.IsChecked = AuraSettings.Mode == AuraColorMode.Icon;
         ModePalette.Checked += (_, _) => AuraSettings.SetMode(AuraColorMode.Palette);

@@ -43,6 +43,9 @@ public partial class DockWindow : Window
     private const double FalloffRadius = 115;
     private const double GlowRadius = 92;
     private const double BulgeSigma = 34;
+    private const int BurstRayCount = 12;
+    private const double BurstRayLength = 54;
+    private const double BurstRayWidth = 3.5;
     private const double CornerRadius = 22;
     private const double BottomMargin = 8;
     private const int TriggerShow = 6;
@@ -75,6 +78,16 @@ public partial class DockWindow : Window
     private readonly Image[] _auraImages = new Image[3];
     private readonly DropShadowEffect[] _auraEffects = new DropShadowEffect[3];
     private readonly DoubleAnimation[] _auraDirAnims = new DoubleAnimation[3];
+    private readonly Canvas _burstLayer = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    private readonly List<(Rectangle Ray, RotateTransform Spin)> _burstRays = new();
+    private readonly List<DoubleAnimation> _burstSpins = new();
+    private readonly Ellipse _burstCore = new() { IsHitTestVisible = false, Width = 76, Height = 76 };
+    private readonly RadialGradientBrush _burstCoreBrush = new() { Center = new Point(0.5, 0.5), GradientOrigin = new Point(0.5, 0.5) };
+    private readonly DoubleAnimation _burstPulse = new(0.45, 0.9, TimeSpan.FromSeconds(2.2))
+    {
+        AutoReverse = true,
+        RepeatBehavior = RepeatBehavior.Forever,
+    };
     private string _activeProcess = string.Empty;
     private string _activeTitle = string.Empty;
     private string _activePath = string.Empty;
@@ -361,6 +374,36 @@ public partial class DockWindow : Window
 
         Root.Children.Insert(1, _glowLayer);
 
+        _burstCoreBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x99, 0x5B, 0xC8, 0xFF), 0.0));
+        _burstCoreBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x5B, 0xC8, 0xFF), 1.0));
+        _burstCore.Fill = _burstCoreBrush;
+        _burstCore.Effect = new BlurEffect { Radius = 16, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Performance };
+        _burstLayer.Children.Add(_burstCore);
+
+        for (var i = 0; i < BurstRayCount; i++)
+        {
+            var angle = i * (360.0 / BurstRayCount);
+            var ray = new Rectangle
+            {
+                Width = BurstRayWidth,
+                Height = BurstRayLength,
+                IsHitTestVisible = false,
+                RenderTransformOrigin = new Point(0.5, 1.0),
+                RenderTransform = new RotateTransform(angle, BurstRayWidth / 2, BurstRayLength),
+            };
+
+            _burstRays.Add((ray, (RotateTransform)ray.RenderTransform));
+            _burstSpins.Add(new DoubleAnimation(angle, angle + 360, TimeSpan.FromSeconds(16))
+            {
+                RepeatBehavior = RepeatBehavior.Forever,
+            });
+            _burstLayer.Children.Add(ray);
+        }
+
+        Root.Children.Insert(2, _burstLayer);
+
+
+
         _tooltip.Child = new Border
         {
             Background = new SolidColorBrush(Color.FromArgb(0xD9, 0x1B, 0x1C, 0x22)),
@@ -463,26 +506,19 @@ public partial class DockWindow : Window
     private void ShowTrayMenu()
     {
         var (x, y) = ScreenInput.GetCursorPosition();
-        var items = new List<string>
+        var actions = new List<(string Label, Action Run)>
         {
-            IsVisible ? "Dock'u gizle" : "Dock'u göster",
-            AutoStart.IsEnabled() ? "Açılışta başlatmayı kapat" : "Açılışta başlat",
-            "-",
-            "Çıkış",
+            (IsVisible ? "Dock'u gizle" : "Dock'u göster", ToggleDockVisible),
+            ("Masaüstünü göster", DesktopController.ShowDesktop),
+            (AutoStart.IsEnabled() ? "Açılışta başlatmayı kapat" : "Açılışta başlat", AutoStart.Toggle),
+            ("-", () => { }),
+            ("Çıkış", () => Application.Current.Shutdown()),
         };
 
-        var index = TrayNotification.ShowMenu(_hwnd, x, y, items);
-        switch (index)
+        var index = TrayNotification.ShowMenu(_hwnd, x, y, actions.Select(action => action.Label).ToList());
+        if (index >= 0 && index < actions.Count && actions[index].Label != "-")
         {
-            case 0:
-                ToggleDockVisible();
-                break;
-            case 1:
-                AutoStart.Toggle();
-                break;
-            case 3:
-                Application.Current.Shutdown();
-                break;
+            actions[index].Run();
         }
     }
 
@@ -845,6 +881,11 @@ public partial class DockWindow : Window
         if (_activeIndex >= 0 && _activeIndex < count && _auraGrid.Visibility == Visibility.Visible)
         {
             PositionAura(_slots[_activeIndex]);
+        }
+
+        if (_activeIndex >= 0 && _activeIndex < count && _burstLayer.Visibility == Visibility.Visible)
+        {
+            PositionBurst(_slots[_activeIndex]);
         }
     }
 
@@ -1265,7 +1306,7 @@ public partial class DockWindow : Window
     {
         _activeProcess = processName;
         UpdateAura();
-        Log($"preview aura idx={_activeIndex} vis={_auraGrid.Visibility}");
+        Log($"preview aura idx={_activeIndex} effect={AuraSettings.Effect}");
     }
 
     private void DockIcon_Click(object sender, RoutedEventArgs e)
@@ -1430,6 +1471,7 @@ public partial class DockWindow : Window
     {
         var menu = new ContextMenu();
         ApplyMenuStyle(menu);
+        menu.Items.Add(MenuAction("Masaüstünü göster", DesktopController.ShowDesktop));
         menu.Items.Add(MenuAction("Görev Yöneticisi", () => StartSafe("taskmgr.exe")));
         menu.Items.Add(MenuAction(AutoStart.IsEnabled() ? "Açılışta başlatmayı kapat" : "Açılışta başlat", AutoStart.Toggle));
         menu.Items.Add(new Separator());
@@ -1716,6 +1758,13 @@ public partial class DockWindow : Window
         {
             _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, null);
         }
+
+        for (var i = 0; i < _burstRays.Count; i++)
+        {
+            _burstRays[i].Spin.BeginAnimation(RotateTransform.AngleProperty, null);
+        }
+
+        _burstCore.BeginAnimation(OpacityProperty, null);
 
         _foregroundHook?.Dispose();
         _windowHook?.Dispose();
@@ -2229,9 +2278,9 @@ public partial class DockWindow : Window
         {
             for (var i = 0; i < _slots.Count; i++)
             {
-                var item = _slots[i].Item;
-                if (item.IsRunning
-                    && AppMatcher.Matches(item.Name, item.ProcessName, item.App.Target, _activeProcess, _activeTitle, _activePath))
+                var candidate = _slots[i].Item;
+                if (candidate.IsRunning
+                    && AppMatcher.Matches(candidate.Name, candidate.ProcessName, candidate.App.Target, _activeProcess, _activeTitle, _activePath))
                 {
                     _activeIndex = i;
                     break;
@@ -2242,6 +2291,7 @@ public partial class DockWindow : Window
         if (_activeIndex < 0 || _slots[_activeIndex].Item.Icon is not { } icon)
         {
             _auraGrid.Visibility = Visibility.Collapsed;
+            SetBurstVisible(false);
             for (var k = 0; k < _auraEffects.Length; k++)
             {
                 _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, null);
@@ -2250,7 +2300,25 @@ public partial class DockWindow : Window
             return;
         }
 
-        var colors = AuraSettings.GetColors(_slots[_activeIndex].Item);
+        var item = _slots[_activeIndex].Item;
+
+        if (AuraSettings.Effect == AuraEffect.Burst)
+        {
+            _auraGrid.Visibility = Visibility.Collapsed;
+            for (var k = 0; k < _auraEffects.Length; k++)
+            {
+                _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, null);
+            }
+
+            UpdateBurst(item);
+            PositionBurst(_slots[_activeIndex]);
+            SetBurstVisible(true);
+            return;
+        }
+
+        SetBurstVisible(false);
+
+        var colors = AuraSettings.GetColors(item);
         for (var k = 0; k < _auraImages.Length; k++)
         {
             _auraImages[k].Source = icon;
@@ -2273,19 +2341,79 @@ public partial class DockWindow : Window
         }
     }
 
-    private void OnAuraSettingsChanged()
+    private void SetBurstVisible(bool visible)
     {
-        if (_activeIndex < 0 || _activeIndex >= _slots.Count)
+        if (visible == (_burstLayer.Visibility == Visibility.Visible))
         {
             return;
         }
 
-        var colors = AuraSettings.GetColors(_slots[_activeIndex].Item);
-        for (var k = 0; k < _auraEffects.Length; k++)
+        _burstLayer.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+
+        if (visible)
         {
-            _auraEffects[k].Color = colors[k % colors.Length];
+            for (var i = 0; i < _burstRays.Count; i++)
+            {
+                _burstRays[i].Spin.BeginAnimation(RotateTransform.AngleProperty, _burstSpins[i]);
+            }
+
+            _burstCore.BeginAnimation(OpacityProperty, _burstPulse);
+        }
+        else
+        {
+            for (var i = 0; i < _burstRays.Count; i++)
+            {
+                _burstRays[i].Spin.BeginAnimation(RotateTransform.AngleProperty, null);
+            }
+
+            _burstCore.BeginAnimation(OpacityProperty, null);
         }
     }
+
+    private void UpdateBurst(DockItemViewModel item)
+    {
+        var colors = AuraSettings.GetColors(item);
+        if (colors.Length == 0)
+        {
+            return;
+        }
+
+        if (_burstCoreBrush.GradientStops.Count >= 2)
+        {
+            var core = colors[0];
+            _burstCoreBrush.GradientStops[0].Color = Color.FromArgb(0x99, core.R, core.G, core.B);
+            _burstCoreBrush.GradientStops[1].Color = Color.FromArgb(0x00, core.R, core.G, core.B);
+        }
+
+        for (var i = 0; i < _burstRays.Count; i++)
+        {
+            var color = colors[i % colors.Length];
+            var brush = new LinearGradientBrush { StartPoint = new Point(0.5, 1), EndPoint = new Point(0.5, 0) };
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD8, color.R, color.G, color.B), 0.0));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x36, color.R, color.G, color.B), 0.55));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, color.R, color.G, color.B), 1.0));
+            brush.Freeze();
+            _burstRays[i].Ray.Fill = brush;
+        }
+    }
+
+    private void PositionBurst(IconSlot slot)
+    {
+        var centerX = slot.Center;
+        var centerY = IconBottom - (IconBox / 2);
+        foreach (var (ray, _) in _burstRays)
+        {
+            Canvas.SetLeft(ray, centerX - (BurstRayWidth / 2));
+            Canvas.SetTop(ray, centerY - BurstRayLength);
+        }
+
+
+
+        Canvas.SetLeft(_burstCore, centerX - (_burstCore.Width / 2));
+        Canvas.SetTop(_burstCore, centerY - (_burstCore.Height / 2));
+    }
+
+    private void OnAuraSettingsChanged() => UpdateAura();
 
     private double ToScreenX(double localX)
         => Left + (ActualWidth / 2) + ((localX - (ActualWidth / 2)) * _dockScale);
