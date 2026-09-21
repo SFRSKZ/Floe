@@ -124,7 +124,7 @@ public static class AppWindows
         return buffer.ToString();
     }
 
-    private static string GetProcessPath(uint processId)
+    public static string GetProcessPath(uint processId)
     {
         var handle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
         if (handle == IntPtr.Zero)

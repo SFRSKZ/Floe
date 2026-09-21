@@ -63,6 +63,8 @@ public partial class DockWindow : Window
     private readonly DispatcherTimer _foregroundTimer = new() { Interval = TimeSpan.FromMilliseconds(3000) };
     private readonly DispatcherTimer _foregroundDebounce = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private string _pendingForeground = string.Empty;
+    private string _pendingTitle = string.Empty;
+    private string _pendingPath = string.Empty;
     private readonly DispatcherTimer _runningDebounce = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private readonly DispatcherTimer _fullscreenTimer = new() { Interval = TimeSpan.FromMilliseconds(1000) };
     private bool _fullscreenHidden;
@@ -74,6 +76,8 @@ public partial class DockWindow : Window
     private readonly DropShadowEffect[] _auraEffects = new DropShadowEffect[3];
     private readonly DoubleAnimation[] _auraDirAnims = new DoubleAnimation[3];
     private string _activeProcess = string.Empty;
+    private string _activeTitle = string.Empty;
+    private string _activePath = string.Empty;
     private int _activeIndex = -1;
     private int _separatorIndex = -1;
     private readonly Rectangle _separator = new()
@@ -561,14 +565,28 @@ public partial class DockWindow : Window
         var self = Process.GetCurrentProcess().Id;
         var windows = AppWindows.Enumerate(self);
 
-        var grouped = new Dictionary<string, (string Path, List<IntPtr> Windows)>(StringComparer.OrdinalIgnoreCase);
-        foreach (var window in windows)
-        {
-            if (IsHelperProcess(window.ProcessName))
-            {
-                continue;
-            }
+        var remaining = windows.Where(window => !IsHelperProcess(window.ProcessName)).ToList();
 
+        foreach (var pinned in _pinnedList)
+        {
+            var matched = remaining.Where(window => AppMatcher.WindowMatchesItem(pinned.Name, pinned.ProcessName, pinned.App.Target, window)).ToList();
+            if (matched.Count > 0)
+            {
+                pinned.IsRunning = true;
+                pinned.Windows = matched.Select(window => window.Hwnd).ToList();
+                var consumed = matched.Select(window => window.Hwnd).ToHashSet();
+                remaining.RemoveAll(window => consumed.Contains(window.Hwnd));
+            }
+            else
+            {
+                pinned.IsRunning = false;
+                pinned.Windows = Array.Empty<IntPtr>();
+            }
+        }
+
+        var grouped = new Dictionary<string, (string Path, List<IntPtr> Windows)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var window in remaining)
+        {
             if (!grouped.TryGetValue(window.ProcessName, out var entry))
             {
                 entry = (window.ProcessPath, new List<IntPtr>());
@@ -578,25 +596,8 @@ public partial class DockWindow : Window
             entry.Windows.Add(window.Hwnd);
         }
 
-        foreach (var pinned in _pinnedList)
-        {
-            var match = grouped.FirstOrDefault(pair => ProcessMatches(pinned.ProcessName, pair.Key));
-            if (match.Key is not null)
-            {
-                pinned.IsRunning = true;
-                pinned.Windows = match.Value.Windows;
-            }
-            else
-            {
-                pinned.IsRunning = false;
-                pinned.Windows = Array.Empty<IntPtr>();
-            }
-        }
-
         var unpinned = new List<DockItemViewModel>();
-        foreach (var name in grouped.Keys
-            .Where(name => !_pinnedList.Any(p => ProcessMatches(p.ProcessName, name)))
-            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
+        foreach (var name in grouped.Keys.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
         {
             var entry = grouped[name];
             var vm = new DockItemViewModel(
@@ -2167,13 +2168,15 @@ public partial class DockWindow : Window
 
     private void UpdateForeground()
     {
-        var name = ScreenInput.GetForegroundProcessName();
-        if (IsIgnoredForeground(name) || string.Equals(name, _activeProcess, StringComparison.OrdinalIgnoreCase))
+        var info = ScreenInput.GetForegroundInfo();
+        if (IsIgnoredForeground(info.ProcessName) || string.Equals(info.ProcessName, _activeProcess, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
-        _pendingForeground = name;
+        _pendingForeground = info.ProcessName;
+        _pendingTitle = info.Title;
+        _pendingPath = info.Path;
         _foregroundDebounce.Stop();
         _foregroundDebounce.Start();
     }
@@ -2188,45 +2191,10 @@ public partial class DockWindow : Window
         }
 
         _activeProcess = _pendingForeground;
+        _activeTitle = _pendingTitle;
+        _activePath = _pendingPath;
         UpdateAura();
-        Log($"fg='{_activeProcess}' auraIndex={_activeIndex} visible={_auraGrid.Visibility}");
-    }
-
-    private static readonly Dictionary<string, string> ProcessAliases = new(StringComparer.OrdinalIgnoreCase)
-    {
-        { "Code", "VisualStudioCode" },
-        { "Code - Insiders", "VisualStudioCode" },
-        { "chrome_proxy", "chrome" },
-    };
-
-    private static bool ProcessMatches(string itemProcess, string windowProcess)
-    {
-        var a = NormalizeProcess(itemProcess);
-        var b = NormalizeProcess(windowProcess);
-        if (a.Length == 0 || b.Length == 0)
-        {
-            return false;
-        }
-
-        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        // helper sub-processes start with the app name: steamwebhelper -> Steam
-        return a.Length >= 3 && b.StartsWith(a, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string NormalizeProcess(string name)
-    {
-        if (string.IsNullOrEmpty(name))
-        {
-            return string.Empty;
-        }
-
-        var dot = name.LastIndexOf('.');
-        var value = dot >= 0 && dot < name.Length - 1 ? name[(dot + 1)..] : name;
-        return ProcessAliases.TryGetValue(value, out var alias) ? alias : value;
+        Log($"fg='{_activeProcess}' title='{_activeTitle}' path='{_activePath}' auraIndex={_activeIndex} visible={_auraGrid.Visibility}");
     }
 
     private static bool IsIgnoredForeground(string name)
@@ -2251,8 +2219,9 @@ public partial class DockWindow : Window
         {
             for (var i = 0; i < _slots.Count; i++)
             {
-                if (_slots[i].Item.IsRunning
-                    && ProcessMatches(_slots[i].Item.ProcessName, _activeProcess))
+                var item = _slots[i].Item;
+                if (item.IsRunning
+                    && AppMatcher.Matches(item.Name, item.ProcessName, item.App.Target, _activeProcess, _activeTitle, _activePath))
                 {
                     _activeIndex = i;
                     break;
@@ -2386,6 +2355,7 @@ public partial class DockWindow : Window
         public TranslateTransform Translate { get; }
     }
 }
+
 
 
 

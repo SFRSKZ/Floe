@@ -31,6 +31,41 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Any(a => a.Equals("--dumpmatch", StringComparison.OrdinalIgnoreCase)))
+        {
+            try
+            {
+                var lines = new System.Text.StringBuilder();
+                var windows = MacDock.Core.Interop.AppWindows.Enumerate(System.Diagnostics.Process.GetCurrentProcess().Id);
+                var pinned = MacDock.Core.Services.PinnedAppsProvider.Load()
+                    .Select(a => new MacDock.App.ViewModels.DockItemViewModel(a))
+                    .ToList();
+
+                lines.AppendLine("WINDOWS:");
+                foreach (var window in windows)
+                {
+                    var match = pinned.FirstOrDefault(vm => MacDock.App.Services.AppMatcher.Matches(
+                        vm.Name, vm.ProcessName, vm.App.Target, window.ProcessName, window.Title, window.ProcessPath));
+                    lines.AppendLine($"  {window.ProcessName} | {window.Title} | {window.ProcessPath} => {(match is null ? "(none)" : match.Name)}");
+                }
+
+                lines.AppendLine("PINNED:");
+                foreach (var vm in pinned)
+                {
+                    lines.AppendLine($"  {vm.Name} proc='{vm.ProcessName}' target='{vm.App.Target}'");
+                }
+
+                System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "macdock-match.log"), lines.ToString());
+            }
+            catch
+            {
+                // diagnostics must never crash
+            }
+
+            Shutdown();
+            return;
+        }
+
         if (e.Args.Any(a => a.Equals("--dumpcolors", StringComparison.OrdinalIgnoreCase)))
         {
             try

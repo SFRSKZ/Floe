@@ -102,6 +102,50 @@ public static class ScreenInput
         }
     }
 
+    public readonly record struct ForegroundInfo(string ProcessName, string Title, string Path);
+
+    public static ForegroundInfo GetForegroundInfo()
+    {
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero)
+        {
+            return new ForegroundInfo(string.Empty, string.Empty, string.Empty);
+        }
+
+        GetWindowThreadProcessId(foreground, out var processId);
+
+        var name = string.Empty;
+        try
+        {
+            name = Process.GetProcessById((int)processId).ProcessName;
+        }
+        catch
+        {
+            // process may have exited
+        }
+
+        return new ForegroundInfo(name, GetWindowTitle(foreground), AppWindows.GetProcessPath(processId));
+    }
+
+    private static string GetWindowTitle(IntPtr hwnd)
+    {
+        var length = GetWindowTextLength(hwnd);
+        if (length <= 0)
+        {
+            return string.Empty;
+        }
+
+        var buffer = new StringBuilder(length + 1);
+        GetWindowText(hwnd, buffer, buffer.Capacity);
+        return buffer.ToString();
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowTextLength(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int maxCount);
+
     public static bool IsForegroundFullscreen()
     {
         var foreground = GetForegroundWindow();
