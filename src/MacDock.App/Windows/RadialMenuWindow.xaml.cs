@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using MacDock.Core.Interop;
 
 namespace MacDock.App.Windows;
@@ -18,11 +19,33 @@ public partial class RadialMenuWindow : Window
     private const double Inner = 46;
     private const double Outer = 134;
 
+    private readonly DispatcherTimer _watchdog = new() { Interval = TimeSpan.FromMilliseconds(120) };
+
     public RadialMenuWindow()
     {
         InitializeComponent();
         Width = Size;
         Height = Size;
+        _watchdog.Tick += (_, _) => CheckCursor();
+    }
+
+    private void CheckCursor()
+    {
+        if (!IsVisible)
+        {
+            _watchdog.Stop();
+            return;
+        }
+
+        var (cursorX, cursorY) = ScreenInput.GetCursorPosition();
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var dx = (cursorX / dpi.DpiScaleX) - (Left + CenterX);
+        var dy = (cursorY / dpi.DpiScaleY) - (Top + CenterY);
+
+        if (Math.Sqrt((dx * dx) + (dy * dy)) > Outer + 16)
+        {
+            Close();
+        }
     }
 
     public static double Radius => Size / 2;
@@ -107,7 +130,7 @@ public partial class RadialMenuWindow : Window
 
         Show();
         UpdateLayout();
-        Root.CaptureMouse();
+        _watchdog.Start();
     }
 
     protected override void OnMouseDown(MouseButtonEventArgs e)
@@ -136,6 +159,7 @@ public partial class RadialMenuWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _watchdog.Stop();
         if (Mouse.Captured == Root)
         {
             Root.ReleaseMouseCapture();

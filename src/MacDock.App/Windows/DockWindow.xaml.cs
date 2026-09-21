@@ -1284,7 +1284,7 @@ public partial class DockWindow : Window
         HidePreview();
         _tooltipTimer.Stop();
 
-        if (index >= 0)
+        if (index >= 0 && _radial?.IsVisible != true)
         {
             _tooltipTimer.Start();
         }
@@ -1310,7 +1310,7 @@ public partial class DockWindow : Window
     private void ShowTooltip()
     {
         _tooltipTimer.Stop();
-        if (_hoveredIndex < 0 || _hoveredIndex >= _slots.Count)
+        if (_hoveredIndex < 0 || _hoveredIndex >= _slots.Count || _radial?.IsVisible == true)
         {
             return;
         }
@@ -1589,6 +1589,10 @@ public partial class DockWindow : Window
             ("Konum", () => OpenLocation(item.App)),
             ("Kapat", () => CloseApp(item)),
         };
+
+        HidePreview();
+        _tooltipTimer.Stop();
+        _tooltip.IsOpen = false;
 
         if (_radial is null)
         {
