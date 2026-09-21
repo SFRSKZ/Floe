@@ -43,9 +43,7 @@ public partial class DockWindow : Window
     private const double FalloffRadius = 115;
     private const double GlowRadius = 92;
     private const double BulgeSigma = 34;
-    private const int BurstRayCount = 12;
-    private const double BurstRayLength = 60;
-    private const double BurstRayTip = 16;
+
     private const double CornerRadius = 22;
     private const double BottomMargin = 8;
     private const int TriggerShow = 6;
@@ -78,14 +76,29 @@ public partial class DockWindow : Window
     private readonly Image[] _auraImages = new Image[3];
     private readonly DropShadowEffect[] _auraEffects = new DropShadowEffect[3];
     private readonly DoubleAnimation[] _auraDirAnims = new DoubleAnimation[3];
-    private readonly Canvas _burstLayer = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed };
-    private readonly List<(Polygon Ray, RotateTransform Spin)> _burstRays = new();
-    private readonly List<DoubleAnimation> _burstSpins = new();
-    private readonly Ellipse _burstCore = new() { IsHitTestVisible = false, Width = 76, Height = 76 };
-    private readonly RadialGradientBrush _burstCoreBrush = new() { Center = new Point(0.5, 0.5), GradientOrigin = new Point(0.5, 0.5) };
-    private readonly DoubleAnimation _burstPulse = new(0.45, 0.9, TimeSpan.FromSeconds(2.2))
+    private readonly Canvas _spectralLayer = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    private readonly Ellipse _spectralHalo = new() { IsHitTestVisible = false };
+    private readonly RadialGradientBrush _spectralHaloBrush = new() { Center = new Point(0.5, 0.5), GradientOrigin = new Point(0.5, 0.5) };
+    private readonly Ellipse _spectralRim = new() { IsHitTestVisible = false };
+    private readonly LinearGradientBrush _spectralRimBrush = new() { StartPoint = new Point(0, 0), EndPoint = new Point(1, 1) };
+    private readonly Ellipse _spectralWave = new() { IsHitTestVisible = false };
+    private readonly LinearGradientBrush _spectralWaveBrush = new() { StartPoint = new Point(0, 0.5), EndPoint = new Point(1, 0.5) };
+    private readonly RotateTransform _spectralWaveSpin = new(0, 0.5, 0.5);
+    private readonly DoubleAnimation _spectralWaveAnim = new(0, 360, TimeSpan.FromSeconds(12))
+    {
+        RepeatBehavior = RepeatBehavior.Forever,
+    };
+
+    private readonly List<(Ellipse Wisp, RotateTransform Spin)> _spectralWisps = new();
+    private readonly List<DoubleAnimation> _spectralWispSpins = new();
+    private readonly DoubleAnimation _spectralBreath = new(0.5, 0.92, TimeSpan.FromSeconds(3.6))
     {
         AutoReverse = true,
+        RepeatBehavior = RepeatBehavior.Forever,
+    };
+
+    private readonly DoubleAnimation _spectralDash = new(0, 6, TimeSpan.FromSeconds(2.8))
+    {
         RepeatBehavior = RepeatBehavior.Forever,
     };
     private string _activeProcess = string.Empty;
@@ -374,37 +387,50 @@ public partial class DockWindow : Window
 
         Root.Children.Insert(1, _glowLayer);
 
-        _burstCoreBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0xB4, 0x5B, 0xC8, 0xFF), 0.0));
-        _burstCoreBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x40, 0x5B, 0xC8, 0xFF), 0.55));
-        _burstCoreBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x5B, 0xC8, 0xFF), 1.0));
-        _burstCore.Fill = _burstCoreBrush;
-        _burstLayer.Effect = new BlurEffect { Radius = 10, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Performance };
-        _burstLayer.Children.Add(_burstCore);
+        _spectralHaloBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0xFF, 0xFF, 0xFF), 0.0));
+        _spectralHaloBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0xFF, 0xFF, 0xFF), 0.62));
+        _spectralHaloBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0xFF, 0xFF, 0xFF), 1.0));
+        _spectralHalo.Width = IconBox * 2.0;
+        _spectralHalo.Height = IconBox * 2.0;
+        _spectralHalo.Fill = _spectralHaloBrush;
+        _spectralHalo.Effect = new BlurEffect { Radius = 12, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Performance };
+        _spectralLayer.Children.Add(_spectralHalo);
 
-        for (var i = 0; i < BurstRayCount; i++)
+        _spectralRim.Width = IconBox * 1.24;
+        _spectralRim.Height = IconBox * 1.24;
+        _spectralRim.StrokeThickness = 1.6;
+        _spectralRim.Stroke = _spectralRimBrush;
+        _spectralRim.StrokeDashArray = new DoubleCollection { 0.8, 1.6 };
+        _spectralRim.Effect = new BlurEffect { Radius = 2.2, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Performance };
+        _spectralLayer.Children.Add(_spectralRim);
+
+        _spectralWave.Width = IconBox * 1.62;
+        _spectralWave.Height = IconBox * 1.62;
+        _spectralWave.StrokeThickness = 3.2;
+        _spectralWave.Stroke = _spectralWaveBrush;
+        _spectralWave.Effect = new BlurEffect { Radius = 5, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Performance };
+        _spectralWaveBrush.RelativeTransform = _spectralWaveSpin;
+        _spectralLayer.Children.Add(_spectralWave);
+
+        for (var i = 0; i < 3; i++)
         {
-            var angle = i * (360.0 / BurstRayCount);
-            var ray = new Polygon
+            var wisp = new Ellipse
             {
-                Points = new PointCollection
-                {
-                    new Point(BurstRayTip, BurstRayLength),
-                    new Point(0, 0),
-                    new Point(BurstRayTip * 2, 0),
-                },
+                Width = 34,
+                Height = 8,
                 IsHitTestVisible = false,
-                RenderTransform = new RotateTransform(angle, BurstRayTip, BurstRayLength),
+                RenderTransform = new RotateTransform(i * 120.0, 17, 34),
             };
-
-            _burstRays.Add((ray, (RotateTransform)ray.RenderTransform));
-            _burstSpins.Add(new DoubleAnimation(angle, angle + 360, TimeSpan.FromSeconds(16))
+            wisp.Effect = new BlurEffect { Radius = 6, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Performance };
+            _spectralWisps.Add((wisp, (RotateTransform)wisp.RenderTransform));
+            _spectralWispSpins.Add(new DoubleAnimation(i * 120.0, (i * 120.0) + 360, TimeSpan.FromSeconds(19))
             {
                 RepeatBehavior = RepeatBehavior.Forever,
             });
-            _burstLayer.Children.Add(ray);
+            _spectralLayer.Children.Add(wisp);
         }
 
-        Root.Children.Insert(2, _burstLayer);
+        Root.Children.Insert(2, _spectralLayer);
 
 
 
@@ -887,9 +913,9 @@ public partial class DockWindow : Window
             PositionAura(_slots[_activeIndex]);
         }
 
-        if (_activeIndex >= 0 && _activeIndex < count && _burstLayer.Visibility == Visibility.Visible)
+        if (_activeIndex >= 0 && _activeIndex < count && _spectralLayer.Visibility == Visibility.Visible)
         {
-            PositionBurst(_slots[_activeIndex]);
+            PositionSpectral(_slots[_activeIndex]);
         }
     }
 
@@ -1763,12 +1789,14 @@ public partial class DockWindow : Window
             _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, null);
         }
 
-        for (var i = 0; i < _burstRays.Count; i++)
+        for (var i = 0; i < _spectralWisps.Count; i++)
         {
-            _burstRays[i].Spin.BeginAnimation(RotateTransform.AngleProperty, null);
+            _spectralWisps[i].Spin.BeginAnimation(RotateTransform.AngleProperty, null);
         }
 
-        _burstCore.BeginAnimation(OpacityProperty, null);
+        _spectralWaveSpin.BeginAnimation(RotateTransform.AngleProperty, null);
+        _spectralRim.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
+        _spectralLayer.BeginAnimation(OpacityProperty, null);
 
         _foregroundHook?.Dispose();
         _windowHook?.Dispose();
@@ -2295,7 +2323,7 @@ public partial class DockWindow : Window
         if (_activeIndex < 0 || _slots[_activeIndex].Item.Icon is not { } icon)
         {
             _auraGrid.Visibility = Visibility.Collapsed;
-            SetBurstVisible(false);
+            SetSpectralVisible(false);
             for (var k = 0; k < _auraEffects.Length; k++)
             {
                 _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, null);
@@ -2314,13 +2342,13 @@ public partial class DockWindow : Window
                 _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, null);
             }
 
-            UpdateBurst(item);
-            PositionBurst(_slots[_activeIndex]);
-            SetBurstVisible(true);
+            UpdateSpectral(item);
+            PositionSpectral(_slots[_activeIndex]);
+            SetSpectralVisible(true);
             return;
         }
 
-        SetBurstVisible(false);
+        SetSpectralVisible(false);
 
         var colors = AuraSettings.GetColors(item);
         for (var k = 0; k < _auraImages.Length; k++)
@@ -2345,36 +2373,45 @@ public partial class DockWindow : Window
         }
     }
 
-    private void SetBurstVisible(bool visible)
+    private void SetSpectralVisible(bool visible)
     {
-        if (visible == (_burstLayer.Visibility == Visibility.Visible))
+        if (visible == (_spectralLayer.Visibility == Visibility.Visible))
         {
             return;
         }
 
-        _burstLayer.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        _spectralLayer.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
 
         if (visible)
         {
-            for (var i = 0; i < _burstRays.Count; i++)
+            _spectralLayer.BeginAnimation(OpacityProperty, _spectralBreath);
+            _spectralRim.BeginAnimation(Shape.StrokeDashOffsetProperty, _spectralDash);
+            _spectralWaveSpin.BeginAnimation(RotateTransform.AngleProperty, _spectralWaveAnim);
+            for (var i = 0; i < _spectralWisps.Count; i++)
             {
-                _burstRays[i].Spin.BeginAnimation(RotateTransform.AngleProperty, _burstSpins[i]);
+                _spectralWisps[i].Spin.BeginAnimation(RotateTransform.AngleProperty, _spectralWispSpins[i]);
             }
-
-            _burstCore.BeginAnimation(OpacityProperty, _burstPulse);
         }
         else
         {
-            for (var i = 0; i < _burstRays.Count; i++)
+            _spectralLayer.BeginAnimation(OpacityProperty, null);
+            _spectralRim.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
+            _spectralWaveSpin.BeginAnimation(RotateTransform.AngleProperty, null);
+            for (var i = 0; i < _spectralWisps.Count; i++)
             {
-                _burstRays[i].Spin.BeginAnimation(RotateTransform.AngleProperty, null);
+                _spectralWisps[i].Spin.BeginAnimation(RotateTransform.AngleProperty, null);
             }
-
-            _burstCore.BeginAnimation(OpacityProperty, null);
         }
     }
 
-    private void UpdateBurst(DockItemViewModel item)
+    private static Color Spectral(Color color)
+    {
+        // ghostly: desaturate toward a pale blue-white (unseen-world tint)
+        static byte Mix(byte value, byte target, double amount) => (byte)Math.Round(value + ((target - value) * amount));
+        return Color.FromRgb(Mix(color.R, 0xBA, 0.58), Mix(color.G, 0xE8, 0.58), Mix(color.B, 0xF4, 0.58));
+    }
+
+    private void UpdateSpectral(DockItemViewModel item)
     {
         var colors = AuraSettings.GetColors(item);
         if (colors.Length == 0)
@@ -2382,39 +2419,53 @@ public partial class DockWindow : Window
             return;
         }
 
-        if (_burstCoreBrush.GradientStops.Count >= 2)
-        {
-            var core = colors[0];
-            _burstCoreBrush.GradientStops[0].Color = Color.FromArgb(0x99, core.R, core.G, core.B);
-            _burstCoreBrush.GradientStops[1].Color = Color.FromArgb(0x00, core.R, core.G, core.B);
-        }
+        var first = Spectral(colors[0]);
+        var second = Spectral(colors[1 % colors.Length]);
+        var third = Spectral(colors[2 % colors.Length]);
 
-        for (var i = 0; i < _burstRays.Count; i++)
+        // soft radial distortion around the icon edges
+        _spectralHaloBrush.GradientStops[0].Color = Color.FromArgb(0x00, first.R, first.G, first.B);
+        _spectralHaloBrush.GradientStops[1].Color = Color.FromArgb(0x30, first.R, first.G, first.B);
+        _spectralHaloBrush.GradientStops[2].Color = Color.FromArgb(0x00, second.R, second.G, second.B);
+
+        // irregular shimmering outline (slight refraction)
+        _spectralRimBrush.GradientStops.Clear();
+        _spectralRimBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0xA0, first.R, first.G, first.B), 0.0));
+        _spectralRimBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x34, second.R, second.G, second.B), 0.45));
+        _spectralRimBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0xA0, third.R, third.G, third.B), 1.0));
+
+        // flowing wave-like energy around the perimeter
+        _spectralWaveBrush.GradientStops.Clear();
+        _spectralWaveBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, second.R, second.G, second.B), 0.0));
+        _spectralWaveBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x58, third.R, third.G, third.B), 0.5));
+        _spectralWaveBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, first.R, first.G, first.B), 1.0));
+
+        // faint smoky wisps
+        for (var i = 0; i < _spectralWisps.Count; i++)
         {
-            var color = colors[i % colors.Length];
-            var brush = new LinearGradientBrush { StartPoint = new Point(0.5, 1), EndPoint = new Point(0.5, 0) };
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xE6, color.R, color.G, color.B), 0.0));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x66, color.R, color.G, color.B), 0.5));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, color.R, color.G, color.B), 1.0));
-            brush.Freeze();
-            _burstRays[i].Ray.Fill = brush;
+            var color = Spectral(colors[i % colors.Length]);
+            _spectralWisps[i].Wisp.Fill = new SolidColorBrush(Color.FromArgb(0x3C, color.R, color.G, color.B));
         }
     }
 
-    private void PositionBurst(IconSlot slot)
+    private void PositionSpectral(IconSlot slot)
     {
         var centerX = slot.Center;
         var centerY = IconBottom - (IconBox / 2);
-        foreach (var (ray, _) in _burstRays)
+
+        Canvas.SetLeft(_spectralHalo, centerX - (_spectralHalo.Width / 2));
+        Canvas.SetTop(_spectralHalo, centerY - (_spectralHalo.Height / 2));
+        Canvas.SetLeft(_spectralRim, centerX - (_spectralRim.Width / 2));
+        Canvas.SetTop(_spectralRim, centerY - (_spectralRim.Height / 2));
+        Canvas.SetLeft(_spectralWave, centerX - (_spectralWave.Width / 2));
+        Canvas.SetTop(_spectralWave, centerY - (_spectralWave.Height / 2));
+
+        const double orbit = 30;
+        foreach (var (wisp, _) in _spectralWisps)
         {
-            Canvas.SetLeft(ray, centerX - BurstRayTip);
-            Canvas.SetTop(ray, centerY - BurstRayLength);
+            Canvas.SetLeft(wisp, centerX - (wisp.Width / 2));
+            Canvas.SetTop(wisp, centerY - orbit - (wisp.Height / 2));
         }
-
-
-
-        Canvas.SetLeft(_burstCore, centerX - (_burstCore.Width / 2));
-        Canvas.SetTop(_burstCore, centerY - (_burstCore.Height / 2));
     }
 
     private void OnAuraSettingsChanged() => UpdateAura();
@@ -2497,6 +2548,7 @@ public partial class DockWindow : Window
         public TranslateTransform Translate { get; }
     }
 }
+
 
 
 

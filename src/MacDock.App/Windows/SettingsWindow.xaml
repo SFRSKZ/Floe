@@ -87,7 +87,7 @@
 
             <StackPanel Orientation="Horizontal">
                 <RadioButton x:Name="EffectGlow" Style="{StaticResource ModeToggle}" Content="Işıltı" />
-                <RadioButton x:Name="EffectBurst" Style="{StaticResource ModeToggle}" Content="Yıldız alanı" />
+                <RadioButton x:Name="EffectBurst" Style="{StaticResource ModeToggle}" Content="Hayalet" />
             </StackPanel>
 
             <Rectangle Height="1" Fill="#1EFFFFFF" Margin="0,16,0,14" />
