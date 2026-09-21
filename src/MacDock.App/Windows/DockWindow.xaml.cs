@@ -1625,8 +1625,9 @@ public partial class DockWindow : Window
         _menuOpen = true;
 
         var radius = RadialMenuWindow.Radius;
-        var centerX = Math.Clamp(ToScreenX(slot.Center), radius + 8, SystemParameters.PrimaryScreenWidth - radius - 8);
-        var centerY = Math.Clamp(Top + IconBottom - (IconBox / 2), radius + 8, SystemParameters.PrimaryScreenHeight - radius - 8);
+        var hit = RadialMenuWindow.HitRadius + 16;
+        var centerX = Math.Clamp(ToScreenX(slot.Center), hit, SystemParameters.PrimaryScreenWidth - hit);
+        var centerY = Math.Clamp(Top + IconBottom - (IconBox / 2), hit, SystemParameters.PrimaryScreenHeight - hit);
         _radial.Left = centerX - radius;
         _radial.Top = centerY - radius;
         _radial.ShowFor(item.Icon, actions);

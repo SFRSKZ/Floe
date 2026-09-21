@@ -46,6 +46,12 @@ public partial class RadialMenuWindow : Window
             return;
         }
 
+        // grace period: the cursor is still on the icon right after opening
+        if ((DateTime.UtcNow - _shownAt).TotalMilliseconds < 220)
+        {
+            return;
+        }
+
         var (cursorX, cursorY) = ScreenInput.GetCursorPosition();
         var dpi = VisualTreeHelper.GetDpi(this);
         var dx = (cursorX / dpi.DpiScaleX) - (Left + CenterX);
@@ -58,6 +64,10 @@ public partial class RadialMenuWindow : Window
     }
 
     public static double Radius => Size / 2;
+
+    public static double HitRadius => Outer;
+
+    private DateTime _shownAt;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -139,6 +149,7 @@ public partial class RadialMenuWindow : Window
 
         Show();
         UpdateLayout();
+        _shownAt = DateTime.UtcNow;
         _watchdog.Start();
     }
 
