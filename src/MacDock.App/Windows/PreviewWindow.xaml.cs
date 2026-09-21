@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 using MacDock.Core.Interop;
 
 namespace MacDock.App.Windows;
@@ -68,9 +69,14 @@ public partial class PreviewWindow : Window
         Height = ThumbHeight + (2 * Inset);
         UpdateLayout();
 
+        var dpi = VisualTreeHelper.GetDpi(this);
         foreach (var (thumb, width, left) in placed)
         {
-            thumb.Show(left, Inset, left + width, Inset + ThumbHeight);
+            thumb.Show(
+                (int)Math.Round(left * dpi.DpiScaleX),
+                (int)Math.Round(Inset * dpi.DpiScaleY),
+                (int)Math.Round((left + width) * dpi.DpiScaleX),
+                (int)Math.Round((Inset + ThumbHeight) * dpi.DpiScaleY));
             _thumbnails.Add(thumb);
         }
     }
