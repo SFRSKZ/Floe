@@ -145,6 +145,16 @@ public partial class DockWindow : Window
     private readonly Rectangle _grain = new() { IsHitTestVisible = false };
     private readonly Path _rim = new() { IsHitTestVisible = false };
     private readonly Ellipse _glow = new() { IsHitTestVisible = false, Width = 220, Height = 86 };
+    private readonly Ellipse _dropRing = new()
+    {
+        IsHitTestVisible = false,
+        Width = IconBox + 12,
+        Height = IconBox + 12,
+        StrokeThickness = 2,
+        Stroke = new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF)),
+        Visibility = Visibility.Collapsed,
+    };
+    private int _dropIndex = -1;
     private readonly LinearGradientBrush _glowBrush = new() { StartPoint = new Point(0, 0.5), EndPoint = new Point(1, 0.5) };
     private readonly List<(double Offset, Color Color)> _glowPairs = new();
     private readonly PathGeometry _shapeGeometry = new();
@@ -350,6 +360,7 @@ public partial class DockWindow : Window
         ShapeLayer.Children.Add(_grain);
 
         _glowLayer.Children.Add(_glow);
+        _glowLayer.Children.Add(_dropRing);
 
         var auraColors = new[]
         {
@@ -1556,6 +1567,45 @@ public partial class DockWindow : Window
         return menu;
     }
 
+    private RadialMenuWindow? _radial;
+
+    private void OpenRadialMenu(IconSlot slot)
+    {
+        var item = slot.Item;
+        var actions = new List<(string Label, Action Run)>
+        {
+            ("Aç", () => AppLauncher.LaunchOrActivate(item.App)),
+            (item.IsPinned ? "Kaldır" : "Sabitle", () =>
+            {
+                if (item.IsPinned)
+                {
+                    Unpin(item);
+                }
+                else
+                {
+                    Pin(item);
+                }
+            }),
+            ("Konum", () => OpenLocation(item.App)),
+            ("Kapat", () => CloseApp(item)),
+        };
+
+        if (_radial is null)
+        {
+            _radial = new RadialMenuWindow();
+            _radial.Closed += (_, _) => _menuOpen = false;
+        }
+
+        _menuOpen = true;
+
+        var radius = RadialMenuWindow.Radius;
+        var centerX = Math.Clamp(ToScreenX(slot.Center), radius + 8, SystemParameters.PrimaryScreenWidth - radius - 8);
+        var centerY = Math.Clamp(Top + IconBottom - (IconBox / 2), radius + 8, SystemParameters.PrimaryScreenHeight - radius - 8);
+        _radial.Left = centerX - radius;
+        _radial.Top = centerY - radius;
+        _radial.ShowFor(item.Icon, actions);
+    }
+
     private static MenuItem MenuAction(string header, Action action)
     {
         var item = new MenuItem { Header = header };
@@ -1897,13 +1947,19 @@ public partial class DockWindow : Window
         }
 
         var slot = _slots.FirstOrDefault(s => s.Button.IsMouseOver);
+        if (slot is not null)
+        {
+            OpenRadialMenu(slot);
+            e.Handled = true;
+            return;
+        }
 
         _menuOpen = true;
         _targetBulge = MaxBulge;
         _targetDockScale = 1;
         EnsureAnimation();
 
-        var menu = slot is null ? BuildBackgroundMenu() : BuildItemMenu(slot.Item);
+        var menu = BuildBackgroundMenu();
         var previousForeground = ScreenInput.GetForegroundHandle();
         WindowStyling.SetNoActivate(_hwnd, false);
         Activate();
@@ -1970,9 +2026,54 @@ public partial class DockWindow : Window
             _targetBulge = MaxBulge;
             _targetDockScale = 1;
             EnsureAnimation();
+
+            var index = FindIndexAt(e.GetPosition(this).X);
+            if (index != _dropIndex)
+            {
+                _dropIndex = index;
+                UpdateDropRing();
+            }
         }
 
         e.Handled = true;
+    }
+
+    protected override void OnDragLeave(DragEventArgs e)
+    {
+        base.OnDragLeave(e);
+        _dropIndex = -1;
+        _dropRing.Visibility = Visibility.Collapsed;
+    }
+
+    private int FindIndexAt(double windowX)
+    {
+        var index = -1;
+        var best = double.MaxValue;
+        for (var i = 0; i < _slots.Count; i++)
+        {
+            var distance = Math.Abs(windowX - (_restCapsuleLeft + _slots[i].CenterLocal));
+            if (distance < best && distance <= IconBox)
+            {
+                best = distance;
+                index = i;
+            }
+        }
+
+        return index;
+    }
+
+    private void UpdateDropRing()
+    {
+        if (_dropIndex < 0 || _dropIndex >= _slots.Count)
+        {
+            _dropRing.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var slot = _slots[_dropIndex];
+        Canvas.SetLeft(_dropRing, slot.Center - (_dropRing.Width / 2));
+        Canvas.SetTop(_dropRing, (IconBottom - (IconBox / 2)) - (_dropRing.Height / 2));
+        _dropRing.Visibility = Visibility.Visible;
     }
 
     private static DragDropEffects PreferredEffect(DragEventArgs e)
@@ -2019,7 +2120,34 @@ public partial class DockWindow : Window
             }
         }
 
-        Log($"drop: count={paths.Count} formats={string.Join(",", e.Data.GetFormats())}");
+        Log($"drop: count={paths.Count} index={_dropIndex} formats={string.Join(",", e.Data.GetFormats())}");
+
+        var dropItem = _dropIndex >= 0 && _dropIndex < _slots.Count ? _slots[_dropIndex].Item : null;
+        _dropIndex = -1;
+        _dropRing.Visibility = Visibility.Collapsed;
+
+        // dropped on a specific icon: open the files with that app
+        if (dropItem is not null && paths.Count > 0)
+        {
+            var target = AppLauncher.ResolveTarget(dropItem.App);
+            if (!string.IsNullOrWhiteSpace(target) && !target.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var path in paths)
+                {
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo { FileName = target, Arguments = $"\"{path}\"", UseShellExecute = true });
+                    }
+                    catch
+                    {
+                        // ignore individual failures
+                    }
+                }
+
+                return;
+            }
+        }
+
         foreach (var path in paths)
         {
             PinPath(path);
