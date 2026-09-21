@@ -555,7 +555,14 @@ public static class IconService
             for (var x = 0; x < width; x++)
             {
                 var p = PixelAt(pixels, stride, x, y);
-                if (p.A < 160 || Math.Max(p.R, Math.Max(p.G, p.B)) < 60)
+                if (p.A < 160)
+                {
+                    continue;
+                }
+
+                var max = Math.Max(p.R, Math.Max(p.G, p.B));
+                var min = Math.Min(p.R, Math.Min(p.G, p.B));
+                if (max < 70 || (max - min) / (double)max < 0.30)
                 {
                     continue;
                 }
@@ -598,13 +605,13 @@ public static class IconService
         var (seedHue, seedSat, seedVal) = ToHsv(picked[0]);
         while (picked.Count < count)
         {
-            picked.Add(FromHsv(seedHue + (picked.Count * (360.0 / count)), Math.Max(seedSat, 0.55), Math.Max(seedVal, 0.9)));
+            picked.Add(FromHsv(seedHue + (picked.Count * (360.0 / count)), Math.Max(seedSat, 0.65), Math.Max(seedVal, 0.95)));
         }
 
         for (var i = 0; i < picked.Count; i++)
         {
             var (h, s, v) = ToHsv(picked[i]);
-            picked[i] = FromHsv(h, Math.Max(s, 0.55), Math.Max(v, 0.9));
+            picked[i] = FromHsv(h, Math.Max(s, 0.6), Math.Max(v, 0.9));
         }
 
         return picked.ToArray();

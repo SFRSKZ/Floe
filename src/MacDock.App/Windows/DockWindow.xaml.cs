@@ -61,6 +61,8 @@ public partial class DockWindow : Window
     private readonly DispatcherTimer _hideTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
     private readonly DispatcherTimer _runningTimer = new() { Interval = TimeSpan.FromMilliseconds(2500) };
     private readonly DispatcherTimer _foregroundTimer = new() { Interval = TimeSpan.FromMilliseconds(3000) };
+    private readonly DispatcherTimer _foregroundDebounce = new() { Interval = TimeSpan.FromMilliseconds(200) };
+    private string _pendingForeground = string.Empty;
     private readonly DispatcherTimer _runningDebounce = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private readonly DispatcherTimer _fullscreenTimer = new() { Interval = TimeSpan.FromMilliseconds(1000) };
     private bool _fullscreenHidden;
@@ -233,6 +235,7 @@ public partial class DockWindow : Window
 
         _foregroundTimer.Tick += (_, _) => UpdateForeground();
         _foregroundTimer.Start();
+        _foregroundDebounce.Tick += (_, _) => ApplyForeground();
 
         _runningDebounce.Tick += (_, _) =>
         {
@@ -2164,14 +2167,43 @@ public partial class DockWindow : Window
     private void UpdateForeground()
     {
         var name = ScreenInput.GetForegroundProcessName();
-        if (string.Equals(name, _activeProcess, StringComparison.OrdinalIgnoreCase))
+        if (IsIgnoredForeground(name) || string.Equals(name, _activeProcess, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
-        _activeProcess = name;
+        _pendingForeground = name;
+        _foregroundDebounce.Stop();
+        _foregroundDebounce.Start();
+    }
+
+    private void ApplyForeground()
+    {
+        _foregroundDebounce.Stop();
+        if (string.IsNullOrEmpty(_pendingForeground)
+            || string.Equals(_pendingForeground, _activeProcess, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _activeProcess = _pendingForeground;
         UpdateAura();
-        Log($"fg='{name}' auraIndex={_activeIndex} visible={_auraGrid.Visibility}");
+        Log($"fg='{_activeProcess}' auraIndex={_activeIndex} visible={_auraGrid.Visibility}");
+    }
+
+    private static bool IsIgnoredForeground(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+        {
+            return true;
+        }
+
+        return name.Equals("MacDock", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("explorer", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("SearchHost", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("StartMenuExperienceHost", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("TextInputHost", StringComparison.OrdinalIgnoreCase);
     }
 
     private void UpdateAura()
