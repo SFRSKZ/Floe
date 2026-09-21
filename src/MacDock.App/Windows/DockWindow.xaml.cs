@@ -1286,6 +1286,16 @@ public partial class DockWindow : Window
         {
             var hwnd = item.NextWindow();
             var activated = WindowActivator.Activate(hwnd);
+
+            // elevated windows (e.g. Task Manager) can't be restored by a non-elevated process;
+            // relaunching a single-instance app brings its existing window back
+            if (!activated || ScreenInput.IsWindowMinimized(hwnd))
+            {
+                var relaunch = AppLauncher.LaunchFresh(item.App);
+                Log($"click {item.Name} -> activate failed (elevated?), relaunch: {relaunch.Message}");
+                return;
+            }
+
             Log($"click {item.Name} -> cycle window {hwnd} ok={activated} count={item.Windows.Count}");
             return;
         }

@@ -59,6 +59,42 @@ public static class AppLauncher
         }
     }
 
+    /// <summary>Starts the target directly (no existing-window activation) - single-instance apps restore their window.</summary>
+    public static LaunchResult LaunchFresh(DockApp app)
+    {
+        var target = ResolveTarget(app);
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            return new LaunchResult($"no-target:{app.Name}", false);
+        }
+
+        try
+        {
+            if (target.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
+            {
+                Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = target, UseShellExecute = true });
+            }
+            else
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = target,
+                    Arguments = app.Arguments ?? string.Empty,
+                    WorkingDirectory = string.IsNullOrWhiteSpace(app.WorkingDirectory)
+                        ? Path.GetDirectoryName(target) ?? string.Empty
+                        : Environment.ExpandEnvironmentVariables(app.WorkingDirectory),
+                    UseShellExecute = true,
+                });
+            }
+
+            return new LaunchResult($"launched-fresh:{target}", true);
+        }
+        catch (Exception ex)
+        {
+            return new LaunchResult($"launch-failed:{ex.Message}", false);
+        }
+    }
+
     public static string ResolveTarget(DockApp app)
     {
         var target = Environment.ExpandEnvironmentVariables(app.Target ?? string.Empty).Trim().Trim('"');

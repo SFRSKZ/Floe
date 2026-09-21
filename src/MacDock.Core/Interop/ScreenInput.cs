@@ -82,6 +82,11 @@ public static class ScreenInput
 
     public static IntPtr GetForegroundHandle() => GetForegroundWindow();
 
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    public static bool IsWindowMinimized(IntPtr hwnd) => hwnd != IntPtr.Zero && IsIconic(hwnd);
+
     public static string GetForegroundProcessName()
     {
         var foreground = GetForegroundWindow();
