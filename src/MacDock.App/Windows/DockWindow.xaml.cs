@@ -44,8 +44,8 @@ public partial class DockWindow : Window
     private const double GlowRadius = 92;
     private const double BulgeSigma = 34;
     private const int BurstRayCount = 12;
-    private const double BurstRayLength = 54;
-    private const double BurstRayWidth = 3.5;
+    private const double BurstRayLength = 60;
+    private const double BurstRayTip = 16;
     private const double CornerRadius = 22;
     private const double BottomMargin = 8;
     private const int TriggerShow = 6;
@@ -79,7 +79,7 @@ public partial class DockWindow : Window
     private readonly DropShadowEffect[] _auraEffects = new DropShadowEffect[3];
     private readonly DoubleAnimation[] _auraDirAnims = new DoubleAnimation[3];
     private readonly Canvas _burstLayer = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed };
-    private readonly List<(Rectangle Ray, RotateTransform Spin)> _burstRays = new();
+    private readonly List<(Polygon Ray, RotateTransform Spin)> _burstRays = new();
     private readonly List<DoubleAnimation> _burstSpins = new();
     private readonly Ellipse _burstCore = new() { IsHitTestVisible = false, Width = 76, Height = 76 };
     private readonly RadialGradientBrush _burstCoreBrush = new() { Center = new Point(0.5, 0.5), GradientOrigin = new Point(0.5, 0.5) };
@@ -374,22 +374,26 @@ public partial class DockWindow : Window
 
         Root.Children.Insert(1, _glowLayer);
 
-        _burstCoreBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x99, 0x5B, 0xC8, 0xFF), 0.0));
+        _burstCoreBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0xB4, 0x5B, 0xC8, 0xFF), 0.0));
+        _burstCoreBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x40, 0x5B, 0xC8, 0xFF), 0.55));
         _burstCoreBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x5B, 0xC8, 0xFF), 1.0));
         _burstCore.Fill = _burstCoreBrush;
-        _burstCore.Effect = new BlurEffect { Radius = 16, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Performance };
+        _burstLayer.Effect = new BlurEffect { Radius = 10, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Performance };
         _burstLayer.Children.Add(_burstCore);
 
         for (var i = 0; i < BurstRayCount; i++)
         {
             var angle = i * (360.0 / BurstRayCount);
-            var ray = new Rectangle
+            var ray = new Polygon
             {
-                Width = BurstRayWidth,
-                Height = BurstRayLength,
+                Points = new PointCollection
+                {
+                    new Point(BurstRayTip, BurstRayLength),
+                    new Point(0, 0),
+                    new Point(BurstRayTip * 2, 0),
+                },
                 IsHitTestVisible = false,
-                RenderTransformOrigin = new Point(0.5, 1.0),
-                RenderTransform = new RotateTransform(angle, BurstRayWidth / 2, BurstRayLength),
+                RenderTransform = new RotateTransform(angle, BurstRayTip, BurstRayLength),
             };
 
             _burstRays.Add((ray, (RotateTransform)ray.RenderTransform));
@@ -2389,8 +2393,8 @@ public partial class DockWindow : Window
         {
             var color = colors[i % colors.Length];
             var brush = new LinearGradientBrush { StartPoint = new Point(0.5, 1), EndPoint = new Point(0.5, 0) };
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD8, color.R, color.G, color.B), 0.0));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x36, color.R, color.G, color.B), 0.55));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xE6, color.R, color.G, color.B), 0.0));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x66, color.R, color.G, color.B), 0.5));
             brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, color.R, color.G, color.B), 1.0));
             brush.Freeze();
             _burstRays[i].Ray.Fill = brush;
@@ -2403,7 +2407,7 @@ public partial class DockWindow : Window
         var centerY = IconBottom - (IconBox / 2);
         foreach (var (ray, _) in _burstRays)
         {
-            Canvas.SetLeft(ray, centerX - (BurstRayWidth / 2));
+            Canvas.SetLeft(ray, centerX - BurstRayTip);
             Canvas.SetTop(ray, centerY - BurstRayLength);
         }
 
