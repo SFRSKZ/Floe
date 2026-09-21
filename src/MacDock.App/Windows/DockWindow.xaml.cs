@@ -61,8 +61,8 @@ public partial class DockWindow : Window
     private readonly List<DockItemViewModel> _pinnedList = new();
     private readonly DispatcherTimer _hideTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
     private readonly DispatcherTimer _runningTimer = new() { Interval = TimeSpan.FromMilliseconds(2500) };
-    private readonly DispatcherTimer _foregroundTimer = new() { Interval = TimeSpan.FromMilliseconds(3000) };
-    private readonly DispatcherTimer _foregroundDebounce = new() { Interval = TimeSpan.FromMilliseconds(200) };
+    private readonly DispatcherTimer _foregroundTimer = new() { Interval = TimeSpan.FromMilliseconds(800) };
+    private readonly DispatcherTimer _foregroundDebounce = new() { Interval = TimeSpan.FromMilliseconds(80) };
     private string _pendingForeground = string.Empty;
     private string _pendingTitle = string.Empty;
     private string _pendingPath = string.Empty;
@@ -91,7 +91,7 @@ public partial class DockWindow : Window
 
     private readonly List<(Ellipse Wisp, RotateTransform Spin)> _spectralWisps = new();
     private readonly List<DoubleAnimation> _spectralWispSpins = new();
-    private readonly DoubleAnimation _spectralBreath = new(0.5, 0.92, TimeSpan.FromSeconds(3.6))
+    private readonly DoubleAnimation _spectralBreath = new(0.74, 1.0, TimeSpan.FromSeconds(3.6))
     {
         AutoReverse = true,
         RepeatBehavior = RepeatBehavior.Forever,
@@ -2285,6 +2285,13 @@ public partial class DockWindow : Window
         _activeTitle = _pendingTitle;
         _activePath = _pendingPath;
         UpdateAura();
+
+        // a just-launched app may not be marked running yet - refresh immediately so the effect starts now
+        if (_activeIndex < 0)
+        {
+            RefreshRunning();
+        }
+
         Log($"fg='{_activeProcess}' title='{_activeTitle}' path='{_activePath}' auraIndex={_activeIndex} visible={_auraGrid.Visibility}");
     }
 
