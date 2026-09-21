@@ -4,6 +4,7 @@ namespace MacDock.Core.Interop;
 
 public static class EventHooks
 {
+    public const uint EventSystemAlert = 0x0002;
     public const uint EventSystemForeground = 0x0003;
     public const uint EventObjectCreate = 0x8000;
     public const uint EventObjectDestroy = 0x8001;

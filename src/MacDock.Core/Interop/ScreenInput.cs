@@ -132,6 +132,28 @@ public static class ScreenInput
         return new ForegroundInfo(name, GetWindowTitle(foreground), AppWindows.GetProcessPath(processId));
     }
 
+    public static ForegroundInfo GetWindowInfo(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return new ForegroundInfo(string.Empty, string.Empty, string.Empty);
+        }
+
+        GetWindowThreadProcessId(hwnd, out var processId);
+
+        var name = string.Empty;
+        try
+        {
+            name = Process.GetProcessById((int)processId).ProcessName;
+        }
+        catch
+        {
+            // process may have exited
+        }
+
+        return new ForegroundInfo(name, GetWindowTitle(hwnd), AppWindows.GetProcessPath(processId));
+    }
+
     private static string GetWindowTitle(IntPtr hwnd)
     {
         var length = GetWindowTextLength(hwnd);

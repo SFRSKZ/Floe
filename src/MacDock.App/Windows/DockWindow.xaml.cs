@@ -71,6 +71,16 @@ public partial class DockWindow : Window
     private bool _fullscreenHidden;
     private EventHooks.Hook? _foregroundHook;
     private EventHooks.Hook? _windowHook;
+    private EventHooks.Hook? _alertHook;
+    private DockItemViewModel? _attentionItem;
+    private bool _auraAttention;
+    private readonly DispatcherTimer _ambientTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private double _ambientLevel;
+    private readonly DoubleAnimation _spectralBreathFast = new(0.88, 1.0, TimeSpan.FromSeconds(1.3))
+    {
+        AutoReverse = true,
+        RepeatBehavior = RepeatBehavior.Forever,
+    };
     private readonly SolidColorBrush _runningDotBrush = new(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF));
     private readonly Grid _auraGrid = new();
     private readonly Image[] _auraImages = new Image[3];
@@ -275,6 +285,8 @@ public partial class DockWindow : Window
 
         _foregroundHook = new EventHooks.Hook(EventHooks.EventSystemForeground, EventHooks.EventSystemForeground, _ => UpdateForeground());
         _windowHook = new EventHooks.Hook(EventHooks.EventObjectCreate, EventHooks.EventObjectDestroy, _ => ScheduleRunningRefresh());
+        _alertHook = new EventHooks.Hook(EventHooks.EventSystemAlert, EventHooks.EventSystemAlert, OnSystemAlert);
+        _ambientTimer.Tick += (_, _) => UpdateAmbient();
         _dockScale = CompactScale;
         _rootScale.ScaleX = CompactScale;
         _rootScale.ScaleY = CompactScale;
@@ -474,6 +486,7 @@ public partial class DockWindow : Window
 
             _fullscreenTimer.Tick += (_, _) => UpdateFullscreenState();
             _fullscreenTimer.Start();
+            _ambientTimer.Start();
 
             _trayIcon = TrayNotification.LoadAppIcon(Environment.ProcessPath ?? string.Empty);
             TrayNotification.Add(_hwnd, "MacDock", _trayIcon);
@@ -1800,6 +1813,8 @@ public partial class DockWindow : Window
 
         _foregroundHook?.Dispose();
         _windowHook?.Dispose();
+        _alertHook?.Dispose();
+        _ambientTimer.Stop();
         _backdropCapture?.Dispose();
         TrayNotification.Remove(_hwnd, "MacDock", _trayIcon);
         if (_trayIcon != IntPtr.Zero)
@@ -1834,6 +1849,39 @@ public partial class DockWindow : Window
         {
             _widgetRenderingHooked = false;
             CompositionTarget.Rendering -= OnWidgetRendering;
+        }
+    }
+
+    protected override void OnPreviewMouseWheel(MouseWheelEventArgs e)
+    {
+        base.OnPreviewMouseWheel(e);
+
+        if (_clock.IsMouseOver || _clockDivider.IsMouseOver)
+        {
+            if (e.Delta > 0)
+            {
+                DesktopController.VolumeUp();
+            }
+            else
+            {
+                DesktopController.VolumeDown();
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        var slot = _slots.FirstOrDefault(s => s.Button.IsMouseOver);
+        if (slot is { Item.Windows.Count: > 0 })
+        {
+            var hwnd = slot.Item.NextWindow();
+            if (e.Delta < 0)
+            {
+                hwnd = slot.Item.NextWindow();
+            }
+
+            WindowActivator.Activate(hwnd);
+            e.Handled = true;
         }
     }
 
@@ -2284,6 +2332,13 @@ public partial class DockWindow : Window
         _activeProcess = _pendingForeground;
         _activeTitle = _pendingTitle;
         _activePath = _pendingPath;
+
+        if (_attentionItem is not null
+            && AppMatcher.Matches(_attentionItem.Name, _attentionItem.ProcessName, _attentionItem.App.Target, _activeProcess, _activeTitle, _activePath))
+        {
+            _attentionItem = null;
+        }
+
         UpdateAura();
 
         // a just-launched app may not be marked running yet - refresh immediately so the effect starts now
@@ -2293,6 +2348,39 @@ public partial class DockWindow : Window
         }
 
         Log($"fg='{_activeProcess}' title='{_activeTitle}' path='{_activePath}' auraIndex={_activeIndex} visible={_auraGrid.Visibility}");
+    }
+
+    private void OnSystemAlert(IntPtr hwnd)
+    {
+        var info = ScreenInput.GetWindowInfo(hwnd);
+        if (string.IsNullOrEmpty(info.ProcessName))
+        {
+            return;
+        }
+
+        for (var i = 0; i < _slots.Count; i++)
+        {
+            var item = _slots[i].Item;
+            if (item.IsRunning
+                && AppMatcher.Matches(item.Name, item.ProcessName, item.App.Target, info.ProcessName, info.Title, info.Path))
+            {
+                if (!ReferenceEquals(_attentionItem, item))
+                {
+                    _attentionItem = item;
+                    Log($"alert {item.Name}");
+                    UpdateAura();
+                }
+
+                return;
+            }
+        }
+    }
+
+    private void UpdateAmbient()
+    {
+        var cpu = SystemMetrics.GetCpuUsage();
+        _ambientLevel += (cpu - _ambientLevel) * 0.35;
+        _separator.Opacity = 0.5 + (0.5 * (_ambientLevel / 100.0));
     }
 
     private static bool IsIgnoredForeground(string name)
@@ -2322,6 +2410,20 @@ public partial class DockWindow : Window
                     && AppMatcher.Matches(candidate.Name, candidate.ProcessName, candidate.App.Target, _activeProcess, _activeTitle, _activePath))
                 {
                     _activeIndex = i;
+                    break;
+                }
+            }
+        }
+
+        _auraAttention = false;
+        if (_activeIndex < 0 && _attentionItem is not null)
+        {
+            for (var i = 0; i < _slots.Count; i++)
+            {
+                if (ReferenceEquals(_slots[i].Item, _attentionItem))
+                {
+                    _activeIndex = i;
+                    _auraAttention = true;
                     break;
                 }
             }
@@ -2391,7 +2493,8 @@ public partial class DockWindow : Window
 
         if (visible)
         {
-            _spectralLayer.BeginAnimation(OpacityProperty, _spectralBreath);
+            _spectralLayer.BeginAnimation(OpacityProperty, _auraAttention ? _spectralBreathFast : _spectralBreath);
+            _spectralRim.Opacity = _auraAttention ? 1.0 : 0.82;
             _spectralRim.BeginAnimation(Shape.StrokeDashOffsetProperty, _spectralDash);
             _spectralWaveSpin.BeginAnimation(RotateTransform.AngleProperty, _spectralWaveAnim);
             for (var i = 0; i < _spectralWisps.Count; i++)
