@@ -2689,31 +2689,34 @@ public partial class DockWindow : Window
         var first = Spectral(colors[0]);
         var second = Spectral(colors[1 % colors.Length]);
         var third = Spectral(colors[2 % colors.Length]);
+        var k = AuraSettings.SpectralIntensity;
 
         // soft radial distortion around the icon edges
         _spectralHaloBrush.GradientStops[0].Color = Color.FromArgb(0x00, first.R, first.G, first.B);
-        _spectralHaloBrush.GradientStops[1].Color = Color.FromArgb(0x30, first.R, first.G, first.B);
+        _spectralHaloBrush.GradientStops[1].Color = Color.FromArgb(Alpha(0x3E, k), first.R, first.G, first.B);
         _spectralHaloBrush.GradientStops[2].Color = Color.FromArgb(0x00, second.R, second.G, second.B);
 
         // irregular shimmering outline (slight refraction)
         _spectralRimBrush.GradientStops.Clear();
-        _spectralRimBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0xA0, first.R, first.G, first.B), 0.0));
-        _spectralRimBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x34, second.R, second.G, second.B), 0.45));
-        _spectralRimBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0xA0, third.R, third.G, third.B), 1.0));
+        _spectralRimBrush.GradientStops.Add(new GradientStop(Color.FromArgb(Alpha(0xB4, k), first.R, first.G, first.B), 0.0));
+        _spectralRimBrush.GradientStops.Add(new GradientStop(Color.FromArgb(Alpha(0x44, k), second.R, second.G, second.B), 0.45));
+        _spectralRimBrush.GradientStops.Add(new GradientStop(Color.FromArgb(Alpha(0xB4, k), third.R, third.G, third.B), 1.0));
 
         // flowing wave-like energy around the perimeter
         _spectralWaveBrush.GradientStops.Clear();
         _spectralWaveBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, second.R, second.G, second.B), 0.0));
-        _spectralWaveBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x58, third.R, third.G, third.B), 0.5));
+        _spectralWaveBrush.GradientStops.Add(new GradientStop(Color.FromArgb(Alpha(0x70, k), third.R, third.G, third.B), 0.5));
         _spectralWaveBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, first.R, first.G, first.B), 1.0));
 
         // faint smoky wisps
         for (var i = 0; i < _spectralWisps.Count; i++)
         {
             var color = Spectral(colors[i % colors.Length]);
-            _spectralWisps[i].Wisp.Fill = new SolidColorBrush(Color.FromArgb(0x3C, color.R, color.G, color.B));
+            _spectralWisps[i].Wisp.Fill = new SolidColorBrush(Color.FromArgb(Alpha(0x50, k), color.R, color.G, color.B));
         }
     }
+
+    private static byte Alpha(int alpha, double intensity) => (byte)Math.Clamp(alpha * intensity, 0, 255);
 
     private void PositionSpectral(IconSlot slot)
     {

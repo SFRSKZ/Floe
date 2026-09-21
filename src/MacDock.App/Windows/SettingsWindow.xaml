@@ -44,6 +44,30 @@
             </Setter>
         </Style>
 
+        <Style x:Key="GlassSlider" TargetType="Slider">
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid VerticalAlignment="Center">
+                            <Border Height="4" CornerRadius="2" Background="#24FFFFFF" />
+                            <Track x:Name="PART_Track">
+                                <Track.Thumb>
+                                    <Thumb Width="14" Height="14">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Ellipse Fill="#F2FFFFFF" Stroke="#5BC8FF" StrokeThickness="2" />
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="GlassButton" TargetType="Button">
             <Setter Property="Foreground" Value="#F2FFFFFF" />
             <Setter Property="FontSize" Value="13" />
@@ -88,6 +112,30 @@
             <StackPanel Orientation="Horizontal">
                 <RadioButton x:Name="EffectGlow" Style="{StaticResource ModeToggle}" Content="Işıltı" />
                 <RadioButton x:Name="EffectBurst" Style="{StaticResource ModeToggle}" Content="Hayalet" />
+            </StackPanel>
+
+            <StackPanel x:Name="IntensityPanel" Margin="0,14,0,0">
+                <TextBlock Text="Hayalet yoğunluğu" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Slider x:Name="IntensitySlider"
+                            Style="{StaticResource GlassSlider}"
+                            Minimum="0.5"
+                            Maximum="2.5"
+                            SmallChange="0.1"
+                            LargeChange="0.25"
+                            Value="1.5" />
+                    <TextBlock x:Name="IntensityValue"
+                               Grid.Column="1"
+                               Width="36"
+                               TextAlignment="Right"
+                               VerticalAlignment="Center"
+                               Foreground="#F2FFFFFF"
+                               FontSize="12" />
+                </Grid>
             </StackPanel>
 
             <Rectangle Height="1" Fill="#1EFFFFFF" Margin="0,16,0,14" />

@@ -59,6 +59,9 @@ public static class AuraSettings
 
     public static AuraEffect Effect { get; private set; } = AuraEffect.Glow;
 
+    /// <summary>Spectral ("Hayalet") effect strength, 0.5 .. 2.5.</summary>
+    public static double SpectralIntensity { get; private set; } = 1.5;
+
     public static int PaletteIndex { get; private set; }
 
     public static void Load()
@@ -78,6 +81,7 @@ public static class AuraSettings
 
             Mode = Enum.TryParse<AuraColorMode>(model.Mode, true, out var mode) ? mode : AuraColorMode.Palette;
             Effect = Enum.TryParse<AuraEffect>(model.Effect, true, out var effect) ? effect : AuraEffect.Glow;
+            SpectralIntensity = model.SpectralIntensity <= 0 ? 1.5 : Math.Clamp(model.SpectralIntensity, 0.5, 2.5);
             PaletteIndex = Math.Clamp(model.PaletteIndex, 0, Palettes.Count - 1);
         }
         catch
@@ -106,6 +110,19 @@ public static class AuraSettings
         }
 
         Effect = effect;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetSpectralIntensity(double intensity)
+    {
+        intensity = Math.Clamp(intensity, 0.5, 2.5);
+        if (Math.Abs(SpectralIntensity - intensity) < 0.01)
+        {
+            return;
+        }
+
+        SpectralIntensity = intensity;
         Save();
         Changed?.Invoke();
     }
@@ -148,6 +165,7 @@ public static class AuraSettings
             {
                 Mode = Mode.ToString(),
                 Effect = Effect.ToString(),
+                SpectralIntensity = SpectralIntensity,
                 PaletteIndex = PaletteIndex,
             }));
         }
@@ -164,6 +182,8 @@ public static class AuraSettings
         public string Mode { get; set; } = nameof(AuraColorMode.Palette);
 
         public string Effect { get; set; } = nameof(AuraEffect.Glow);
+
+        public double SpectralIntensity { get; set; } = 1.5;
 
         public int PaletteIndex { get; set; }
     }

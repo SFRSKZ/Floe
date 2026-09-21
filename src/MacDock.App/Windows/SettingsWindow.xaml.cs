@@ -25,6 +25,14 @@ public partial class SettingsWindow : Window
         EffectGlow.Checked += (_, _) => AuraSettings.SetEffect(AuraEffect.Glow);
         EffectBurst.Checked += (_, _) => AuraSettings.SetEffect(AuraEffect.Burst);
 
+        IntensitySlider.Value = AuraSettings.SpectralIntensity;
+        IntensityValue.Text = AuraSettings.SpectralIntensity.ToString("0.0");
+        IntensitySlider.ValueChanged += (_, e) =>
+        {
+            AuraSettings.SetSpectralIntensity(e.NewValue);
+            IntensityValue.Text = AuraSettings.SpectralIntensity.ToString("0.0");
+        };
+
         ModePalette.IsChecked = AuraSettings.Mode == AuraColorMode.Palette;
         ModeIcon.IsChecked = AuraSettings.Mode == AuraColorMode.Icon;
         ModePalette.Checked += (_, _) => AuraSettings.SetMode(AuraColorMode.Palette);
@@ -83,6 +91,10 @@ public partial class SettingsWindow : Window
 
     private void RefreshRows()
     {
+        var spectral = AuraSettings.Effect == AuraEffect.Burst;
+        IntensityPanel.Opacity = spectral ? 1 : 0.4;
+        IntensitySlider.IsEnabled = spectral;
+
         var paletteActive = AuraSettings.Mode == AuraColorMode.Palette;
 
         foreach (var (row, index) in _rows)
