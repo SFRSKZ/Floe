@@ -1875,7 +1875,7 @@ public partial class DockWindow : Window
         _desktopButton ??= CreateDesktopButton();
 
         var right = ToScreenX(_capsuleLeft + _capsuleWidth) + 16;
-        var centerY = Top + IconBottom - (IconBox / 2);
+        var centerY = Top + RestTop + (RestBarHeight / 2);
         _desktopButton.Left = right;
         _desktopButton.Top = centerY - (_desktopButton.Height / 2);
 
