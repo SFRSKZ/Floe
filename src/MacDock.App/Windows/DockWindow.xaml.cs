@@ -711,8 +711,6 @@ public partial class DockWindow : Window
                 RenderTransformOrigin = new Point(0.5, 1.0),
                 RenderTransform = transformGroup,
             };
-            button.Click += DockIcon_Click;
-
             var slot = new IconSlot(button, dot, item, centerLocal, scale, translate);
             _slots.Add(slot);
             IconLayer.Children.Add(button);
@@ -722,6 +720,10 @@ public partial class DockWindow : Window
                 button.PreviewMouseLeftButtonDown += (_, e) => DragStart(slot, e);
                 button.PreviewMouseMove += (_, e) => DragMove(e);
                 button.PreviewMouseLeftButtonUp += (_, e) => DragEnd(e);
+            }
+            else
+            {
+                button.Click += DockIcon_Click;
             }
         }
 
@@ -1194,7 +1196,8 @@ public partial class DockWindow : Window
         _preview.Show();
         _preview.ShowFor(slot.Item.Windows);
 
-        var left = slot.Center - (_preview.Width / 2);
+        var centerX = Left + (ActualWidth / 2) + ((slot.Center - (ActualWidth / 2)) * _dockScale);
+        var left = centerX - (_preview.Width / 2);
         left = Math.Max(8, Math.Min(left, SystemParameters.PrimaryScreenWidth - _preview.Width - 8));
         _preview.Left = left;
         _preview.Top = Top + RestTop - _preview.Height - 10;
@@ -1264,12 +1267,17 @@ public partial class DockWindow : Window
             return;
         }
 
+        ActivateItem(item);
+    }
+
+    private void ActivateItem(DockItemViewModel item)
+    {
         // group: cycle through the windows of the same app
         if (item.Windows.Count > 0)
         {
             var hwnd = item.NextWindow();
             var activated = WindowActivator.Activate(hwnd);
-            Log($"click {item.Name} -> cycle window {hwnd} ok={activated}");
+            Log($"click {item.Name} -> cycle window {hwnd} ok={activated} count={item.Windows.Count}");
             return;
         }
 
@@ -1305,6 +1313,7 @@ public partial class DockWindow : Window
         _dragSlot = slot;
         _dragStart = e.GetPosition(this);
         _isDragging = false;
+        Log($"dragStart {slot.Item.Name}");
         _tooltip.IsOpen = false;
         slot.Button.CaptureMouse();
     }
@@ -1346,6 +1355,7 @@ public partial class DockWindow : Window
 
         if (!_isDragging)
         {
+            ActivateItem(slot.Item);
             return;
         }
 
