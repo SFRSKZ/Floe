@@ -599,7 +599,17 @@ public static class IconService
 
         if (picked.Count == 0)
         {
-            return DefaultAuraColors(count);
+            // neutral icon (gray/black/white): use a bright monochrome glow from its own brightness
+            var (luminance, tintHue, tintSat) = AverageColor(pixels, stride, width, height);
+            var saturation = Math.Min(tintSat, 0.12);
+            var value = luminance < 140 ? 1.0 : 0.88;
+            var neutral = new List<Color>();
+            for (var i = 0; i < count; i++)
+            {
+                neutral.Add(FromHsv(tintHue, saturation, Math.Clamp(value - (i * 0.14), 0.5, 1.0)));
+            }
+
+            return neutral.ToArray();
         }
 
         var (seedHue, seedSat, seedVal) = ToHsv(picked[0]);
@@ -615,6 +625,41 @@ public static class IconService
         }
 
         return picked.ToArray();
+    }
+
+    private static (double Luminance, double Hue, double Saturation) AverageColor(byte[] pixels, int stride, int width, int height)
+    {
+        long r = 0;
+        long g = 0;
+        long b = 0;
+        long n = 0;
+
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var p = PixelAt(pixels, stride, x, y);
+                if (p.A < 160)
+                {
+                    continue;
+                }
+
+                r += p.R;
+                g += p.G;
+                b += p.B;
+                n++;
+            }
+        }
+
+        if (n == 0)
+        {
+            return (128, 0, 0);
+        }
+
+        var avg = Color.FromRgb((byte)(r / n), (byte)(g / n), (byte)(b / n));
+        var luminance = (0.299 * avg.R) + (0.587 * avg.G) + (0.114 * avg.B);
+        var (h, s, _) = ToHsv(avg);
+        return (luminance, h, s);
     }
 
     private static Color[] DefaultAuraColors(int count)

@@ -31,6 +31,29 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Any(a => a.Equals("--dumpcolors", StringComparison.OrdinalIgnoreCase)))
+        {
+            try
+            {
+                var lines = new System.Text.StringBuilder();
+                foreach (var app in MacDock.Core.Services.PinnedAppsProvider.Load())
+                {
+                    var icon = MacDock.App.Services.IconService.GetIcon(app);
+                    var colors = MacDock.App.Services.IconService.GetIconColors(icon, 3);
+                    lines.AppendLine($"{app.Name}: {colors[0]} {colors[1]} {colors[2]}");
+                }
+
+                System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "macdock-colors.log"), lines.ToString());
+            }
+            catch
+            {
+                // diagnostics must never crash
+            }
+
+            Shutdown();
+            return;
+        }
+
         var autoHide = e.Args.Any(a => a.Equals("--autohide", StringComparison.OrdinalIgnoreCase));
         _hideTaskbar = !e.Args.Any(a => a.Equals("--keep-taskbar", StringComparison.OrdinalIgnoreCase));
 
