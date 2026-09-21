@@ -161,6 +161,40 @@
                        Margin="2,16,0,8" />
             <StackPanel x:Name="PaletteList" />
 
+            <Rectangle Height="1" Fill="#1EFFFFFF" Margin="0,16,0,14" />
+
+            <TextBlock Text="Masaüstü düğmesi"
+                       Foreground="#F2FFFFFF"
+                       FontSize="15"
+                       FontWeight="SemiBold" />
+            <TextBlock Text="Dock'un sağındaki hayalet düğme"
+                       Foreground="#8AFFFFFF"
+                       FontSize="11.5"
+                       Margin="0,2,0,12" />
+
+            <TextBlock Text="Boyut" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Slider x:Name="SizeSlider" Style="{StaticResource GlassSlider}" Minimum="0.4" Maximum="1.6" SmallChange="0.05" LargeChange="0.1" Value="0.72" />
+                <TextBlock x:Name="SizeValue" Grid.Column="1" Width="36" TextAlignment="Right" VerticalAlignment="Center" Foreground="#F2FFFFFF" FontSize="12" />
+            </Grid>
+
+            <TextBlock Text="Parlaklık" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,10,0,6" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Slider x:Name="BrightSlider" Style="{StaticResource GlassSlider}" Minimum="0.3" Maximum="2.2" SmallChange="0.1" LargeChange="0.25" Value="1.0" />
+                <TextBlock x:Name="BrightValue" Grid.Column="1" Width="36" TextAlignment="Right" VerticalAlignment="Center" Foreground="#F2FFFFFF" FontSize="12" />
+            </Grid>
+
+            <TextBlock Text="Renk" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,10,0,6" />
+            <StackPanel x:Name="ButtonColors" Orientation="Horizontal" />
+
             <Button x:Name="CloseButton"
                     Style="{StaticResource GlassButton}"
                     Content="Kapat"

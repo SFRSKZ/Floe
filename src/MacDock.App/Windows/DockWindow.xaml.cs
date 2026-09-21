@@ -474,6 +474,8 @@ public partial class DockWindow : Window
 
         AuraSettings.Load();
         AuraSettings.Changed += OnAuraSettingsChanged;
+        DesktopButtonSettings.Load();
+        DesktopButtonSettings.Changed += PositionDesktopButton;
 
         LocationChanged += (_, _) => PositionDesktopButton();
         _hideTimer.Tick += HideTimer_Tick;
@@ -1916,6 +1918,7 @@ public partial class DockWindow : Window
         StopAnimation();
         StopWidgetRendering();
         AuraSettings.Changed -= OnAuraSettingsChanged;
+        DesktopButtonSettings.Changed -= PositionDesktopButton;
         _settings?.Close();
         for (var k = 0; k < _auraEffects.Length; k++)
         {

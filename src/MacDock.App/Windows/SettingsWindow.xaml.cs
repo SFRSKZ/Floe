@@ -41,7 +41,66 @@ public partial class SettingsWindow : Window
         AuraSettings.Changed += RefreshRows;
         Closed += (_, _) => AuraSettings.Changed -= RefreshRows;
 
+        BuildDesktopButtonControls();
         RefreshRows();
+    }
+
+    private readonly List<Border> _colorSwatches = new();
+
+    private void BuildDesktopButtonControls()
+    {
+        DesktopButtonSettings.Load();
+
+        SizeSlider.Value = DesktopButtonSettings.Size;
+        SizeValue.Text = DesktopButtonSettings.Size.ToString("0.00");
+        SizeSlider.ValueChanged += (_, e) =>
+        {
+            DesktopButtonSettings.SetSize(e.NewValue);
+            SizeValue.Text = DesktopButtonSettings.Size.ToString("0.00");
+        };
+
+        BrightSlider.Value = DesktopButtonSettings.Brightness;
+        BrightValue.Text = DesktopButtonSettings.Brightness.ToString("0.0");
+        BrightSlider.ValueChanged += (_, e) =>
+        {
+            DesktopButtonSettings.SetBrightness(e.NewValue);
+            BrightValue.Text = DesktopButtonSettings.Brightness.ToString("0.0");
+        };
+
+        for (var i = 0; i < DesktopButtonSettings.Colors.Count; i++)
+        {
+            var color = DesktopButtonSettings.Colors[i].Color;
+            var swatch = new Border
+            {
+                Width = 26,
+                Height = 26,
+                CornerRadius = new CornerRadius(13),
+                Margin = new Thickness(0, 0, 8, 0),
+                BorderThickness = new Thickness(2),
+                Background = new SolidColorBrush(color),
+                Cursor = Cursors.Hand,
+            };
+
+            var index = i;
+            swatch.MouseLeftButtonUp += (_, _) => DesktopButtonSettings.SetColorIndex(index);
+            _colorSwatches.Add(swatch);
+            ButtonColors.Children.Add(swatch);
+        }
+
+        DesktopButtonSettings.Changed += RefreshSwatches;
+        Closed += (_, _) => DesktopButtonSettings.Changed -= RefreshSwatches;
+        RefreshSwatches();
+    }
+
+    private void RefreshSwatches()
+    {
+        for (var i = 0; i < _colorSwatches.Count; i++)
+        {
+            var selected = i == DesktopButtonSettings.ColorIndex;
+            _colorSwatches[i].BorderBrush = new SolidColorBrush(selected
+                ? Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF)
+                : Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF));
+        }
     }
 
     private void BuildPaletteRows()
