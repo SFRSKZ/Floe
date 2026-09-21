@@ -25,6 +25,12 @@ public partial class App : Application
             return;
         }
 
+        if (TryRenderSettings(e.Args))
+        {
+            Shutdown();
+            return;
+        }
+
         var autoHide = e.Args.Any(a => a.Equals("--autohide", StringComparison.OrdinalIgnoreCase));
         _hideTaskbar = !e.Args.Any(a => a.Equals("--keep-taskbar", StringComparison.OrdinalIgnoreCase));
 
@@ -101,6 +107,42 @@ public partial class App : Application
                 Shutdown();
             });
         }
+    }
+
+    private static bool TryRenderSettings(string[] args)
+    {
+        var path = args
+            .FirstOrDefault(a => a.StartsWith("--rendersettings=", StringComparison.OrdinalIgnoreCase))?["--rendersettings=".Length..];
+        if (path is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var window = new SettingsWindow();
+            window.Show();
+            window.UpdateLayout();
+
+            var width = (int)Math.Ceiling(window.ActualWidth);
+            var height = (int)Math.Ceiling(window.ActualHeight);
+            var target = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+            if (window.Content is Visual root)
+            {
+                target.Render(root);
+            }
+
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(target));
+            using var stream = System.IO.File.Create(path);
+            encoder.Save(stream);
+        }
+        catch
+        {
+            // diagnostics must never crash
+        }
+
+        return true;
     }
 
     private static void RenderDock(DockWindow dock, string path, string? backgroundPath)

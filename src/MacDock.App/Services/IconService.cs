@@ -526,6 +526,142 @@ public static class IconService
         return (pixels[offset], pixels[offset + 1], pixels[offset + 2], pixels[offset + 3]);
     }
 
+    public static Color[] GetIconColors(ImageSource? source, int count)
+    {
+        if (source is not BitmapSource bitmap || count <= 0)
+        {
+            return DefaultAuraColors(count);
+        }
+
+        var converted = new FormatConvertedBitmap(bitmap, PixelFormats.Bgra32, null, 0);
+        var width = converted.PixelWidth;
+        var height = converted.PixelHeight;
+        if (width <= 0 || height <= 0)
+        {
+            return DefaultAuraColors(count);
+        }
+
+        var stride = width * 4;
+        var pixels = new byte[height * stride];
+        converted.CopyPixels(pixels, stride, 0);
+
+        var counts = new int[24];
+        var rSum = new long[24];
+        var gSum = new long[24];
+        var bSum = new long[24];
+
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var p = PixelAt(pixels, stride, x, y);
+                if (p.A < 160 || Math.Max(p.R, Math.Max(p.G, p.B)) < 60)
+                {
+                    continue;
+                }
+
+                var bucket = (int)(Hue(p.R, p.G, p.B) / 15.0) % 24;
+                counts[bucket]++;
+                rSum[bucket] += p.R;
+                gSum[bucket] += p.G;
+                bSum[bucket] += p.B;
+            }
+        }
+
+        var picked = new List<Color>();
+        foreach (var bucket in Enumerable.Range(0, 24).OrderByDescending(i => counts[i]))
+        {
+            if (picked.Count >= count || counts[bucket] == 0)
+            {
+                break;
+            }
+
+            var color = Color.FromRgb(
+                (byte)(rSum[bucket] / counts[bucket]),
+                (byte)(gSum[bucket] / counts[bucket]),
+                (byte)(bSum[bucket] / counts[bucket]));
+
+            var hue = Hue(color.R, color.G, color.B);
+            if (picked.Any(c => HueDistance(Hue(c.R, c.G, c.B), hue) < 45))
+            {
+                continue;
+            }
+
+            picked.Add(color);
+        }
+
+        if (picked.Count == 0)
+        {
+            return DefaultAuraColors(count);
+        }
+
+        var (seedHue, seedSat, seedVal) = ToHsv(picked[0]);
+        while (picked.Count < count)
+        {
+            picked.Add(FromHsv(seedHue + (picked.Count * (360.0 / count)), Math.Max(seedSat, 0.55), Math.Max(seedVal, 0.9)));
+        }
+
+        for (var i = 0; i < picked.Count; i++)
+        {
+            var (h, s, v) = ToHsv(picked[i]);
+            picked[i] = FromHsv(h, Math.Max(s, 0.55), Math.Max(v, 0.9));
+        }
+
+        return picked.ToArray();
+    }
+
+    private static Color[] DefaultAuraColors(int count)
+    {
+        var defaults = new[]
+        {
+            Color.FromRgb(0x5B, 0xC8, 0xFF),
+            Color.FromRgb(0xA8, 0x55, 0xF7),
+            Color.FromRgb(0x34, 0xE0, 0x7A),
+        };
+
+        return defaults.Take(Math.Max(0, count)).ToArray();
+    }
+
+    private static double HueDistance(double a, double b)
+    {
+        var d = Math.Abs(a - b) % 360;
+        return d > 180 ? 360 - d : d;
+    }
+
+    private static (double H, double S, double V) ToHsv(Color color)
+    {
+        double r = color.R / 255.0;
+        double g = color.G / 255.0;
+        double b = color.B / 255.0;
+        var max = Math.Max(r, Math.Max(g, b));
+        var min = Math.Min(r, Math.Min(g, b));
+        var delta = max - min;
+        return (Hue(color.R, color.G, color.B), max <= 0 ? 0 : delta / max, max);
+    }
+
+    private static Color FromHsv(double h, double s, double v)
+    {
+        h = ((h % 360) + 360) % 360;
+        s = Math.Clamp(s, 0, 1);
+        v = Math.Clamp(v, 0, 1);
+        var c = v * s;
+        var x = c * (1 - Math.Abs(((h / 60) % 2) - 1));
+        var m = v - c;
+        double r, g, b;
+
+        if (h < 60) { r = c; g = x; b = 0; }
+        else if (h < 120) { r = x; g = c; b = 0; }
+        else if (h < 180) { r = 0; g = c; b = x; }
+        else if (h < 240) { r = 0; g = x; b = c; }
+        else if (h < 300) { r = x; g = 0; b = c; }
+        else { r = c; g = 0; b = x; }
+
+        return Color.FromRgb(
+            (byte)Math.Round((r + m) * 255),
+            (byte)Math.Round((g + m) * 255),
+            (byte)Math.Round((b + m) * 255));
+    }
+
     private static (string? File, int Index) ResolveIconSource(DockApp app)
     {
         var icon = app.IconPath;

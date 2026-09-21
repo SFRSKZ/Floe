@@ -93,6 +93,8 @@ public partial class DockWindow : Window
     private double _dockScaleVel;
     private double _targetDockScale = CompactScale;
     private bool _menuOpen;
+    private bool _settingsOpen;
+    private SettingsWindow? _settings;
     private readonly DispatcherTimer _tooltipTimer = new() { Interval = TimeSpan.FromMilliseconds(420) };
 
     private readonly Path _glass = new() { IsHitTestVisible = false };
@@ -363,6 +365,9 @@ public partial class DockWindow : Window
         };
 
         LoadPinned();
+
+        AuraSettings.Load();
+        AuraSettings.Changed += OnAuraSettingsChanged;
 
         _hideTimer.Tick += HideTimer_Tick;
         _runningTimer.Tick += (_, _) => RefreshRunning();
@@ -1196,8 +1201,7 @@ public partial class DockWindow : Window
         _preview.Show();
         _preview.ShowFor(slot.Item.Windows);
 
-        var centerX = Left + (ActualWidth / 2) + ((slot.Center - (ActualWidth / 2)) * _dockScale);
-        var left = centerX - (_preview.Width / 2);
+        var left = ToScreenX(slot.Center) - (_preview.Width / 2);
         left = Math.Max(8, Math.Min(left, SystemParameters.PrimaryScreenWidth - _preview.Width - 8));
         _preview.Left = left;
         _preview.Top = Top + RestTop - _preview.Height - 10;
@@ -1569,7 +1573,7 @@ public partial class DockWindow : Window
 
     private void HideTimer_Tick(object? sender, EventArgs e)
     {
-        if (!AutoHide || _menuOpen || _hwnd == IntPtr.Zero)
+        if (!AutoHide || _menuOpen || _settingsOpen || _hwnd == IntPtr.Zero)
         {
             return;
         }
@@ -1691,6 +1695,8 @@ public partial class DockWindow : Window
     {
         StopAnimation();
         StopWidgetRendering();
+        AuraSettings.Changed -= OnAuraSettingsChanged;
+        _settings?.Close();
         for (var k = 0; k < _auraEffects.Length; k++)
         {
             _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, null);
@@ -1738,6 +1744,13 @@ public partial class DockWindow : Window
     protected override void OnPreviewMouseRightButtonUp(MouseButtonEventArgs e)
     {
         base.OnPreviewMouseRightButtonUp(e);
+
+        if (_clock.IsMouseOver || _clockDivider.IsMouseOver)
+        {
+            OpenSettings();
+            e.Handled = true;
+            return;
+        }
 
         var slot = _slots.FirstOrDefault(s => s.Button.IsMouseOver);
 
@@ -2188,9 +2201,11 @@ public partial class DockWindow : Window
             return;
         }
 
+        var colors = AuraSettings.GetColors(_slots[_activeIndex].Item);
         for (var k = 0; k < _auraImages.Length; k++)
         {
             _auraImages[k].Source = icon;
+            _auraEffects[k].Color = colors[k % colors.Length];
             _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, _auraDirAnims[k]);
         }
 
@@ -2207,6 +2222,58 @@ public partial class DockWindow : Window
             aura.ScaleX = slot.Scale.ScaleX;
             aura.ScaleY = slot.Scale.ScaleY;
         }
+    }
+
+    private void OnAuraSettingsChanged()
+    {
+        if (_activeIndex < 0 || _activeIndex >= _slots.Count)
+        {
+            return;
+        }
+
+        var colors = AuraSettings.GetColors(_slots[_activeIndex].Item);
+        for (var k = 0; k < _auraEffects.Length; k++)
+        {
+            _auraEffects[k].Color = colors[k % colors.Length];
+        }
+    }
+
+    private double ToScreenX(double localX)
+        => Left + (ActualWidth / 2) + ((localX - (ActualWidth / 2)) * _dockScale);
+
+    private void OpenSettings()
+    {
+        if (_settings is { IsLoaded: true })
+        {
+            _settings.Activate();
+            return;
+        }
+
+        var window = new SettingsWindow();
+        _settings = window;
+        _settingsOpen = true;
+
+        window.Closed += (_, _) =>
+        {
+            _settingsOpen = false;
+            _settings = null;
+
+            if (!CursorOverDock())
+            {
+                _targetBulge = 0;
+                _targetDockScale = CompactScale;
+            }
+
+            EnsureAnimation();
+        };
+
+        window.Show();
+        window.UpdateLayout();
+        window.Left = Math.Max(8, Math.Min(
+            ToScreenX(Canvas.GetLeft(_clock) + (ClockWidth / 2)) - (window.ActualWidth / 2),
+            SystemParameters.PrimaryScreenWidth - window.ActualWidth - 8));
+        window.Top = Math.Max(8, Top + RestTop - window.ActualHeight - 12);
+        window.Activate();
     }
 
     private static void Log(string message)
