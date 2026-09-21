@@ -859,6 +859,7 @@ public partial class DockWindow : Window
         ApplyLayout(scales);
         UpdateShape();
         UpdateAura();
+        PositionDesktopButton();
     }
 
     private static ControlTemplate CreateButtonTemplate()
@@ -968,8 +969,6 @@ public partial class DockWindow : Window
         {
             PositionSpectral(_slots[_activeIndex]);
         }
-
-        PositionDesktopButton();
     }
 
     private void UpdateCapsule(IReadOnlyList<double> scales)
@@ -1076,8 +1075,33 @@ public partial class DockWindow : Window
             (byte)(from.B + ((to.B - from.B) * t)));
     }
 
+    private double _shapeHover = double.NaN;
+    private double _shapeBulge = double.NaN;
+    private double _shapeLeft = double.NaN;
+    private double _shapeWidth = double.NaN;
+    private double _shapeScale = double.NaN;
+    private int _shapeCount = -1;
+
     private void UpdateShape()
     {
+        // skip rebuilding the geometry when nothing meaningful changed (per-frame cost)
+        if (Math.Abs(_shapeHover - _currentHoverX) < 0.25
+            && Math.Abs(_shapeBulge - _currentBulge) < 0.25
+            && Math.Abs(_shapeLeft - _capsuleLeft) < 0.25
+            && Math.Abs(_shapeWidth - _capsuleWidth) < 0.25
+            && Math.Abs(_shapeScale - _dockScale) < 0.002
+            && _shapeCount == _slots.Count)
+        {
+            return;
+        }
+
+        _shapeHover = _currentHoverX;
+        _shapeBulge = _currentBulge;
+        _shapeLeft = _capsuleLeft;
+        _shapeWidth = _capsuleWidth;
+        _shapeScale = _dockScale;
+        _shapeCount = _slots.Count;
+
         var points = BuildShape();
         if (points.Count >= 2)
         {
@@ -1870,14 +1894,25 @@ public partial class DockWindow : Window
         PositionDesktopButton();
     }
 
+    private double _desktopButtonX = double.NaN;
+    private double _desktopButtonY = double.NaN;
+
     private void PositionDesktopButton()
     {
         _desktopButton ??= CreateDesktopButton();
 
-        var right = ToScreenX(_capsuleLeft + _capsuleWidth) + 16;
+        // use the rest capsule width so it does not have to follow hover magnification
+        var right = ToScreenX(_restCapsuleLeft + _restCapsuleWidth) + 16;
         var centerY = Top + RestTop + (RestBarHeight / 2);
-        _desktopButton.Left = right;
-        _desktopButton.Top = centerY - (_desktopButton.Height / 2);
+        var top = centerY - (_desktopButton.Height / 2);
+
+        if (Math.Abs(_desktopButtonX - right) > 0.5 || Math.Abs(_desktopButtonY - top) > 0.5)
+        {
+            _desktopButton.Left = right;
+            _desktopButton.Top = top;
+            _desktopButtonX = right;
+            _desktopButtonY = top;
+        }
 
         if (_shown && !_fullscreenHidden && IsVisible)
         {
@@ -2432,14 +2467,14 @@ public partial class DockWindow : Window
         var target = TargetLeft(id, defaultRight, widget.ActualWidth, geometry, gap);
         var moved = false;
 
-        if (widget is not IBubbleWidget { IsBubbleDragging: true } && Math.Abs(widget.Left - target) > 0.1)
+        if (widget is not IBubbleWidget { IsBubbleDragging: true } && Math.Abs(widget.Left - target) > 0.5)
         {
             widget.Left = target;
             moved = true;
         }
 
         var top = geometry.Bottom - widget.ActualHeight;
-        if (Math.Abs(widget.Top - top) > 0.1)
+        if (Math.Abs(widget.Top - top) > 0.5)
         {
             widget.Top = top;
             moved = true;
