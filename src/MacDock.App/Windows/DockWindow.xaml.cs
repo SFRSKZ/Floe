@@ -580,10 +580,11 @@ public partial class DockWindow : Window
 
         foreach (var pinned in _pinnedList)
         {
-            if (grouped.TryGetValue(pinned.ProcessName, out var entry))
+            var match = grouped.FirstOrDefault(pair => ProcessMatches(pinned.ProcessName, pair.Key));
+            if (match.Key is not null)
             {
                 pinned.IsRunning = true;
-                pinned.Windows = entry.Windows;
+                pinned.Windows = match.Value.Windows;
             }
             else
             {
@@ -594,7 +595,7 @@ public partial class DockWindow : Window
 
         var unpinned = new List<DockItemViewModel>();
         foreach (var name in grouped.Keys
-            .Where(name => !_pinned.ContainsKey(name))
+            .Where(name => !_pinnedList.Any(p => ProcessMatches(p.ProcessName, name)))
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
         {
             var entry = grouped[name];
@@ -2191,6 +2192,43 @@ public partial class DockWindow : Window
         Log($"fg='{_activeProcess}' auraIndex={_activeIndex} visible={_auraGrid.Visibility}");
     }
 
+    private static readonly Dictionary<string, string> ProcessAliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "Code", "VisualStudioCode" },
+        { "Code - Insiders", "VisualStudioCode" },
+        { "chrome_proxy", "chrome" },
+    };
+
+    private static bool ProcessMatches(string itemProcess, string windowProcess)
+    {
+        var a = NormalizeProcess(itemProcess);
+        var b = NormalizeProcess(windowProcess);
+        if (a.Length == 0 || b.Length == 0)
+        {
+            return false;
+        }
+
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // helper sub-processes start with the app name: steamwebhelper -> Steam
+        return a.Length >= 3 && b.StartsWith(a, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeProcess(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+        {
+            return string.Empty;
+        }
+
+        var dot = name.LastIndexOf('.');
+        var value = dot >= 0 && dot < name.Length - 1 ? name[(dot + 1)..] : name;
+        return ProcessAliases.TryGetValue(value, out var alias) ? alias : value;
+    }
+
     private static bool IsIgnoredForeground(string name)
     {
         if (string.IsNullOrEmpty(name))
@@ -2214,7 +2252,7 @@ public partial class DockWindow : Window
             for (var i = 0; i < _slots.Count; i++)
             {
                 if (_slots[i].Item.IsRunning
-                    && string.Equals(_slots[i].Item.ProcessName, _activeProcess, StringComparison.OrdinalIgnoreCase))
+                    && ProcessMatches(_slots[i].Item.ProcessName, _activeProcess))
                 {
                     _activeIndex = i;
                     break;

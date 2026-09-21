@@ -612,10 +612,15 @@ public static class IconService
             return neutral.ToArray();
         }
 
-        var (seedHue, seedSat, seedVal) = ToHsv(picked[0]);
+        // missing colors: stay in the icon's own color family (analogous hues), not random triads
+        var found = picked.ToArray();
+        var variations = new[] { 28.0, -28.0, 52.0, -52.0 };
+        var step = 0;
         while (picked.Count < count)
         {
-            picked.Add(FromHsv(seedHue + (picked.Count * (360.0 / count)), Math.Max(seedSat, 0.65), Math.Max(seedVal, 0.95)));
+            var (h, s, v) = ToHsv(found[picked.Count % found.Length]);
+            picked.Add(FromHsv(h + variations[step % variations.Length], Math.Max(s, 0.62), Math.Max(v, 0.92)));
+            step++;
         }
 
         for (var i = 0; i < picked.Count; i++)
