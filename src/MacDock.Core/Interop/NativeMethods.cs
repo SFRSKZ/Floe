@@ -7,6 +7,7 @@ internal static class NativeMethods
     internal const int GwlExStyle = -20;
     internal const int WsExToolWindow = 0x00000080;
     internal const int WsExNoActivate = 0x08000000;
+    internal const int WsExTransparent = 0x00000020;
 
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern int SetWindowCompositionAttribute(IntPtr hwnd, ref WindowCompositionAttributeData data);

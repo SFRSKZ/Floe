@@ -19,6 +19,20 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        DispatcherUnhandledException += (_, args) =>
+        {
+            try
+            {
+                System.IO.File.AppendAllText(
+                    System.IO.Path.Combine(System.IO.Path.GetTempPath(), "macdock.log"),
+                    $"{DateTime.Now:HH:mm:ss} CRASH: {args.Exception}{Environment.NewLine}");
+            }
+            catch
+            {
+                // logging must never throw
+            }
+        };
+
         if (TryRunDiagnostic(e.Args))
         {
             Shutdown();

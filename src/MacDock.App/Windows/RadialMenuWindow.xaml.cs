@@ -21,6 +21,15 @@ public partial class RadialMenuWindow : Window
 
     private readonly DispatcherTimer _watchdog = new() { Interval = TimeSpan.FromMilliseconds(120) };
 
+    public event Action? Dismissed;
+
+    private void Dismiss()
+    {
+        _watchdog.Stop();
+        Hide();
+        Dismissed?.Invoke();
+    }
+
     public RadialMenuWindow()
     {
         InitializeComponent();
@@ -44,7 +53,7 @@ public partial class RadialMenuWindow : Window
 
         if (Math.Sqrt((dx * dx) + (dy * dy)) > Outer + 16)
         {
-            Close();
+            Dismiss();
         }
     }
 
@@ -83,7 +92,7 @@ public partial class RadialMenuWindow : Window
             slice.MouseLeave += (_, _) => slice.Fill = new SolidColorBrush(Color.FromArgb(0xE6, 0x14, 0x16, 0x1C));
             slice.MouseLeftButtonUp += (_, _) =>
             {
-                Close();
+                Dismiss();
                 action.Run();
             };
 
@@ -144,7 +153,7 @@ public partial class RadialMenuWindow : Window
 
         if (position.X < 0 || position.Y < 0 || position.X > Size || position.Y > Size || distance < Inner || distance > Outer)
         {
-            Close();
+            Dismiss();
         }
     }
 
@@ -153,7 +162,7 @@ public partial class RadialMenuWindow : Window
         base.OnKeyDown(e);
         if (e.Key == Key.Escape)
         {
-            Close();
+            Dismiss();
         }
     }
 
@@ -194,3 +203,4 @@ public partial class RadialMenuWindow : Window
         return new Point(CenterX + (Math.Cos(radians) * radius), CenterY + (Math.Sin(radians) * radius));
     }
 }
+

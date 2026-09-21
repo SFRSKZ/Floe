@@ -137,6 +137,7 @@ public partial class DockWindow : Window
     private bool _menuOpen;
     private bool _settingsOpen;
     private SettingsWindow? _settings;
+    private VeilWindow? _veil;
     private readonly DispatcherTimer _tooltipTimer = new() { Interval = TimeSpan.FromMilliseconds(420) };
 
     private readonly Path _glass = new() { IsHitTestVisible = false };
@@ -510,6 +511,7 @@ public partial class DockWindow : Window
 
         _hwnd = new WindowInteropHelper(this).Handle;
         WindowStyling.MakeNonActivatingToolWindow(_hwnd);
+        DesktopController.RegisterHotKey(_hwnd, DesktopController.HotkeyIdVeil, DesktopController.ModControl | DesktopController.ModAlt, DesktopController.VkV);
         if (BlurBackdrop)
         {
             WindowAffinity.ExcludeFromCapture(_hwnd);
@@ -521,6 +523,13 @@ public partial class DockWindow : Window
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (msg == 0x0312 && wParam.ToInt32() == DesktopController.HotkeyIdVeil)
+        {
+            ToggleVeil();
+            handled = true;
+            return IntPtr.Zero;
+        }
+
         if (msg == TrayNotification.CallbackMessage)
         {
             var evt = lParam.ToInt32() & 0xFFFF;
@@ -537,6 +546,17 @@ public partial class DockWindow : Window
         }
 
         return IntPtr.Zero;
+    }
+
+    private void ToggleVeil()
+    {
+        _veil ??= new VeilWindow();
+        _veil.Toggle();
+
+        if (_veil.IsVisible)
+        {
+            WindowStyling.BringToTop(_hwnd);
+        }
     }
 
     private void ToggleDockVisible()
@@ -564,6 +584,7 @@ public partial class DockWindow : Window
         {
             (IsVisible ? "Dock'u gizle" : "Dock'u göster", ToggleDockVisible),
             ("Masaüstünü göster", DesktopController.ShowDesktop),
+            (_veil?.IsVisible == true ? "Perde modunu kapat" : "Perde modu (Ctrl+Alt+V)", ToggleVeil),
             (AutoStart.IsEnabled() ? "Açılışta başlatmayı kapat" : "Açılışta başlat", AutoStart.Toggle),
             ("-", () => { }),
             ("Çıkış", () => Application.Current.Shutdown()),
@@ -1526,6 +1547,7 @@ public partial class DockWindow : Window
         var menu = new ContextMenu();
         ApplyMenuStyle(menu);
         menu.Items.Add(MenuAction("Masaüstünü göster", DesktopController.ShowDesktop));
+        menu.Items.Add(MenuAction("Perde modu (Ctrl+Alt+V)", ToggleVeil));
         menu.Items.Add(MenuAction("Görev Yöneticisi", () => StartSafe("taskmgr.exe")));
         menu.Items.Add(MenuAction(AutoStart.IsEnabled() ? "Açılışta başlatmayı kapat" : "Açılışta başlat", AutoStart.Toggle));
         menu.Items.Add(new Separator());
@@ -1597,7 +1619,7 @@ public partial class DockWindow : Window
         if (_radial is null)
         {
             _radial = new RadialMenuWindow();
-            _radial.Closed += (_, _) => _menuOpen = false;
+            _radial.Dismissed += () => _menuOpen = false;
         }
 
         _menuOpen = true;
@@ -1865,6 +1887,8 @@ public partial class DockWindow : Window
         _spectralRim.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
         _spectralLayer.BeginAnimation(OpacityProperty, null);
 
+        DesktopController.UnregisterHotKey(_hwnd, DesktopController.HotkeyIdVeil);
+        _veil?.HideVeil();
         _foregroundHook?.Dispose();
         _windowHook?.Dispose();
         _alertHook?.Dispose();

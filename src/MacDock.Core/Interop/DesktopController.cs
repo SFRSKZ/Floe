@@ -23,6 +23,17 @@ public static class DesktopController
         keybd_event(VkLWin, 0, KeyEventKeyUp, UIntPtr.Zero);
     }
 
+    public const int HotkeyIdVeil = 1;
+    public const uint ModAlt = 0x0001;
+    public const uint ModControl = 0x0002;
+    public const uint VkV = 0x56;
+
+    [DllImport("user32.dll")]
+    public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll")]
+    public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
     public static void VolumeUp() => Tap(VkVolumeUp);
 
     public static void VolumeDown() => Tap(VkVolumeDown);
