@@ -35,7 +35,9 @@ public partial class DockWindow : Window
     private const double RestBarHeight = 68;
     private const double MaxBulge = 32;
     private const double Headroom = 20;
-    private const double WindowHeight = RestBarHeight + MaxBulge + Headroom;
+    // Transparent footer contains the shadow; AppBar still reserves RestBarHeight + BottomMargin.
+    private const double ShadowRoom = 24;
+    private const double WindowHeight = RestBarHeight + MaxBulge + Headroom + ShadowRoom;
     private const double EdgeMargin = 6;
     private const double MaxSideStretch = 12;
     private const double CompactScale = 0.62;
@@ -49,9 +51,9 @@ public partial class DockWindow : Window
     private const int TriggerShow = 6;
     private const int TriggerPx = 4;
 
-    private static readonly double RestTop = WindowHeight - RestBarHeight;
-    private static readonly double Bottom = WindowHeight;
-    private static readonly double IconBottom = WindowHeight - PadY;
+    private static readonly double RestTop = WindowHeight - ShadowRoom - RestBarHeight;
+    private static readonly double Bottom = WindowHeight - ShadowRoom;
+    private static readonly double IconBottom = Bottom - PadY;
 
     private readonly List<IconSlot> _slots = new();
     private IconSlot? _dragSlot;
@@ -87,7 +89,7 @@ public partial class DockWindow : Window
         AutoReverse = true,
         RepeatBehavior = RepeatBehavior.Forever,
     };
-    private readonly SolidColorBrush _runningDotBrush = new(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF));
+    private readonly SolidColorBrush _runningDotBrush = new(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF));
     private readonly Grid _auraGrid = new();
     private readonly Image[] _auraImages = new Image[3];
     private readonly DropShadowEffect[] _auraEffects = new DropShadowEffect[3];
@@ -327,11 +329,9 @@ public partial class DockWindow : Window
         _glass.Fill = BuildGlassBrush();
         _sheenBrush = BuildSheenBrush();
         _sheen.Fill = _sheenBrush;
-        _specular.Stroke = BuildSpecularBrush();
-        _specular.StrokeThickness = 1.2;
-        _specular.Effect = new BlurEffect { Radius = 1.2, RenderingBias = RenderingBias.Performance };
-        _rim.Stroke = new SolidColorBrush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF));
-        _rim.StrokeThickness = 1;
+        _specular.Visibility = Visibility.Collapsed;
+        _rim.Stroke = BuildRimBrush();
+        _rim.Clip = _shapeGeometry;
         var mask = new RadialGradientBrush
         {
             Center = new Point(0.5, 0.0),
@@ -350,7 +350,7 @@ public partial class DockWindow : Window
 
         _glow.Fill = _glowBrush;
         _glow.Visibility = Visibility.Collapsed;
-        _backdrop.Effect = new BlurEffect { Radius = MacDock.App.Services.BlurSettings.Radius, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Performance };
+        InitializeGlass();
         _backdrop.Width = _windowWidth;
         _backdrop.Height = WindowHeight;
         Canvas.SetLeft(_backdrop, 0);
@@ -366,6 +366,7 @@ public partial class DockWindow : Window
         _glowLayer.Clip = _shapeGeometry;
         _backdrop.Clip = _shapeGeometry;
 
+        ShapeLayer.Children.Add(_outerRim);
         ShapeLayer.Children.Add(_glass);
         ShapeLayer.Children.Add(_rim);
         ShapeLayer.Children.Add(_sheen);
@@ -375,12 +376,13 @@ public partial class DockWindow : Window
         {
             TileMode = TileMode.Tile,
             ViewportUnits = BrushMappingMode.Absolute,
-            Viewport = new Rect(0, 0, 64, 64),
+            Viewport = new Rect(0, 0, 32, 32),
             Stretch = Stretch.None,
         };
         _grain.Opacity = MacDock.App.Services.BlurSettings.GrainOpacity;
         _grain.Clip = _shapeGeometry;
         ShapeLayer.Children.Add(_grain);
+        ShapeLayer.Children.Add(_metalHost);
 
         _glowLayer.Children.Add(_glow);
         _glowLayer.Children.Add(_dropRing);
@@ -493,6 +495,11 @@ public partial class DockWindow : Window
         LoadPinned();
 
         AuraSettings.Load();
+        GlassSettings.Load();
+        ApplyGlassSettings();
+        GlassSettings.Changed += OnGlassSettingsChanged;
+        InitializeVisualizer();
+        Closed += (_, _) => DisposeGlass();
         AuraSettings.Changed += OnAuraSettingsChanged;
         DesktopButtonSettings.Load();
         DesktopButtonSettings.Changed += PositionDesktopButton;
@@ -504,8 +511,9 @@ public partial class DockWindow : Window
 
         Loaded += (_, _) =>
         {
-            UpdateShape();
             Reposition();
+            PrepareGlassPreview();
+            UpdateShape();
             if (AutoHide)
             {
                 _hideTimer.Start();
@@ -516,7 +524,7 @@ public partial class DockWindow : Window
 
             if (BlurBackdrop)
             {
-                _backdropCapture = new BackdropCapture(this, PresentBackdrop, () => _renderingHooked || IsMouseOver || _menuOpen);
+                _backdropCapture = new BackdropCapture(this, PresentBackdrop, () => _renderingHooked || _menuOpen);
             }
 
             EnsureWidgets();

@@ -50,6 +50,7 @@ public partial class App : Application
         }
 
         if (Effects.MetalRim.MetalRimPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Visualizer.VisualizerPreview.TryRender(e.Args)) { Shutdown(); return; }
 
         if (TryRenderSettings(e.Args))
         {

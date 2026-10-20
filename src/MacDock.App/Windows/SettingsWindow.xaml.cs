@@ -48,6 +48,7 @@ public partial class SettingsWindow : Window
         Closed += (_, _) => AuraSettings.Changed -= RefreshRows;
 
         BuildDesktopButtonControls();
+        BuildGlassControls();
         RefreshRows();
     }
 
@@ -96,6 +97,25 @@ public partial class SettingsWindow : Window
         DesktopButtonSettings.Changed += RefreshSwatches;
         Closed += (_, _) => DesktopButtonSettings.Changed -= RefreshSwatches;
         RefreshSwatches();
+    }
+
+    private void BuildGlassControls()
+    {
+        GlassSettings.Load();
+
+        RimPlain.IsChecked = GlassSettings.Rim == RimStyle.Plain;
+        RimSilver.IsChecked = GlassSettings.Rim == RimStyle.MetalSilver;
+        RimGold.IsChecked = GlassSettings.Rim == RimStyle.MetalGold;
+        RimChromatic.IsChecked = GlassSettings.Rim == RimStyle.MetalChromatic;
+
+        RimPlain.Checked += (_, _) => GlassSettings.SetRim(RimStyle.Plain);
+        RimSilver.Checked += (_, _) => GlassSettings.SetRim(RimStyle.MetalSilver);
+        RimGold.Checked += (_, _) => GlassSettings.SetRim(RimStyle.MetalGold);
+        RimChromatic.Checked += (_, _) => GlassSettings.SetRim(RimStyle.MetalChromatic);
+
+        VisualizerToggle.IsChecked = GlassSettings.Visualizer;
+        VisualizerToggle.Checked += (_, _) => GlassSettings.SetVisualizer(true);
+        VisualizerToggle.Unchecked += (_, _) => GlassSettings.SetVisualizer(false);
     }
 
     private void RefreshSwatches()

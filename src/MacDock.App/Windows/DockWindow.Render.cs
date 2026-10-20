@@ -54,6 +54,12 @@ public partial class DockWindow
             dt = 1.0 / 60.0;
         }
 
+        if (_metalEffect is not null && !_glassPreview)
+        {
+            _metalTime += dt;
+            _metalEffect.Time = _metalTime;
+            _metalEffect.CursorY = IsMouseOver ? Math.Clamp((Mouse.GetPosition(Root).Y - RestTop) / RestBarHeight, 0, 1) : 0;
+        }
         _currentHoverX = Spring(_currentHoverX, ref _hoverVel, _targetHoverX, dt);
         _currentBulge = Spring(_currentBulge, ref _bulgeVel, _targetBulge, dt);
         _dockScale = Spring(_dockScale, ref _dockScaleVel, _targetDockScale, dt, 180, 24);
@@ -88,7 +94,7 @@ public partial class DockWindow
             _rootScale.ScaleX = _dockScale;
             _rootScale.ScaleY = _dockScale;
             UpdateShape();
-            StopAnimation();
+            if (_metalEffect is null || !IsMouseOver) StopAnimation();
         }
     }
 
@@ -141,6 +147,7 @@ public partial class DockWindow
             }
         }
 
+        UpdateGlassShape();
         var ratio = _windowWidth > 0 ? Math.Min(1, Math.Max(0, _currentHoverX) / _windowWidth) : 0.5;
         var sheen = (LinearGradientBrush)_sheen.Fill;
         if (!sheen.IsFrozen)
@@ -148,6 +155,7 @@ public partial class DockWindow
             sheen.StartPoint = new Point(ratio, 0);
             sheen.EndPoint = new Point(ratio, 1);
         }
+        if (_glassPreview) Root.UpdateLayout();
     }
 
     private void UpdateGlow()

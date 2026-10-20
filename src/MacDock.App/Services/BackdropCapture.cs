@@ -6,10 +6,10 @@ using MacDock.Core.Interop;
 
 namespace MacDock.App.Services;
 
-/// <summary>Captures at native resolution, publishing only changed frames to the UI.</summary>
+/// <summary>Captures at quarter resolution, publishing only changed frames to the UI.</summary>
 internal sealed class BackdropCapture : IDisposable
 {
-    private const int ActiveIntervalMs = 66;
+    private const int ActiveIntervalMs = 33;
     private const int IdleIntervalMs = 250;
     private const int IdlePausedIntervalMs = 600;
 
@@ -59,15 +59,19 @@ internal sealed class BackdropCapture : IDisposable
         try
         {
             using var capture = new ScreenCapture.Session();
+            int unchangedFrames = 0;
             while (!_disposed)
             {
                 try
                 {
                     if (_visible && ScreenInput.TryGetWindowRect(_hwnd, out var rect))
                     {
-                        var width = rect.Right - rect.Left;
-                        var height = rect.Bottom - rect.Top;
-                        var pixels = capture.Capture(rect.Left, rect.Top, width, height, out var stride, out var changed);
+                        var sourceWidth = rect.Right - rect.Left;
+                        var sourceHeight = rect.Bottom - rect.Top;
+                        var width = Math.Max(1, (sourceWidth + 3) / 4);
+                        var height = Math.Max(1, (sourceHeight + 3) / 4);
+                        var pixels = capture.CaptureScaled(rect.Left, rect.Top, sourceWidth, sourceHeight, width, height, out var stride, out var changed);
+                        unchangedFrames = changed ? 0 : Math.Min(unchangedFrames + 1, 4);
                         if (pixels is not null && changed)
                         {
                             lock (_sync)
@@ -99,6 +103,7 @@ internal sealed class BackdropCapture : IDisposable
                 }
                 catch (Exception)
                 {
+                    unchangedFrames = 4;
                     // A failed grab (session lock, RDP, display-mode change) or a dispatcher
                     // that is shutting down must not kill the process; retry next tick.
                 }
@@ -108,13 +113,13 @@ internal sealed class BackdropCapture : IDisposable
                 {
                     delay = Timeout.Infinite;
                 }
-                else if (_isActive?.Invoke() ?? true)
+                else if (unchangedFrames < 4)
                 {
                     delay = ActiveIntervalMs;
                 }
                 else
                 {
-                    delay = ScreenInput.GetIdleMilliseconds() > 2000 ? IdlePausedIntervalMs : IdleIntervalMs;
+                    delay = !(_isActive?.Invoke() ?? false) && ScreenInput.GetIdleMilliseconds() > 2000 ? IdlePausedIntervalMs : IdleIntervalMs;
                 }
 
                 _wake.WaitOne(delay);

@@ -124,6 +124,21 @@ public static class MediaService
         }
     }
 
+    /// <summary>True when the current SMTC session reports Playing. Never throws.</summary>
+    public static async Task<bool> IsPlayingAsync()
+    {
+        try
+        {
+            var session = await GetSessionAsync();
+            return session?.GetPlaybackInfo()?.PlaybackStatus ==
+                GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static async Task<GlobalSystemMediaTransportControlsSession?> GetSessionAsync()
     {
         var manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
