@@ -53,6 +53,12 @@ public static class TrayNotification
     [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr icon);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int RegisterWindowMessage(string message);
+
+    /// <summary>Broadcast message Explorer sends when it (re)starts; the tray icon and appbar must be re-added.</summary>
+    public static int TaskbarCreatedMessage { get; } = RegisterWindowMessage("TaskbarCreated");
+
     public static bool Add(IntPtr window, string tip, IntPtr icon)
     {
         var data = Create(window, tip, icon);

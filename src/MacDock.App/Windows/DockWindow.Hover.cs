@@ -25,6 +25,8 @@ namespace MacDock.App.Windows;
 public partial class DockWindow
 {
 
+    private readonly DispatcherTimer _previewHideTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
+
     private void Window_PreviewMouseMove(object sender, MouseEventArgs e)
     {
         if (_isDragging)
@@ -52,7 +54,9 @@ public partial class DockWindow
         _hoveredIndex = -1;
         _tooltipTimer.Stop();
         _tooltip.IsOpen = false;
-        HidePreview();
+
+        // the preview may still be under the cursor just above the dock
+        StartPreviewHideTimer();
         EnsureAnimation();
     }
 
@@ -94,12 +98,44 @@ public partial class DockWindow
 
     private void HidePreview()
     {
+        _previewHideTimer.Stop();
         _preview?.Close3();
+    }
+
+    private void StartPreviewHideTimer()
+    {
+        if (_preview?.IsVisible != true)
+        {
+            return;
+        }
+
+        _previewHideTimer.Stop();
+        _previewHideTimer.Start();
+    }
+
+    private void FinishPreviewHide()
+    {
+        _previewHideTimer.Stop();
+        if (_preview?.IsVisible != true || CursorOverDock() || _preview.IsCursorOver)
+        {
+            return;
+        }
+
+        HidePreview();
     }
 
     private void ShowPreview(IconSlot slot)
     {
-        _preview ??= new PreviewWindow();
+        if (_preview is null)
+        {
+            _preview = new PreviewWindow();
+            _preview.MouseLeave += (_, _) => StartPreviewHideTimer();
+            _preview.WindowActivated += HidePreview;
+            _preview.SourcesGone += HidePreview;
+            _previewHideTimer.Tick += (_, _) => FinishPreviewHide();
+        }
+
+        _previewHideTimer.Stop();
         _preview.Show();
         _preview.ShowFor(slot.Item.Windows);
 

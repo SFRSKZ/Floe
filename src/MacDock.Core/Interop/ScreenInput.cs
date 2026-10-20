@@ -8,8 +8,8 @@ public static class ScreenInput
 {
     private const int SmCxScreen = 0;
     private const int SmCyScreen = 1;
-    private const int GwlStyle = -16;
-    private const long WsCaption = 0x00C00000;
+    private const uint MonitorDefaultToPrimary = 1;
+    private const uint MonitorDefaultToNearest = 2;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct Rect
@@ -18,6 +18,15 @@ public static class ScreenInput
         public int Top;
         public int Right;
         public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MonitorInfo
+    {
+        public int Size;
+        public Rect Monitor;
+        public Rect Work;
+        public uint Flags;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -42,11 +51,17 @@ public static class ScreenInput
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
-    private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int index);
-
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassName(IntPtr hWnd, StringBuilder className, int maxCount);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hWnd);
 
     public static (int X, int Y) GetCursorPosition()
         => GetCursorPos(out var point) ? (point.X, point.Y) : (0, 0);
@@ -57,6 +72,43 @@ public static class ScreenInput
 
     public static bool TryGetWindowRect(IntPtr hwnd, out Rect rect)
         => GetWindowRect(hwnd, out rect);
+
+    /// <summary>Monitor that currently contains the window (primary when it has no window yet).</summary>
+    public static IntPtr GetMonitorForWindow(IntPtr hwnd)
+        => hwnd == IntPtr.Zero
+            ? MonitorFromWindow(hwnd, MonitorDefaultToPrimary)
+            : MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+
+    public static IntPtr GetForegroundMonitor()
+    {
+        var foreground = GetForegroundWindow();
+        return foreground == IntPtr.Zero ? IntPtr.Zero : MonitorFromWindow(foreground, MonitorDefaultToNearest);
+    }
+
+    public static bool TryGetMonitorInfo(IntPtr monitor, out MonitorInfo info)
+    {
+        info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        return monitor != IntPtr.Zero && GetMonitorInfo(monitor, ref info);
+    }
+
+    /// <summary>Effective DPI scale (1.0 at 96 DPI) of the monitor the window is on.</summary>
+    public static double GetDpiScale(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return 1.0;
+        }
+
+        try
+        {
+            var dpi = GetDpiForWindow(hwnd);
+            return dpi > 0 ? dpi / 96.0 : 1.0;
+        }
+        catch
+        {
+            return 1.0;
+        }
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct LastInputInfo
@@ -173,10 +225,16 @@ public static class ScreenInput
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int maxCount);
 
-    public static bool IsForegroundFullscreen()
+    public static bool IsForegroundFullscreen() => IsForegroundFullscreen(IntPtr.Zero);
+
+    /// <summary>
+    /// True when the foreground window covers the whole monitor rect (caption or not).
+    /// When <paramref name="monitor"/> is given, the window must also live on that monitor.
+    /// </summary>
+    public static bool IsForegroundFullscreen(IntPtr monitor)
     {
         var foreground = GetForegroundWindow();
-        if (foreground == IntPtr.Zero)
+        if (foreground == IntPtr.Zero || IsIconic(foreground))
         {
             return false;
         }
@@ -187,22 +245,24 @@ public static class ScreenInput
             return false;
         }
 
-        // a maximized normal window still has a caption; only borderless windows count
-        var style = GetWindowLongPtr(foreground, GwlStyle).ToInt64();
-        if ((style & WsCaption) == WsCaption)
+        var foregroundMonitor = MonitorFromWindow(foreground, MonitorDefaultToNearest);
+        if (monitor != IntPtr.Zero && foregroundMonitor != monitor)
         {
             return false;
         }
 
-        if (!GetWindowRect(foreground, out var rect))
+        var target = monitor != IntPtr.Zero ? monitor : foregroundMonitor;
+        if (!TryGetMonitorInfo(target, out var info) || !GetWindowRect(foreground, out var rect))
         {
             return false;
         }
 
-        return rect.Left <= 0
-            && rect.Top <= 0
-            && rect.Right >= PrimaryScreenWidth
-            && rect.Bottom >= PrimaryScreenHeight;
+        const int tolerance = 2;
+        var area = info.Monitor;
+        return rect.Left <= area.Left + tolerance
+            && rect.Top <= area.Top + tolerance
+            && rect.Right >= area.Right - tolerance
+            && rect.Bottom >= area.Bottom - tolerance;
     }
 
     private static string GetWindowClassName(IntPtr hwnd)

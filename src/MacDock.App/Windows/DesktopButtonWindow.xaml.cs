@@ -7,7 +7,6 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
-using System.Windows.Threading;
 using MacDock.App.Services;
 using MacDock.Core.Interop;
 
@@ -19,10 +18,11 @@ public partial class DesktopButtonWindow : Window
 
     public event Action? Clicked;
 
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(90) };
     private readonly List<RotateTransform> _spins = new();
     private Ellipse _core = new() { IsHitTestVisible = false };
     private Ellipse _rim = new() { IsHitTestVisible = false };
+    private bool _animating;
+    private long _lastTick;
     private double _phase;
     private double _hover;
 
@@ -33,16 +33,15 @@ public partial class DesktopButtonWindow : Window
         DesktopButtonSettings.Changed += Build;
         Build();
 
-        _timer.Tick += (_, _) => Animate();
         IsVisibleChanged += (_, _) =>
         {
             if (IsVisible)
             {
-                _timer.Start();
+                EnsureAnimation();
             }
             else
             {
-                _timer.Stop();
+                StopAnimation();
             }
         };
         MouseEnter += (_, _) => _hover = 1;
@@ -58,8 +57,45 @@ public partial class DesktopButtonWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        StopAnimation();
         DesktopButtonSettings.Changed -= Build;
         base.OnClosed(e);
+    }
+
+    private void EnsureAnimation()
+    {
+        if (_animating)
+        {
+            return;
+        }
+
+        _animating = true;
+        _lastTick = System.Diagnostics.Stopwatch.GetTimestamp();
+        CompositionTarget.Rendering += OnRendering;
+    }
+
+    private void StopAnimation()
+    {
+        if (!_animating)
+        {
+            return;
+        }
+
+        _animating = false;
+        CompositionTarget.Rendering -= OnRendering;
+    }
+
+    private void OnRendering(object? sender, EventArgs e)
+    {
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        var dt = (now - _lastTick) / (double)System.Diagnostics.Stopwatch.Frequency;
+        _lastTick = now;
+        if (dt <= 0 || dt > 0.1)
+        {
+            dt = 1.0 / 60.0;
+        }
+
+        Animate(dt);
     }
 
     private void Build()
@@ -148,16 +184,16 @@ public partial class DesktopButtonWindow : Window
         Root.Children.Add(_core);
     }
 
-    private void Animate()
+    private void Animate(double dt)
     {
-        _phase += 0.09;
+        _phase += dt;
         var pulse = 0.72 + (0.28 * (0.5 + (0.5 * Math.Sin(_phase * 2.0))));
         _core.Opacity = Math.Min(1.0, pulse + (_hover * 0.2));
         _rim.StrokeDashOffset = (_phase * 5) % 12;
         _rim.Opacity = 0.85 + (_hover * 0.15);
         foreach (var spin in _spins)
         {
-            spin.Angle += 1.4 + (_hover * 2.0);
+            spin.Angle += (15.6 + (_hover * 22.2)) * dt;
         }
     }
 }

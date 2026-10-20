@@ -44,40 +44,6 @@ public partial class DockWindow
         return menu;
     }
 
-    private ContextMenu BuildItemMenu(DockItemViewModel item)
-    {
-        var menu = new ContextMenu();
-        ApplyMenuStyle(menu);
-        menu.Items.Add(MenuAction("Aç", () => AppLauncher.LaunchOrActivate(item.App)));
-        menu.Items.Add(MenuAction(item.IsPinned ? "Dock'tan kaldır" : "Dock'a sabitle", () =>
-        {
-            if (item.IsPinned)
-            {
-                Unpin(item);
-            }
-            else
-            {
-                Pin(item);
-            }
-        }));
-        menu.Items.Add(MenuAction("Dosya konumunu aç", () => OpenLocation(item.App)));
-        menu.Items.Add(new Separator());
-        menu.Items.Add(MenuAction("Pencereyi kapat", () => CloseApp(item)));
-
-        var target = AppLauncher.ResolveTarget(item.App);
-        var verbs = ShellVerbs.Get(target);
-        if (verbs.Count > 0)
-        {
-            menu.Items.Add(new Separator());
-            foreach (var verb in verbs)
-            {
-                menu.Items.Add(MenuAction(verb.Name, verb.Invoke));
-            }
-        }
-
-        return menu;
-    }
-
     private void OpenRadialMenu(IconSlot slot)
     {
         var item = slot.Item;
@@ -106,7 +72,18 @@ public partial class DockWindow
         if (_radial is null)
         {
             _radial = new RadialMenuWindow();
-            _radial.Dismissed += () => _menuOpen = false;
+            _radial.Dismissed += () =>
+            {
+                _menuOpen = false;
+
+                if (!CursorOverDock())
+                {
+                    _targetBulge = 0;
+                    _targetDockScale = CompactScale;
+                }
+
+                EnsureAnimation();
+            };
         }
 
         _menuOpen = true;
@@ -190,7 +167,17 @@ public partial class DockWindow
             WindowStyling.SetNoActivate(_hwnd, true);
             _menuOpen = false;
 
-            if (previousForeground != IntPtr.Zero)
+            // only hand focus back when we still own it; if the user clicked another
+            // app while the menu was open, that app must keep the foreground
+            var foreground = ScreenInput.GetForegroundHandle();
+            var ownsActivation = foreground == _hwnd
+                || (foreground != IntPtr.Zero
+                    && string.Equals(
+                        ScreenInput.GetWindowInfo(foreground).ProcessName,
+                        Process.GetCurrentProcess().ProcessName,
+                        StringComparison.OrdinalIgnoreCase));
+
+            if (previousForeground != IntPtr.Zero && ownsActivation)
             {
                 WindowActivator.Activate(previousForeground);
             }
@@ -204,29 +191,9 @@ public partial class DockWindow
             EnsureAnimation();
         };
 
-        if (slot is not null)
-        {
-            menu.Placement = PlacementMode.Top;
-            menu.PlacementTarget = slot.Button;
-            menu.VerticalOffset = -8;
-        }
-        else
-        {
-            menu.Placement = PlacementMode.MousePoint;
-        }
+        menu.Placement = PlacementMode.MousePoint;
 
         menu.IsOpen = true;
-
-        if (slot is not null)
-        {
-            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
-            {
-                if (menu.IsOpen)
-                {
-                    menu.HorizontalOffset = -(menu.ActualWidth - slot.Button.ActualWidth) / 2;
-                }
-            });
-        }
 
         e.Handled = true;
     }

@@ -38,7 +38,7 @@ public partial class DockWindow
         }
 
         var (cursorX, cursorY) = ScreenInput.GetCursorPosition();
-        var screenHeight = ScreenInput.PrimaryScreenHeight;
+        var monitorBottom = MonitorBottomPx;
 
         var physicalWidth = rect.Right - rect.Left;
         var pxPerDip = _windowWidth > 0 ? physicalWidth / _windowWidth : 1;
@@ -49,7 +49,7 @@ public partial class DockWindow
 
         if (!_shown)
         {
-            var inTrigger = cursorY >= screenHeight - TriggerPx && cursorX >= left - 4 && cursorX <= right + 4;
+            var inTrigger = cursorY >= monitorBottom - TriggerPx && cursorX >= left - 4 && cursorX <= right + 4;
             if (inTrigger)
             {
                 ShowDock();
@@ -59,6 +59,7 @@ public partial class DockWindow
         }
 
         var inside = cursorX >= left - 12 && cursorX <= right + 12 && cursorY >= rect.Top - 12 && cursorY <= rect.Bottom + 12;
+        inside |= CursorOverDesktopButton(cursorX, cursorY);
         if (inside)
         {
             _outsideTicks = 0;
@@ -106,9 +107,23 @@ public partial class DockWindow
         BeginAnimation(TopProperty, animation);
     }
 
-    private double ShownTop => SystemParameters.PrimaryScreenHeight - Height - BottomMargin;
+    private double ShownTop => (MonitorBottomPx / DockScale) - Height - BottomMargin;
 
-    private double HiddenTop => SystemParameters.PrimaryScreenHeight - TriggerShow - RestTop;
+    private double HiddenTop => (MonitorBottomPx / DockScale) - TriggerShow - RestTop;
+
+    private double DockScale
+    {
+        get
+        {
+            var scale = ScreenInput.GetDpiScale(_hwnd);
+            return scale > 0 ? scale : 1.0;
+        }
+    }
+
+    private int MonitorBottomPx
+        => _monitorInfo.Monitor.Bottom > _monitorInfo.Monitor.Top
+            ? _monitorInfo.Monitor.Bottom
+            : ScreenInput.PrimaryScreenHeight;
 
     private bool CursorOverDock()
     {
@@ -131,12 +146,98 @@ public partial class DockWindow
         return x >= left - 6 && x <= right + 6 && y >= rect.Top - 10 && y <= rect.Bottom + 6;
     }
 
+    private bool CursorOverDesktopButton(int cursorX, int cursorY)
+    {
+        if (_desktopButton is not { IsVisible: true } button)
+        {
+            return false;
+        }
+
+        var buttonHwnd = new WindowInteropHelper(button).Handle;
+        if (buttonHwnd == IntPtr.Zero || !ScreenInput.TryGetWindowRect(buttonHwnd, out var rect))
+        {
+            return false;
+        }
+
+        return cursorX >= rect.Left - 12 && cursorX <= rect.Right + 12
+            && cursorY >= rect.Top - 12 && cursorY <= rect.Bottom + 12;
+    }
+
     private void Reposition()
     {
-        Left = (SystemParameters.PrimaryScreenWidth - ActualWidth) / 2;
+        UpdateMonitor();
+
+        var scale = DockScale;
+        var area = _monitorInfo.Monitor;
+        var monitorLeft = area.Left / scale;
+        var monitorWidth = (area.Right - area.Left) / scale;
+        var width = ActualWidth > 0 ? ActualWidth : Width;
+
+        BeginAnimation(TopProperty, null);
+        Left = monitorLeft + ((monitorWidth - width) / 2);
         Top = _shown ? ShownTop : HiddenTop;
+
+        EnsureAppBar();
         PositionWidgets();
         PositionDesktopButton();
+    }
+
+    private void UpdateMonitor()
+    {
+        _monitor = ScreenInput.GetMonitorForWindow(_hwnd);
+        if (ScreenInput.TryGetMonitorInfo(_monitor, out var info))
+        {
+            _monitorInfo = info;
+            return;
+        }
+
+        _monitorInfo = new ScreenInput.MonitorInfo
+        {
+            Monitor = new ScreenInput.Rect
+            {
+                Left = 0,
+                Top = 0,
+                Right = ScreenInput.PrimaryScreenWidth,
+                Bottom = ScreenInput.PrimaryScreenHeight,
+            },
+        };
+    }
+
+    private void EnsureAppBar()
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        if (ReserveScreenSpace)
+        {
+            _appBar ??= new AppBar();
+            ApplyAppBarPosition();
+        }
+    }
+
+    private void ApplyAppBarPosition()
+    {
+        if (_appBar is null || _hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        if (!_appBar.IsRegistered && !_appBar.Register(_hwnd))
+        {
+            return;
+        }
+
+        if (_monitorInfo.Monitor.Bottom <= _monitorInfo.Monitor.Top)
+        {
+            UpdateMonitor();
+        }
+
+        // Keep the reservation while a fullscreen app runs: fullscreen windows size to the
+        // monitor rect anyway, and dropping it would re-layout every maximized window.
+        var height = (int)Math.Round((RestBarHeight + BottomMargin) * DockScale);
+        _appBar.SetPosition(_monitorInfo.Monitor, height);
     }
 
 
@@ -196,13 +297,26 @@ public partial class DockWindow
 
     private void UpdateFullscreenState()
     {
-        var fullscreen = ScreenInput.IsForegroundFullscreen();
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        // ABN_FULLSCREENAPP is desktop-wide, so only honour it when the foreground app is on our monitor
+        var fullscreen = ScreenInput.IsForegroundFullscreen(_monitor)
+            || (_appbarFullscreen && ScreenInput.GetForegroundMonitor() == _monitor);
+        if (!ScreenInput.IsForegroundFullscreen())
+        {
+            _appbarFullscreen = false;
+        }
+
         if (fullscreen == _fullscreenHidden)
         {
             return;
         }
 
         _fullscreenHidden = fullscreen;
+
         PositionDesktopButton();
 
         if (fullscreen)

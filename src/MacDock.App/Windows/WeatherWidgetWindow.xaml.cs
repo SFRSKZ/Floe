@@ -19,6 +19,12 @@ public partial class WeatherWidgetWindow : Window, IBubbleWidget
 
     public bool IsBubbleDragging => _bubble.IsDragging;
 
+    public bool Blur
+    {
+        get => _bubble.Blur;
+        set => _bubble.Blur = value;
+    }
+
     public WeatherWidgetWindow()
     {
         InitializeComponent();
@@ -35,6 +41,13 @@ public partial class WeatherWidgetWindow : Window, IBubbleWidget
     {
         base.OnSourceInitialized(e);
         _bubble.Start();
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _timer.Stop();
+        _bubble.Stop();
+        base.OnClosed(e);
     }
 
     private async Task RefreshAsync()

@@ -67,10 +67,17 @@ public sealed class BubbleController
         }
 
         var cursor = ScreenInput.GetCursorPosition();
-        var scale = VisualTreeHelper.GetDpi(_window).DpiScaleX;
-        _dragOffset = new Point((cursor.X / scale) - _window.Left, (cursor.Y / scale) - _window.Top);
+        var dpi = VisualTreeHelper.GetDpi(_window);
+        var scaleX = dpi.DpiScaleX > 0 ? dpi.DpiScaleX : 1;
+        var scaleY = dpi.DpiScaleY > 0 ? dpi.DpiScaleY : 1;
+        _dragOffset = new Point((cursor.X / scaleX) - _window.Left, (cursor.Y / scaleY) - _window.Top);
+
+        if (!_window.CaptureMouse())
+        {
+            return;
+        }
+
         _dragging = true;
-        _window.CaptureMouse();
         e.Handled = true;
     }
 
@@ -81,9 +88,19 @@ public sealed class BubbleController
             return;
         }
 
+        // the button-up can be lost (capture stolen, Alt+Tab, session lock) - end the drag instead of following the cursor
+        if (e.LeftButton != MouseButtonState.Pressed || !_window.IsMouseCaptured)
+        {
+            EndDrag();
+            return;
+        }
+
         var cursor = ScreenInput.GetCursorPosition();
-        var scale = VisualTreeHelper.GetDpi(_window).DpiScaleX;
-        _window.Left = (cursor.X / scale) - _dragOffset.X;
+        var dpi = VisualTreeHelper.GetDpi(_window);
+        var scaleX = dpi.DpiScaleX > 0 ? dpi.DpiScaleX : 1;
+        var scaleY = dpi.DpiScaleY > 0 ? dpi.DpiScaleY : 1;
+        _window.Left = (cursor.X / scaleX) - _dragOffset.X;
+        _window.Top = (cursor.Y / scaleY) - _dragOffset.Y;
     }
 
     private void OnDragEnd(object sender, MouseButtonEventArgs e)
@@ -93,11 +110,30 @@ public sealed class BubbleController
             return;
         }
 
+        EndDrag();
+    }
+
+    private void OnLostMouseCapture(object sender, MouseEventArgs e)
+    {
+        if (!_dragging)
+        {
+            return;
+        }
+
+        EndDrag();
+    }
+
+    private void EndDrag()
+    {
         _dragging = false;
-        _window.ReleaseMouseCapture();
+        if (_window.IsMouseCaptured)
+        {
+            _window.ReleaseMouseCapture();
+        }
+
         if (!string.IsNullOrEmpty(LayoutId))
         {
-            WidgetLayout.Set(LayoutId, _window.Left, _window.Top);
+            WidgetLayout.Set(LayoutId, _window.Left, _window.Top, _window.ActualWidth, _window.ActualHeight);
         }
     }
 
@@ -155,6 +191,7 @@ public sealed class BubbleController
         _window.PreviewMouseLeftButtonDown += OnDragStart;
         _window.PreviewMouseMove += OnDragMove;
         _window.PreviewMouseLeftButtonUp += OnDragEnd;
+        _window.LostMouseCapture += OnLostMouseCapture;
 
         if (_window.IsLoaded)
         {

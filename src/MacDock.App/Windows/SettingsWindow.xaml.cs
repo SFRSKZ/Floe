@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using MacDock.App.Services;
 
 namespace MacDock.App.Windows;
@@ -16,6 +17,11 @@ public partial class SettingsWindow : Window
     public SettingsWindow()
     {
         InitializeComponent();
+
+        // the caller positions the window right after Show()/UpdateLayout(); keep it transparent
+        // until the first dispatcher pass so it never flashes at the default position
+        Opacity = 0;
+        Loaded += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Background, () => Opacity = 1);
 
         AuraSettings.Load();
         BuildPaletteRows();

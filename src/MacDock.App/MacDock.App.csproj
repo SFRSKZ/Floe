@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MacDock.Core\MacDock.Core.csproj" />
+    <EmbeddedResource Include="Effects\MetalRim\MetalRim.hlsl" LogicalName="MacDock.MetalRim.hlsl" />
   </ItemGroup>
 
 </Project>

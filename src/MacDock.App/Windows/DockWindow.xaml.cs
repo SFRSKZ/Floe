@@ -69,7 +69,13 @@ public partial class DockWindow : Window
     private readonly DispatcherTimer _runningDebounce = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private readonly DispatcherTimer _fullscreenTimer = new() { Interval = TimeSpan.FromMilliseconds(1000) };
     private bool _fullscreenHidden;
+    private bool _appbarFullscreen;
+    private AppBar? _appBar;
+    private IntPtr _monitor;
+    private ScreenInput.MonitorInfo _monitorInfo;
+    private int _taskbarCreatedMessage;
     private EventHooks.Hook? _foregroundHook;
+    private EventHooks.Hook? _fullscreenHook;
     private EventHooks.Hook? _windowHook;
     private EventHooks.Hook? _alertHook;
     private DockItemViewModel? _attentionItem;
@@ -229,6 +235,9 @@ public partial class DockWindow : Window
     public bool AutoHide { get; set; }
 
     public bool BlurBackdrop { get; set; } = true;
+
+    // Off for --render runs so a screenshot never changes the user's work area.
+    public bool ReserveScreenSpace { get; set; } = true;
 
     public string DebugInfo
     {

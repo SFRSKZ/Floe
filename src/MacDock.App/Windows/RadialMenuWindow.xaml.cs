@@ -168,15 +168,6 @@ public partial class RadialMenuWindow : Window
         }
     }
 
-    protected override void OnKeyDown(KeyEventArgs e)
-    {
-        base.OnKeyDown(e);
-        if (e.Key == Key.Escape)
-        {
-            Dismiss();
-        }
-    }
-
     protected override void OnClosed(EventArgs e)
     {
         _watchdog.Stop();

@@ -58,12 +58,18 @@ public partial class DockWindow
             return;
         }
 
+        var visible = WidgetLayout.GetVisible();
         try
         {
-            _weatherWidget = new WeatherWidgetWindow();
-            _mediaWidget = new MediaWidgetWindow();
-            _weatherWidget.Show();
-            _mediaWidget.Show();
+            _weatherWidget = new WeatherWidgetWindow { Blur = BlurBackdrop };
+            _mediaWidget = new MediaWidgetWindow { Blur = BlurBackdrop };
+
+            if (visible)
+            {
+                _weatherWidget.Show();
+                _mediaWidget.Show();
+            }
+
             PositionWidgets();
         }
         catch (Exception ex)
@@ -90,11 +96,13 @@ public partial class DockWindow
         {
             _weatherWidget.Hide();
             _mediaWidget.Hide();
+            WidgetLayout.SetVisible(false);
             return;
         }
 
         _weatherWidget.Show();
         _mediaWidget.Show();
+        WidgetLayout.SetVisible(true);
         PositionWidgets();
     }
 
@@ -110,8 +118,8 @@ public partial class DockWindow
         var geometry = WidgetGeometry();
         const double gap = 12;
 
-        SnapWidget(_weatherWidget, "weather", true, geometry, gap);
-        SnapWidget(_mediaWidget, "media", true, geometry, gap);
+        SnapWidget(_weatherWidget, "weather", geometry, gap);
+        SnapWidget(_mediaWidget, "media", geometry, gap);
     }
 
     private (double Bottom, double CapLeft, double CapRight, double RestLeft, double RestRight) WidgetGeometry()
@@ -122,12 +130,19 @@ public partial class DockWindow
         return (Top + WindowHeight, capLeft, capRight, restLeft, restLeft + _restCapsuleWidth);
     }
 
-    private static double TargetLeft(string id, bool defaultRight, double width, (double Bottom, double CapLeft, double CapRight, double RestLeft, double RestRight) geometry, double gap)
+    private static double DefaultLeft(string id, double width, (double Bottom, double CapLeft, double CapRight, double RestLeft, double RestRight) geometry, double gap)
     {
-        var saved = WidgetLayout.Get(id);
+        var mediaLeft = geometry.RestRight + gap;
+
+        // media is the rightmost widget, weather sits to its left with the same gap
+        return id == "media" ? mediaLeft : mediaLeft - gap - width;
+    }
+
+    private static double TargetLeft(string id, (double Left, double Top)? saved, double width, (double Bottom, double CapLeft, double CapRight, double RestLeft, double RestRight) geometry, double gap)
+    {
         var baseLeft = saved is { } s
             ? s.Left
-            : (defaultRight ? geometry.RestRight + gap : geometry.RestLeft - gap - width);
+            : DefaultLeft(id, width, geometry, gap);
 
         var restCenter = (geometry.RestLeft + geometry.RestRight) / 2;
         if ((baseLeft + (width / 2)) >= restCenter)
@@ -142,16 +157,26 @@ public partial class DockWindow
         return baseLeft - Math.Min(overlapLeft, expansionLeft);
     }
 
-    private static void SnapWidget(Window widget, string id, bool defaultRight, (double Bottom, double CapLeft, double CapRight, double RestLeft, double RestRight) geometry, double gap)
+    private static double TargetTop((double Left, double Top)? saved, double height, (double Bottom, double CapLeft, double CapRight, double RestLeft, double RestRight) geometry)
+        => saved is { } s ? s.Top : geometry.Bottom - height;
+
+    private static void SnapWidget(Window widget, string id, (double Bottom, double CapLeft, double CapRight, double RestLeft, double RestRight) geometry, double gap)
     {
         if (!widget.IsVisible)
         {
             return;
         }
 
+        // never fight the user while a drag is in progress
+        if (widget is IBubbleWidget { IsBubbleDragging: true })
+        {
+            return;
+        }
+
         if (widget.ActualWidth <= 0) { widget.UpdateLayout(); }
-        widget.Left = TargetLeft(id, defaultRight, widget.ActualWidth, geometry, gap);
-        widget.Top = geometry.Bottom - widget.ActualHeight;
+        var saved = WidgetLayout.Get(id, widget.ActualWidth, widget.ActualHeight);
+        widget.Left = TargetLeft(id, saved, widget.ActualWidth, geometry, gap);
+        widget.Top = TargetTop(saved, widget.ActualHeight, geometry);
     }
 
     private bool UpdateWidgetPositions()
@@ -164,16 +189,22 @@ public partial class DockWindow
         var geometry = WidgetGeometry();
         const double gap = 12;
 
-        var moved = SpringWidget(_weatherWidget, "weather", true, geometry, gap);
-        moved |= SpringWidget(_mediaWidget, "media", true, geometry, gap);
+        var moved = SpringWidget(_weatherWidget, "weather", geometry, gap);
+        moved |= SpringWidget(_mediaWidget, "media", geometry, gap);
         return moved;
     }
 
-    private static bool SpringWidget(Window widget, string id, bool defaultRight, (double Bottom, double CapLeft, double CapRight, double RestLeft, double RestRight) geometry, double gap)
+    private static bool SpringWidget(Window widget, string id, (double Bottom, double CapLeft, double CapRight, double RestLeft, double RestRight) geometry, double gap)
     {
         if (!widget.IsVisible)
         {
             return false;
+        }
+
+        // the user owns both axes while dragging; keep the loop alive to re-apply afterwards
+        if (widget is IBubbleWidget { IsBubbleDragging: true })
+        {
+            return true;
         }
 
         if (widget.ActualWidth <= 0)
@@ -181,16 +212,17 @@ public partial class DockWindow
             widget.UpdateLayout();
         }
 
-        var target = TargetLeft(id, defaultRight, widget.ActualWidth, geometry, gap);
+        var saved = WidgetLayout.Get(id, widget.ActualWidth, widget.ActualHeight);
+        var target = TargetLeft(id, saved, widget.ActualWidth, geometry, gap);
+        var top = TargetTop(saved, widget.ActualHeight, geometry);
         var moved = false;
 
-        if (widget is not IBubbleWidget { IsBubbleDragging: true } && Math.Abs(widget.Left - target) > 0.5)
+        if (Math.Abs(widget.Left - target) > 0.5)
         {
             widget.Left = target;
             moved = true;
         }
 
-        var top = geometry.Bottom - widget.ActualHeight;
         if (Math.Abs(widget.Top - top) > 0.5)
         {
             widget.Top = top;

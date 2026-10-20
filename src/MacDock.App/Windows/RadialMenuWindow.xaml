@@ -4,7 +4,7 @@
         Title="MacDock"
         WindowStyle="None"
         AllowsTransparency="True"
-        Background="Transparent"
+        Background="{x:Null}"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
         Topmost="True"
@@ -12,5 +12,5 @@
         WindowStartupLocation="Manual"
         SizeToContent="Manual"
         SnapsToDevicePixels="True">
-    <Canvas x:Name="Root" Background="Transparent" />
+    <Canvas x:Name="Root" Background="{x:Null}" />
 </Window>

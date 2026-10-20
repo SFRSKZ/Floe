@@ -49,6 +49,8 @@ public partial class App : Application
             return;
         }
 
+        if (Effects.MetalRim.MetalRimPreview.TryRender(e.Args)) { Shutdown(); return; }
+
         if (TryRenderSettings(e.Args))
         {
             Shutdown();
@@ -163,6 +165,7 @@ public partial class App : Application
         {
             AutoHide = renderPath is null && autoHide,
             BlurBackdrop = blur,
+            ReserveScreenSpace = renderPath is null,
         };
         dock.Show();
         _dockRunning = renderPath is null;
