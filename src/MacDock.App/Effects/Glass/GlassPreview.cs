@@ -66,7 +66,7 @@ internal static class GlassPreview
         }
     }
 
-    internal static BitmapSource WarpRim(BitmapSource source, double width, double height, double hover, double bulge, Point stretch)
+    internal static BitmapSource WarpRim(BitmapSource source, double width, double height, double hover, double bulge, Point stretch, double plateau, double sigma)
     {
         int w = (int)Math.Ceiling(width + 48), h = (int)Math.Ceiling(height + 80);
         var input = new byte[source.PixelWidth * source.PixelHeight * 4];
@@ -80,8 +80,8 @@ internal static class GlassPreview
             double vertical = Math.Clamp((height - py) / height, 0, 1);
             vertical = vertical * vertical * (3 - 2 * vertical);
             px += (px < width * 0.5 ? stretch.X : -stretch.Y) * vertical;
-            double d = Math.Clamp(px, 22, width - 22) - hover;
-            double lift = bulge * Math.Exp(-d * d / (2 * 34 * 34));
+            double d = Math.Max(0, Math.Abs(Math.Clamp(px, 22, width - 22) - hover) - plateau);
+            double lift = bulge * Math.Exp(-d * d / (2 * sigma * sigma));
             py += lift * Math.Clamp((height - 22 - py) / (height - 44 + lift), 0, 1);
             double sx = px + 24 - 0.5, sy = py + 24 - 0.5;
             int ix = (int)Math.Floor(sx), iy = (int)Math.Floor(sy);

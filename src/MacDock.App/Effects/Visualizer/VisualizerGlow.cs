@@ -21,6 +21,9 @@ namespace MacDock.App.Effects.Visualizer;
 public sealed class VisualizerGlow : FrameworkElement
 {
     private const double MaxAlpha = 0.55;
+    private const double GainDecaySeconds = 4.0;
+    private const double GainFloor = 0.002;
+    private const double SilenceFloor = 0.0003;
     private const double AttackSeconds = 0.06;
     private const double ReleaseSeconds = 0.35;
     private const double FadeOutSeconds = 0.40;
@@ -52,6 +55,7 @@ public sealed class VisualizerGlow : FrameworkElement
     private bool _active;
     private bool _hooked;
     private double _level;
+    private double _gainPeak;
     private double _balance;
     private double _fade;
     private double _lastFrameSeconds = -1;
@@ -338,7 +342,11 @@ public sealed class VisualizerGlow : FrameworkElement
     {
         _meter ??= new AudioPeakMeter();
 
-        double target = Math.Clamp(_meter.GetPeak(), 0, 1);
+        // Auto gain: the endpoint meter can sit far below full scale (app volume,
+        // EQ/voice-changer chains), so normalise against a slowly decaying recent peak.
+        double raw = Math.Clamp(_meter.GetPeak(), 0, 1);
+        _gainPeak = Math.Max(raw, _gainPeak * Math.Exp(-dt / GainDecaySeconds));
+        double target = raw < SilenceFloor ? 0 : Math.Clamp(raw / Math.Max(_gainPeak, GainFloor), 0, 1);
         double tau = target > _level ? AttackSeconds : ReleaseSeconds;
         _level += (target - _level) * (1 - Math.Exp(-dt / tau));
 

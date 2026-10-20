@@ -211,7 +211,7 @@ public partial class DockWindow
 
         _glow.Width = glowWidth;
         Canvas.SetLeft(_glow, left);
-        Canvas.SetTop(_glow, RestTop - _currentBulge - 2);
+        Canvas.SetTop(_glow, RestTop - EffectiveBulge - 2);
         _glow.Visibility = Visibility.Visible;
     }
 
@@ -224,7 +224,7 @@ public partial class DockWindow
         var points = _shapePoints;
 
         double TopAt(double localX)
-            => Math.Max(0, RestTop - (_currentBulge * Gaussian(localX, _currentHoverX - offset)));
+            => Math.Max(0, RestTop - (EffectiveBulge * BulgeProfile(localX - (_currentHoverX - offset))));
 
         var y0 = TopAt(r);
         var y1 = TopAt(width - r);
@@ -251,7 +251,7 @@ public partial class DockWindow
 
     private void ApplySideStretch(List<Point> points, double offset, double width)
     {
-        var strength = MaxBulge > 0 ? Math.Max(0, Math.Min(1, _currentBulge / MaxBulge)) : 0.0;
+        var strength = MaxBulge > 0 ? Math.Max(0, Math.Min(1, EffectiveBulge / MaxBulge)) : 0.0;
         if (strength <= 0.001)
         {
             return;
@@ -287,6 +287,23 @@ public partial class DockWindow
             var angle = (startDeg + (step * i)) * Math.PI / 180.0;
             points.Add(new Point(cx + (radius * Math.Cos(angle)), cy + (radius * Math.Sin(angle))));
         }
+    }
+
+    // Hover bump shape per GlassSettings.Bulge: height factor, flat-top half-width, shoulder sigma.
+    private static (double Height, double Plateau, double Sigma) BulgeShape => GlassSettings.Bulge switch
+    {
+        BulgeStyle.Pedestal => (1.0, 46, 12),
+        BulgeStyle.Flat => (0, 0, BulgeSigma),
+        _ => (0.72, 0, 52),
+    };
+
+    private double EffectiveBulge => _currentBulge * BulgeShape.Height;
+
+    private static double BulgeProfile(double distance)
+    {
+        var shape = BulgeShape;
+        var d = Math.Max(0, Math.Abs(distance) - shape.Plateau);
+        return Math.Exp(-(d * d) / (2 * shape.Sigma * shape.Sigma));
     }
 
     private static double Gaussian(double x, double center)

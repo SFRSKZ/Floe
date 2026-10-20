@@ -6,6 +6,14 @@ using System.Windows.Media;
 
 namespace MacDock.App.Services;
 
+public enum DesktopButtonStyle
+{
+    Ring,
+    Windows,
+    Monitor,
+    Orb,
+}
+
 public static class DesktopButtonSettings
 {
     public static event Action? Changed;
@@ -33,6 +41,8 @@ public static class DesktopButtonSettings
 
     public static Color Color => Colors[Math.Clamp(ColorIndex, 0, Colors.Count - 1)].Color;
 
+    public static DesktopButtonStyle Style { get; private set; } = DesktopButtonStyle.Ring;
+
     public static void Load()
     {
         try
@@ -51,6 +61,7 @@ public static class DesktopButtonSettings
             Size = model.Size <= 0 ? 0.72 : Math.Clamp(model.Size, 0.4, 1.6);
             Brightness = model.Brightness <= 0 ? 1.0 : Math.Clamp(model.Brightness, 0.3, 2.2);
             ColorIndex = Math.Clamp(model.ColorIndex, 0, Colors.Count - 1);
+            Style = Enum.TryParse<DesktopButtonStyle>(model.Style, true, out var style) ? style : DesktopButtonStyle.Ring;
         }
         catch
         {
@@ -97,6 +108,18 @@ public static class DesktopButtonSettings
         Changed?.Invoke();
     }
 
+    public static void SetStyle(DesktopButtonStyle style)
+    {
+        if (Style == style)
+        {
+            return;
+        }
+
+        Style = style;
+        Save();
+        Changed?.Invoke();
+    }
+
     private static void Save()
     {
         try
@@ -107,6 +130,7 @@ public static class DesktopButtonSettings
                 Size = Size,
                 Brightness = Brightness,
                 ColorIndex = ColorIndex,
+                Style = Style.ToString(),
             }));
         }
         catch
@@ -122,5 +146,7 @@ public static class DesktopButtonSettings
         public double Brightness { get; set; } = 1.0;
 
         public int ColorIndex { get; set; } = 1;
+
+        public string Style { get; set; } = nameof(DesktopButtonStyle.Ring);
     }
 }

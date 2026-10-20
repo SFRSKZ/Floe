@@ -37,10 +37,14 @@ internal sealed class RimWarpEffect : ShaderEffect
     public double Bulge { get => (double)GetValue(BulgeProperty); set => SetValue(BulgeProperty, value); }
     public static readonly DependencyProperty StretchProperty = Register(nameof(Stretch), new Point(), 3);
     public Point Stretch { get => (Point)GetValue(StretchProperty); set => SetValue(StretchProperty, value); }
+    public static readonly DependencyProperty PlateauProperty = Register(nameof(Plateau), 0.0, 4);
+    public double Plateau { get => (double)GetValue(PlateauProperty); set => SetValue(PlateauProperty, value); }
+    public static readonly DependencyProperty SigmaProperty = Register(nameof(Sigma), 34.0, 5);
+    public double Sigma { get => (double)GetValue(SigmaProperty); set => SetValue(SigmaProperty, value); }
     public RimWarpEffect()
     {
         PixelShader = VibrancyEffect.LoadShader(GlassShaderCode.RimWarp);
-        foreach (var property in new[] { InputProperty, SizeProperty, HoverProperty, BulgeProperty, StretchProperty }) UpdateShaderValue(property);
+        foreach (var property in new[] { InputProperty, SizeProperty, HoverProperty, BulgeProperty, StretchProperty, PlateauProperty, SigmaProperty }) UpdateShaderValue(property);
     }
     private static DependencyProperty Register<T>(string name, T value, int register) =>
         DependencyProperty.Register(name, typeof(T), typeof(RimWarpEffect), new UIPropertyMetadata(value, PixelShaderConstantCallback(register)));

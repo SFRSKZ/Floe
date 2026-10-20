@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using MacDock.App.Services;
@@ -28,6 +29,7 @@ public partial class WeatherWidgetWindow : Window, IBubbleWidget
     public WeatherWidgetWindow()
     {
         InitializeComponent();
+        WidgetChrome.Apply(this, Root, Panel);
         _bubble = new BubbleController(this, Backdrop, BackdropBrush, RootScale) { LayoutId = "weather" };
         _timer.Tick += async (_, _) => await RefreshAsync();
         Loaded += async (_, _) =>
@@ -61,7 +63,8 @@ public partial class WeatherWidgetWindow : Window, IBubbleWidget
         WeatherTemp.Text = $"{Math.Round(weather.Temperature)}°";
         WeatherLocation.Text = weather.Location;
 
-        var icon = LoadIcon(weather.Condition);
+        var icon = DotMatrixIcons.Render(weather.Condition, 44, Colors.White, VisualTreeHelper.GetDpi(this).DpiScaleX)
+            ?? LoadIcon(weather.Condition);
         if (icon is not null)
         {
             WeatherIconImage.Source = icon;

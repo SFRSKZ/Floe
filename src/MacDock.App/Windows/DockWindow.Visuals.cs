@@ -133,6 +133,8 @@ public partial class DockWindow
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(OnGlassSettingsChanged)); return; }
         ApplyGlassSettings();
+        _shapeHover = double.NaN; // bulge style may have changed
+        UpdateShape();
     }
 
     private void ApplyGlassSettings()
@@ -178,7 +180,7 @@ public partial class DockWindow
         if (_metalEffect is null) return;
         var width = Math.Max(1, _capsuleWidth);
         var hover = _currentHoverX - _capsuleLeft;
-        var strength = Math.Clamp(_currentBulge / MaxBulge, 0, 1);
+        var strength = Math.Clamp(EffectiveBulge / MaxBulge, 0, 1);
         _metalHost.Width = width + 48;
         _metalHost.Height = RestBarHeight + MaxBulge + 48;
         Canvas.SetLeft(_metalHost, _capsuleLeft - 24);
@@ -196,7 +198,9 @@ public partial class DockWindow
         {
             _rimWarp.Size = new Point(width, RestBarHeight);
             _rimWarp.Hover = hover;
-            _rimWarp.Bulge = _currentBulge;
+            _rimWarp.Bulge = EffectiveBulge;
+            _rimWarp.Plateau = BulgeShape.Plateau;
+            _rimWarp.Sigma = BulgeShape.Sigma;
             _rimWarp.Stretch = stretch;
         }
         if (_glassPreview)
@@ -206,7 +210,7 @@ public partial class DockWindow
             _metalHost.Effect = null;
             using var renderer = new MetalRimPreview.OffscreenRenderer((int)Math.Ceiling(width), (int)RestBarHeight);
             var rawRim = renderer.Render(_metalEffect);
-            _metalPreview.Source = GlassPreview.WarpRim(rawRim, width, RestBarHeight, hover, _currentBulge, stretch);
+            _metalPreview.Source = GlassPreview.WarpRim(rawRim, width, RestBarHeight, hover, EffectiveBulge, stretch, BulgeShape.Plateau, BulgeShape.Sigma);
             _metalPreview.Width = _metalHost.Width;
             _metalPreview.Height = _metalHost.Height;
         }

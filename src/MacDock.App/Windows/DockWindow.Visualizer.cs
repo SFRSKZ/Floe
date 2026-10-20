@@ -9,8 +9,10 @@ namespace MacDock.App.Windows;
 public partial class DockWindow
 {
     private readonly VisualizerGlow _visualizer = new();
+    private readonly HologramVisualizer _hologram = new();
     private DispatcherTimer? _visualizerPoll;
     private bool _visualizerPolling;
+    private bool _visualizerRunning;
 
     private void InitializeVisualizer()
     {
@@ -21,6 +23,7 @@ public partial class DockWindow
 
         // Above the backdrop so the light shows through the glass tint and spills below the capsule.
         ShapeLayer.Children.Insert(1, _visualizer);
+        ShapeLayer.Children.Insert(2, _hologram);
         UpdateVisualizerCapsule();
 
         _visualizerPoll = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1.5) };
@@ -34,8 +37,9 @@ public partial class DockWindow
             _visualizerPolling = true;
             try
             {
-                var run = GlassSettings.Visualizer && IsVisible && await VisualizerGlow.ShouldRunAsync();
-                _visualizer.IsActive = run;
+                var playing = await VisualizerGlow.ShouldRunAsync();
+                _visualizerRunning = GlassSettings.Visualizer && IsVisible && playing;
+                ApplyVisualizerState();
             }
             finally
             {
@@ -48,22 +52,37 @@ public partial class DockWindow
         {
             _visualizerPoll?.Stop();
             _visualizer.IsActive = false;
+            _hologram.IsActive = false;
             GlassSettings.Changed -= OnVisualizerSettingChanged;
         };
     }
 
     private void OnVisualizerSettingChanged()
     {
-        if (!GlassSettings.Visualizer)
+        Dispatcher.BeginInvoke(() =>
         {
-            Dispatcher.BeginInvoke(() => _visualizer.IsActive = false);
-        }
+            _visualizerRunning &= GlassSettings.Visualizer;
+            ApplyVisualizerState();
+        });
+    }
+
+    private void ApplyVisualizerState()
+    {
+        var hologram = GlassSettings.VisualizerLook == VisualizerStyle.Hologram;
+        _visualizer.IsActive = _visualizerRunning && !hologram;
+        _hologram.IsActive = _visualizerRunning && hologram;
     }
 
     private void UpdateVisualizerCapsule()
     {
-        _visualizer.Width = _windowWidth;
-        _visualizer.Height = WindowHeight;
-        _visualizer.Capsule = new Rect(_capsuleLeft, RestTop, Math.Max(1, _capsuleWidth), RestBarHeight);
+        var capsule = new Rect(_capsuleLeft, RestTop, Math.Max(1, _capsuleWidth), RestBarHeight);
+        foreach (var element in new FrameworkElement[] { _visualizer, _hologram })
+        {
+            element.Width = _windowWidth;
+            element.Height = WindowHeight;
+        }
+
+        _visualizer.Capsule = capsule;
+        _hologram.Capsule = capsule;
     }
 }

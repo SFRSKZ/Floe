@@ -230,7 +230,7 @@ public sealed class BubbleController
             return;
         }
 
-        _backdrop.Clip = new RectangleGeometry(new Rect(0, 0, width, height), 16, 16);
+        _backdrop.Clip = new RectangleGeometry(new Rect(0, 0, width, height), WidgetChrome.Radius, WidgetChrome.Radius);
     }
 
     public void Stop()

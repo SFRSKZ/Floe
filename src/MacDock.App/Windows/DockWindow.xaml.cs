@@ -218,6 +218,7 @@ public partial class DockWindow : Window
     private int _outsideTicks;
     private double _currentHoverX;
     private double _currentBulge;
+    private DispatcherTimer? _springTimer;
     private double _targetHoverX;
     private double _targetBulge;
     private int _hoveredIndex = -1;

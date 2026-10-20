@@ -58,6 +58,16 @@ public partial class SettingsWindow : Window
     {
         DesktopButtonSettings.Load();
 
+        StyleRing.IsChecked = DesktopButtonSettings.Style == DesktopButtonStyle.Ring;
+        StyleWindows.IsChecked = DesktopButtonSettings.Style == DesktopButtonStyle.Windows;
+        StyleMonitor.IsChecked = DesktopButtonSettings.Style == DesktopButtonStyle.Monitor;
+        StyleOrb.IsChecked = DesktopButtonSettings.Style == DesktopButtonStyle.Orb;
+
+        StyleRing.Checked += (_, _) => DesktopButtonSettings.SetStyle(DesktopButtonStyle.Ring);
+        StyleWindows.Checked += (_, _) => DesktopButtonSettings.SetStyle(DesktopButtonStyle.Windows);
+        StyleMonitor.Checked += (_, _) => DesktopButtonSettings.SetStyle(DesktopButtonStyle.Monitor);
+        StyleOrb.Checked += (_, _) => DesktopButtonSettings.SetStyle(DesktopButtonStyle.Orb);
+
         SizeSlider.Value = DesktopButtonSettings.Size;
         SizeValue.Text = DesktopButtonSettings.Size.ToString("0.00");
         SizeSlider.ValueChanged += (_, e) =>
@@ -113,9 +123,22 @@ public partial class SettingsWindow : Window
         RimGold.Checked += (_, _) => GlassSettings.SetRim(RimStyle.MetalGold);
         RimChromatic.Checked += (_, _) => GlassSettings.SetRim(RimStyle.MetalChromatic);
 
+        BulgeSoft.IsChecked = GlassSettings.Bulge == BulgeStyle.Soft;
+        BulgePedestal.IsChecked = GlassSettings.Bulge == BulgeStyle.Pedestal;
+        BulgeFlat.IsChecked = GlassSettings.Bulge == BulgeStyle.Flat;
+
+        BulgeSoft.Checked += (_, _) => GlassSettings.SetBulge(BulgeStyle.Soft);
+        BulgePedestal.Checked += (_, _) => GlassSettings.SetBulge(BulgeStyle.Pedestal);
+        BulgeFlat.Checked += (_, _) => GlassSettings.SetBulge(BulgeStyle.Flat);
+
         VisualizerToggle.IsChecked = GlassSettings.Visualizer;
         VisualizerToggle.Checked += (_, _) => GlassSettings.SetVisualizer(true);
         VisualizerToggle.Unchecked += (_, _) => GlassSettings.SetVisualizer(false);
+
+        VisualizerLookGlow.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Glow;
+        VisualizerLookHologram.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Hologram;
+        VisualizerLookGlow.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Glow);
+        VisualizerLookHologram.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Hologram);
     }
 
     private void RefreshSwatches()

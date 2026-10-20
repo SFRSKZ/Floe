@@ -12,6 +12,19 @@ public enum RimStyle
     MetalChromatic,
 }
 
+public enum VisualizerStyle
+{
+    Glow,
+    Hologram,
+}
+
+public enum BulgeStyle
+{
+    Soft,
+    Pedestal,
+    Flat,
+}
+
 /// <summary>Dock glass look: rim style and the music visualizer glow.</summary>
 public static class GlassSettings
 {
@@ -25,6 +38,10 @@ public static class GlassSettings
     public static RimStyle Rim { get; private set; } = RimStyle.Plain;
 
     public static bool Visualizer { get; private set; } = true;
+
+    public static BulgeStyle Bulge { get; private set; } = BulgeStyle.Soft;
+
+    public static VisualizerStyle VisualizerLook { get; private set; } = VisualizerStyle.Glow;
 
     public static void Load()
     {
@@ -43,6 +60,8 @@ public static class GlassSettings
 
             Rim = Enum.TryParse<RimStyle>(model.Rim, true, out var rim) ? rim : RimStyle.Plain;
             Visualizer = model.Visualizer;
+            Bulge = Enum.TryParse<BulgeStyle>(model.Bulge, true, out var bulge) ? bulge : BulgeStyle.Soft;
+            VisualizerLook = Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
         }
         catch
         {
@@ -74,6 +93,30 @@ public static class GlassSettings
         Changed?.Invoke();
     }
 
+    public static void SetBulge(BulgeStyle bulge)
+    {
+        if (Bulge == bulge)
+        {
+            return;
+        }
+
+        Bulge = bulge;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetVisualizerLook(VisualizerStyle look)
+    {
+        if (VisualizerLook == look)
+        {
+            return;
+        }
+
+        VisualizerLook = look;
+        Save();
+        Changed?.Invoke();
+    }
+
     private static void Save()
     {
         try
@@ -82,6 +125,8 @@ public static class GlassSettings
             {
                 Rim = Rim.ToString(),
                 Visualizer = Visualizer,
+                Bulge = Bulge.ToString(),
+                VisualizerLook = VisualizerLook.ToString(),
             }));
         }
         catch
@@ -95,5 +140,9 @@ public static class GlassSettings
         public string Rim { get; set; } = nameof(RimStyle.Plain);
 
         public bool Visualizer { get; set; } = true;
+
+        public string Bulge { get; set; } = nameof(BulgeStyle.Soft);
+
+        public string VisualizerLook { get; set; } = nameof(VisualizerStyle.Glow);
     }
 }

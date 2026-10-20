@@ -145,6 +145,7 @@ public partial class DockWindow
             {
                 _dropIndex = index;
                 UpdateDropRing();
+                RestartSpringLoad();
             }
         }
 
@@ -154,8 +155,46 @@ public partial class DockWindow
     protected override void OnDragLeave(DragEventArgs e)
     {
         base.OnDragLeave(e);
+        _springTimer?.Stop();
         _dropIndex = -1;
         _dropRing.Visibility = Visibility.Collapsed;
+    }
+
+    // Spring-loading: holding a dragged file over a running app's icon brings its window
+    // forward, so the file can be dropped straight into that window.
+    private void RestartSpringLoad()
+    {
+        _springTimer ??= CreateSpringTimer();
+        _springTimer.Stop();
+        if (_dropIndex >= 0)
+        {
+            _springTimer.Start();
+        }
+    }
+
+    private DispatcherTimer CreateSpringTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(650) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (_dropIndex < 0 || _dropIndex >= _slots.Count)
+            {
+                return;
+            }
+
+            var slot = _slots[_dropIndex];
+            if (slot.Item.Windows.Count == 0)
+            {
+                return;
+            }
+
+            var hwnd = slot.Item.Windows[0];
+            var activated = WindowActivator.Activate(hwnd);
+            Log($"spring-load {slot.Item.Name} -> {hwnd} ok={activated}");
+            Bounce(slot);
+        };
+        return timer;
     }
 
     private int FindIndexAt(double windowX)
@@ -236,6 +275,7 @@ public partial class DockWindow
         Log($"drop: count={paths.Count} index={_dropIndex} formats={string.Join(",", e.Data.GetFormats())}");
 
         var dropItem = _dropIndex >= 0 && _dropIndex < _slots.Count ? _slots[_dropIndex].Item : null;
+        _springTimer?.Stop();
         _dropIndex = -1;
         _dropRing.Visibility = Visibility.Collapsed;
 
@@ -243,6 +283,14 @@ public partial class DockWindow
         if (dropItem is not null && paths.Count > 0)
         {
             var target = AppLauncher.ResolveTarget(dropItem.App);
+            const string appsFolder = "shell:AppsFolder\\";
+            if (target.StartsWith(appsFolder, StringComparison.OrdinalIgnoreCase))
+            {
+                var ok = StoreAppActivator.ActivateForFiles(target[appsFolder.Length..], paths);
+                Log($"drop: store app {dropItem.Name} ok={ok}");
+                return;
+            }
+
             if (!string.IsNullOrWhiteSpace(target) && !target.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
             {
                 foreach (var path in paths)

@@ -55,7 +55,7 @@
             </Rectangle.Fill>
         </Rectangle>
 
-        <Border CornerRadius="16" BorderThickness="1" Padding="12,6" Margin="0">
+        <Border x:Name="Panel" CornerRadius="16" BorderThickness="1" Padding="12,6" Margin="0">
             <Border.Background>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                     <GradientStop Color="#3DFFFFFF" Offset="0" />
@@ -98,16 +98,16 @@
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="PreviousButton" Style="{StaticResource WidgetButton}" ToolTip="Önceki">
-                        <TextBlock Text="⏮" FontSize="16" />
+                        <Image x:Name="PreviousGlyph" Width="22" Height="22" />
                     </Button>
                     <Button x:Name="PlayPauseButton" Style="{StaticResource WidgetButton}" Margin="8,0" ToolTip="Oynat / Duraklat">
-                        <TextBlock Text="⏯" FontSize="16" />
+                        <Image x:Name="PlayPauseGlyph" Width="22" Height="22" />
                     </Button>
                     <Button x:Name="NextButton" Style="{StaticResource WidgetButton}" ToolTip="Sonraki">
-                        <TextBlock Text="⏭" FontSize="16" />
+                        <Image x:Name="NextGlyph" Width="22" Height="22" />
                     </Button>
                     <Button x:Name="SettingsButton" Style="{StaticResource WidgetButton}" Margin="8,0,0,0" ToolTip="Hızlı Ayarlar">
-                        <TextBlock Text="⚙" FontSize="16" />
+                        <Image x:Name="SettingsGlyph" Width="22" Height="22" />
                     </Button>
                 </StackPanel>
             </StackPanel>

@@ -3,6 +3,8 @@ float2 Size : register(c0);
 float Hover : register(c1);
 float Bulge : register(c2);
 float2 Stretch : register(c3);
+float Plateau : register(c4);
+float Sigma : register(c5);
 float4 main(float2 uv : TEXCOORD0) : COLOR0
 {
     // The padded host has 24px on each side and 32px of bulge headroom.
@@ -12,8 +14,8 @@ float4 main(float2 uv : TEXCOORD0) : COLOR0
     vertical = vertical * vertical * (3 - 2 * vertical);
     p.x += (p.x < Size.x * 0.5 ? Stretch.x : -Stretch.y) * vertical;
     float x = clamp(p.x, 22, Size.x - 22);
-    float d = x - Hover;
-    float lift = Bulge * exp(-d * d / (2 * 34 * 34));
+    float d = max(0, abs(x - Hover) - Plateau);
+    float lift = Bulge * exp(-d * d / (2 * Sigma * Sigma));
     // Translate the top corners intact; smoothly reconnect to the fixed bottom.
     float weight = saturate((Size.y - 22 - p.y) / (Size.y - 44 + lift));
     p.y += lift * weight;

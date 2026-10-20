@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using MacDock.App.Services;
 using MacDock.Core.Interop;
@@ -25,6 +26,7 @@ public partial class MediaWidgetWindow : Window, IBubbleWidget
     public MediaWidgetWindow()
     {
         InitializeComponent();
+        WidgetChrome.Apply(this, Root, Panel);
         _bubble = new BubbleController(this, Backdrop, BackdropBrush, RootScale) { LayoutId = "media" };
 
         PreviousButton.Click += async (_, _) => await MediaService.PreviousAsync();
@@ -35,6 +37,10 @@ public partial class MediaWidgetWindow : Window, IBubbleWidget
         _timer.Tick += async (_, _) => await RefreshAsync();
         Loaded += async (_, _) =>
         {
+            SetGlyph(PreviousGlyph, "previous");
+            SetGlyph(NextGlyph, "next");
+            SetGlyph(SettingsGlyph, "settings");
+            SetGlyph(PlayPauseGlyph, "play");
             await RefreshAsync();
             _timer.Start();
         };
@@ -65,6 +71,12 @@ public partial class MediaWidgetWindow : Window, IBubbleWidget
         base.OnClosed(e);
     }
 
+    private void SetGlyph(System.Windows.Controls.Image target, string key)
+    {
+        var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        target.Source = DotMatrixIcons.Render(key, target.Width, Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF), dpi);
+    }
+
     private async Task RefreshAsync()
     {
         if (_refreshing)
@@ -85,6 +97,7 @@ public partial class MediaWidgetWindow : Window, IBubbleWidget
                 return;
             }
 
+            SetGlyph(PlayPauseGlyph, await MediaService.IsPlayingAsync() ? "pause" : "play");
             MediaTitle.Text = media.Title;
             MediaArtist.Text = media.Artist;
             Artwork.Source = media.Artwork;

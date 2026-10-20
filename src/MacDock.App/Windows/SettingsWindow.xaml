@@ -210,6 +210,14 @@
                        FontSize="11.5"
                        Margin="0,2,0,12" />
 
+            <TextBlock Text="Stil" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
+            <WrapPanel Margin="0,0,0,10">
+                <RadioButton x:Name="StyleRing" Style="{StaticResource ModeToggle}" Content="Halka" />
+                <RadioButton x:Name="StyleWindows" Style="{StaticResource ModeToggle}" Content="Pencereler" />
+                <RadioButton x:Name="StyleMonitor" Style="{StaticResource ModeToggle}" Content="Monitör" />
+                <RadioButton x:Name="StyleOrb" Style="{StaticResource ModeToggle}" Content="Küre" />
+            </WrapPanel>
+
             <TextBlock Text="Boyut" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -252,10 +260,23 @@
                 <RadioButton x:Name="RimChromatic" Style="{StaticResource ModeToggle}" Content="Renkli" />
             </WrapPanel>
 
+            <TextBlock Text="İkon çıkıntısı" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,14,0,6" />
+            <WrapPanel>
+                <RadioButton x:Name="BulgeSoft" Style="{StaticResource ModeToggle}" Content="Yumuşak" />
+                <RadioButton x:Name="BulgePedestal" Style="{StaticResource ModeToggle}" Content="Kaide" />
+                <RadioButton x:Name="BulgeFlat" Style="{StaticResource ModeToggle}" Content="Düz" />
+            </WrapPanel>
+
             <CheckBox x:Name="VisualizerToggle"
                       Style="{StaticResource GlassToggle}"
                       Content="Müzik görselleştirici"
                       Margin="0,10,0,0" />
+
+            <TextBlock Text="Görselleştirici stili" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,14,0,6" />
+            <WrapPanel>
+                <RadioButton x:Name="VisualizerLookGlow" Style="{StaticResource ModeToggle}" Content="Işıltı" />
+                <RadioButton x:Name="VisualizerLookHologram" Style="{StaticResource ModeToggle}" Content="Hologram" />
+            </WrapPanel>
 
             <Button x:Name="CloseButton"
                     Style="{StaticResource GlassButton}"
