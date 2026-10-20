@@ -31,7 +31,7 @@ public static class WidgetLayout
         try
         {
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
-            System.IO.File.WriteAllText(Path, JsonSerializer.Serialize(map, Options));
+            MacDock.Core.Services.AtomicFile.WriteAllText(Path, JsonSerializer.Serialize(map, Options));
         }
         catch
         {

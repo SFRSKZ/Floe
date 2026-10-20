@@ -161,7 +161,7 @@ public static class AuraSettings
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
-            File.WriteAllText(ConfigPath, JsonSerializer.Serialize(new Model
+            MacDock.Core.Services.AtomicFile.WriteAllText(ConfigPath, JsonSerializer.Serialize(new Model
             {
                 Mode = Mode.ToString(),
                 Effect = Effect.ToString(),

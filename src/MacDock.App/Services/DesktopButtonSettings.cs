@@ -102,7 +102,7 @@ public static class DesktopButtonSettings
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
-            File.WriteAllText(ConfigPath, JsonSerializer.Serialize(new Model
+            MacDock.Core.Services.AtomicFile.WriteAllText(ConfigPath, JsonSerializer.Serialize(new Model
             {
                 Size = Size,
                 Brightness = Brightness,

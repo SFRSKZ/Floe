@@ -723,6 +723,7 @@ public partial class DockWindow : Window
                 window: entry.Windows.Count > 0 ? entry.Windows[0] : IntPtr.Zero);
 
             vm.Windows = entry.Windows;
+            vm.IsRunning = true;
 
             if (vm.Icon is not null)
             {
@@ -749,6 +750,20 @@ public partial class DockWindow : Window
             }
 
             RebuildIcons();
+        }
+        else
+        {
+            // Same app set: keep the existing slots (and their icons) but refresh the window
+            // handles, otherwise new or recreated windows are never picked up.
+            var fresh = unpinned.ToDictionary(vm => vm.ProcessName, StringComparer.OrdinalIgnoreCase);
+            foreach (var item in Items)
+            {
+                if (!item.IsPinned && fresh.TryGetValue(item.ProcessName, out var current))
+                {
+                    item.Windows = current.Windows;
+                    item.IsRunning = true;
+                }
+            }
         }
 
         UpdateDots();
@@ -2038,11 +2053,7 @@ public partial class DockWindow : Window
         var slot = _slots.FirstOrDefault(s => s.Button.IsMouseOver);
         if (slot is { Item.Windows.Count: > 0 })
         {
-            var hwnd = slot.Item.NextWindow();
-            if (e.Delta < 0)
-            {
-                hwnd = slot.Item.NextWindow();
-            }
+            var hwnd = e.Delta < 0 ? slot.Item.PreviousWindow() : slot.Item.NextWindow();
 
             WindowActivator.Activate(hwnd);
             e.Handled = true;
@@ -2365,22 +2376,32 @@ public partial class DockWindow : Window
         catch (Exception ex)
         {
             Log($"widgets error: {ex.GetType().Name} {ex.Message}");
+
+            // Drop the half-built pair so the next toggle retries instead of using a null widget.
+            _weatherWidget?.Close();
+            _mediaWidget?.Close();
+            _weatherWidget = null;
+            _mediaWidget = null;
         }
     }
 
     private void ToggleWidgets()
     {
         EnsureWidgets();
+        if (_weatherWidget is null || _mediaWidget is null)
+        {
+            return;
+        }
 
-        if (_weatherWidget!.IsVisible)
+        if (_weatherWidget.IsVisible)
         {
             _weatherWidget.Hide();
-            _mediaWidget!.Hide();
+            _mediaWidget.Hide();
             return;
         }
 
         _weatherWidget.Show();
-        _mediaWidget!.Show();
+        _mediaWidget.Show();
         PositionWidgets();
     }
 

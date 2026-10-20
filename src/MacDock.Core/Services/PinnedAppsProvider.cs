@@ -19,10 +19,28 @@ public static class PinnedAppsProvider
 
         if (File.Exists(configPath))
         {
-            var stored = ReadConfig(configPath);
-            if (stored.Count > 0)
+            // An existing but empty list is a valid user choice (everything unpinned).
+            var stored = ReadConfig(configPath, out var locked);
+            if (stored is not null)
             {
                 return stored;
+            }
+
+            if (locked)
+            {
+                // The file is fine but held by someone else (AV scan, second instance):
+                // show the taskbar seeds for now but never overwrite the user's config.
+                return SeedFromTaskbar();
+            }
+
+            // Unreadable or corrupt: keep a copy instead of silently overwriting it.
+            try
+            {
+                File.Copy(configPath, configPath + ".bad", overwrite: true);
+            }
+            catch
+            {
+                // best effort
             }
         }
 
@@ -31,27 +49,46 @@ public static class PinnedAppsProvider
         return seeded;
     }
 
-    public static void Save(string configPath, IReadOnlyList<DockApp> apps)
-    {
-        var directory = Path.GetDirectoryName(configPath);
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        File.WriteAllText(configPath, JsonSerializer.Serialize(apps, JsonOptions));
-    }
-
-    private static List<DockApp> ReadConfig(string configPath)
+    // Returns false instead of throwing so a locked or read-only config never crashes the dock.
+    public static bool Save(string configPath, IReadOnlyList<DockApp> apps)
     {
         try
         {
-            var json = File.ReadAllText(configPath);
-            return JsonSerializer.Deserialize<List<DockApp>>(json, JsonOptions) ?? new List<DockApp>();
+            AtomicFile.WriteAllText(configPath, JsonSerializer.Serialize(apps, JsonOptions));
+            return true;
         }
         catch
         {
-            return new List<DockApp>();
+            return false;
+        }
+    }
+
+    private static List<DockApp>? ReadConfig(string configPath, out bool locked)
+    {
+        locked = false;
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                var json = File.ReadAllText(configPath);
+                return JsonSerializer.Deserialize<List<DockApp>>(json, JsonOptions)?
+                    .Where(app => app is not null)
+                    .ToList();
+            }
+            catch (IOException) when (attempt < 3)
+            {
+                Thread.Sleep(100);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                locked = true;
+                return null;
+            }
+            catch
+            {
+                // Corrupt or unexpected JSON.
+                return null;
+            }
         }
     }
 

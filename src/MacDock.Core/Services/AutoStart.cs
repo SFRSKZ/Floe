@@ -6,6 +6,44 @@ public static class AutoStart
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "MacDock";
+    private const string PrefsKey = @"Software\MacDock";
+    private const string OptOutValue = "AutoStartDisabled";
+
+    // Called on every launch: registers autostart (refreshing the exe path) unless the
+    // user turned it off from the menu.
+    public static void EnsureDefault(string exePath)
+    {
+        if (!IsOptedOut())
+        {
+            Enable(exePath);
+        }
+    }
+
+    private static bool IsOptedOut()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(PrefsKey, false);
+            return key?.GetValue(OptOutValue) is int value && value != 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void SetOptedOut(bool optedOut)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(PrefsKey, true);
+            key?.SetValue(OptOutValue, optedOut ? 1 : 0, RegistryValueKind.DWord);
+        }
+        catch
+        {
+            // best effort
+        }
+    }
 
     public static bool IsEnabled()
     {
@@ -51,10 +89,12 @@ public static class AutoStart
         if (IsEnabled())
         {
             Disable();
+            SetOptedOut(true);
         }
         else if (Environment.ProcessPath is { } path)
         {
             Enable(path);
+            SetOptedOut(false);
         }
     }
 }

@@ -53,6 +53,20 @@ public sealed class DockItemViewModel
         return handle;
     }
 
+    public IntPtr PreviousWindow()
+    {
+        if (Windows.Count == 0)
+        {
+            return IntPtr.Zero;
+        }
+
+        // _cycle points one past the last returned window; step back two to land on the one before it.
+        _cycle = ((_cycle - 2) % Windows.Count + Windows.Count) % Windows.Count;
+        var handle = Windows[_cycle];
+        _cycle++;
+        return handle;
+    }
+
     private static string ExtractProcessName(string target)
     {
         if (string.IsNullOrWhiteSpace(target))

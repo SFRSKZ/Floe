@@ -61,38 +61,46 @@ internal sealed class BackdropCapture : IDisposable
             using var capture = new ScreenCapture.Session();
             while (!_disposed)
             {
-                if (_visible && ScreenInput.TryGetWindowRect(_hwnd, out var rect))
+                try
                 {
-                    var width = rect.Right - rect.Left;
-                    var height = rect.Bottom - rect.Top;
-                    var pixels = capture.Capture(rect.Left, rect.Top, width, height, out var stride, out var changed);
-                    if (pixels is not null && changed)
+                    if (_visible && ScreenInput.TryGetWindowRect(_hwnd, out var rect))
                     {
-                        lock (_sync)
+                        var width = rect.Right - rect.Left;
+                        var height = rect.Bottom - rect.Top;
+                        var pixels = capture.Capture(rect.Left, rect.Top, width, height, out var stride, out var changed);
+                        if (pixels is not null && changed)
                         {
-                            if (_disposed)
+                            lock (_sync)
                             {
-                                break;
-                            }
+                                if (_disposed)
+                                {
+                                    break;
+                                }
 
-                            if (_pixels is null || _pixels.Length != pixels.Length)
-                            {
-                                _pixels = new byte[pixels.Length];
-                            }
+                                if (_pixels is null || _pixels.Length != pixels.Length)
+                                {
+                                    _pixels = new byte[pixels.Length];
+                                }
 
-                            // Separate storage keeps the capture thread from overwriting a frame
-                            // while WritePixels reads it. At most one UI callback is queued.
-                            pixels.CopyTo(_pixels, 0);
-                            _width = width;
-                            _height = height;
-                            _stride = stride;
-                            if (!_pending && !_window.Dispatcher.HasShutdownStarted)
-                            {
-                                _pending = true;
-                                _window.Dispatcher.BeginInvoke(DispatcherPriority.Render, _presentLatest);
+                                // Separate storage keeps the capture thread from overwriting a frame
+                                // while WritePixels reads it. At most one UI callback is queued.
+                                pixels.CopyTo(_pixels, 0);
+                                _width = width;
+                                _height = height;
+                                _stride = stride;
+                                if (!_pending && !_window.Dispatcher.HasShutdownStarted)
+                                {
+                                    _pending = true;
+                                    _window.Dispatcher.BeginInvoke(DispatcherPriority.Render, _presentLatest);
+                                }
                             }
                         }
                     }
+                }
+                catch (Exception)
+                {
+                    // A failed grab (session lock, RDP, display-mode change) or a dispatcher
+                    // that is shutting down must not kill the process; retry next tick.
                 }
 
                 int delay;
@@ -111,6 +119,10 @@ internal sealed class BackdropCapture : IDisposable
 
                 _wake.WaitOne(delay);
             }
+        }
+        catch (Exception)
+        {
+            // Background thread: an unhandled exception here would terminate the dock.
         }
         finally
         {

@@ -13,6 +13,7 @@ namespace MacDock.App;
 public partial class App : Application
 {
     private bool _hideTaskbar;
+    private bool _dockRunning;
     private DispatcherTimer? _taskbarTimer;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -31,7 +32,16 @@ public partial class App : Application
             {
                 // logging must never throw
             }
+
+            // Once the dock is up it replaces the taskbar: dying would leave the user with no
+            // taskbar and no Start menu, so log and keep running. Startup failures and render
+            // runs still crash so the process does not linger invisibly.
+            args.Handled = _dockRunning;
         };
+
+        // Fatal exceptions on background threads cannot be handled; at least bring the
+        // taskbar back before the process goes away.
+        AppDomain.CurrentDomain.UnhandledException += (_, _) => TaskbarController.Show();
 
         if (TryRunDiagnostic(e.Args))
         {
@@ -131,7 +141,7 @@ public partial class App : Application
 
         var blurArg = e.Args
             .FirstOrDefault(a => a.StartsWith("--blur=", StringComparison.OrdinalIgnoreCase))?["--blur=".Length..];
-        if (blurArg is not null && double.TryParse(blurArg, out var blurRadius) && blurRadius > 0)
+        if (blurArg is not null && double.TryParse(blurArg, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var blurRadius) && blurRadius > 0)
         {
             MacDock.App.Services.BlurSettings.Radius = blurRadius;
         }
@@ -143,7 +153,7 @@ public partial class App : Application
             && !e.Args.Any(a => a.Equals("--no-autostart", StringComparison.OrdinalIgnoreCase))
             && Environment.ProcessPath is { } exePath)
         {
-            AutoStart.Enable(exePath);
+            AutoStart.EnsureDefault(exePath);
         }
 
         var blur = renderPath is null
@@ -155,13 +165,14 @@ public partial class App : Application
             BlurBackdrop = blur,
         };
         dock.Show();
+        _dockRunning = renderPath is null;
 
         if (renderPath is not null)
         {
             var hoverArg = e.Args.FirstOrDefault(a => a.StartsWith("--hover=", StringComparison.OrdinalIgnoreCase))?["--hover=".Length..];
             dock.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
             {
-                if (hoverArg is not null && double.TryParse(hoverArg, out var hoverX))
+                if (hoverArg is not null && double.TryParse(hoverArg, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var hoverX))
                 {
                     dock.PreviewHover(hoverX);
                 }
