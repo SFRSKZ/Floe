@@ -34,8 +34,7 @@ internal static class ShaderCompiler
             string constants = System.Text.RegularExpressions.Regex.Replace(source[start..end], @"register\(c(\d+)\)", "packoffset(c$1)");
             source = source[..start] + "cbuffer Parameters : register(b0) {\n" + constants + "};\n" + source[end..];
             source = source.Replace(": COLOR0", ": SV_Target", StringComparison.Ordinal)
-                .Replace("main(float2 uv : TEXCOORD0)", "main(float4 position : SV_Position, float2 uv : TEXCOORD0)", StringComparison.Ordinal)
-                .Replace("float2 p = uv * size;", $"uv = (uv * (size + {2 * MetalRimEffect.GlowPadding}) - {MetalRimEffect.GlowPadding}) / size; float2 p = uv * size;", StringComparison.Ordinal);
+                .Replace("main(float2 uv : TEXCOORD0)", "main(float4 position : SV_Position, float2 uv : TEXCOORD0)", StringComparison.Ordinal);
         }
         return CompileBytes(System.Text.Encoding.UTF8.GetBytes(source), vertex ? "vs_4_0" : "ps_4_0");
     }

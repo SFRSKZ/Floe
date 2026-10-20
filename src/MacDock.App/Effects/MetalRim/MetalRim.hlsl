@@ -26,6 +26,8 @@ float4 GlowColor : register(c20);
 float4 main(float2 uv : TEXCOORD0) : COLOR0
 {
     float2 size = max(Size, 1.0);
+    // WPF hands the shader the padded glow area; map uv back onto the element itself.
+    uv = (uv * (size + 48) - 24) / size;
     float2 p = uv * size;
     float2 centered = p - size * 0.5;
     float radius = min(CornerRadius < 0 ? size.y * 0.5 : CornerRadius, min(size.x, size.y) * 0.5);
