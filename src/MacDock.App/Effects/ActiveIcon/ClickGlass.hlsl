@@ -39,8 +39,10 @@ float4 main(float2 uv : TEXCOORD0) : COLOR0
     // thick lens: content magnified in the middle, pulled hard toward the rim
     float lensDepth = fade * (1.0 - 0.5 * smoothstep(0.5, 0.9, t));
     float2 zoom = -p * 0.12 * inside * lensDepth;
-    float bend = (exp(-abs(edge) / 3.0) * 7.5 + inside * 1.2) * lensDepth;
-    float2 off = (g * bend + zoom) * px;
+    float bend = (exp(-abs(edge) / 2.5) * 4.5 + inside * 0.8) * lensDepth;
+    // sample inward: reading past the icon's edge picks up transparent pixels, which the
+    // channel split turns into dark blue / yellow smears
+    float2 off = (-g * bend + zoom) * px;
     // 0 rainbow, 1 colourless, 2 the icon's own colours
     float mono = Palette > 0.5 && Palette < 1.5 ? 1.0 : 0.0;
     float dispersion = lerp(0.45, 0.8, Tone) * (1.0 - mono * 0.75);
@@ -65,9 +67,9 @@ float4 main(float2 uv : TEXCOORD0) : COLOR0
     lens *= 1.0 - Tone * band * 0.35;
 
     float3 color = lens;
-    color += fringe * band * (0.55 + spot * 0.9) * lerp(0.8, 1.15, Tone);
+    color += fringe * band * (0.55 + spot * 0.9) * lerp(0.8, 1.15, Tone) * (1.0 - mono * 0.5);
     color += lerp(float3(1, 1, 1), fringe, 0.35) * rings * (0.5 + spot * 0.8);
-    color += float3(1, 1, 1) * rim * (arc * 1.4 + spot * 0.5) * lerp(1.0, 0.7, Tone);
+    color += float3(1, 1, 1) * rim * (arc * 1.0 + spot * 0.35) * lerp(1.0, 0.7, Tone);
     float shine = saturate(band * (0.4 + spot * 0.6) + rings * 0.7 + rim * arc);
 
     float mask = saturate(inside + rim + band + rings) * fade;
