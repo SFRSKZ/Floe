@@ -49,6 +49,19 @@ public static class AppWindows
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern bool QueryFullProcessImageName(IntPtr handle, int flags, StringBuilder exeName, ref int size);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetProcessTimes(IntPtr handle, out FileTime creation, out FileTime exit, out FileTime kernel, out FileTime user);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileTime
+    {
+        public uint Low;
+        public uint High;
+    }
+
+    // exe paths never change for a live process; the creation time keeps reused PIDs distinct
+    private static readonly Dictionary<uint, (long Created, string Path)> ProcessPathCache = new();
+
     private static readonly HashSet<string> IgnoredClasses = new(StringComparer.Ordinal)
     {
         "Progman",
@@ -62,6 +75,7 @@ public static class AppWindows
     public static IReadOnlyList<AppWindow> Enumerate(int selfProcessId)
     {
         var result = new List<AppWindow>();
+        var paths = new Dictionary<uint, string>();
 
         EnumWindows((hWnd, _) =>
         {
@@ -93,7 +107,7 @@ public static class AppWindows
                 return true;
             }
 
-            var path = GetProcessPath(processId);
+            var path = GetCachedPath(processId, paths);
             if (string.IsNullOrEmpty(path))
             {
                 return true;
@@ -124,6 +138,18 @@ public static class AppWindows
         return buffer.ToString();
     }
 
+    private static string GetCachedPath(uint processId, Dictionary<uint, string> pass)
+    {
+        if (pass.TryGetValue(processId, out var path))
+        {
+            return path;
+        }
+
+        path = GetProcessPath(processId);
+        pass[processId] = path;
+        return path;
+    }
+
     public static string GetProcessPath(uint processId)
     {
         var handle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
@@ -134,9 +160,29 @@ public static class AppWindows
 
         try
         {
+            GetProcessTimes(handle, out var creation, out _, out _, out _);
+            var created = ((long)creation.High << 32) | creation.Low;
+            if (created != 0 && ProcessPathCache.TryGetValue(processId, out var cached) && cached.Created == created)
+            {
+                return cached.Path;
+            }
+
             var size = 1024;
             var buffer = new StringBuilder(size);
-            return QueryFullProcessImageName(handle, 0, buffer, ref size) ? buffer.ToString() : string.Empty;
+            var path = QueryFullProcessImageName(handle, 0, buffer, ref size) ? buffer.ToString() : string.Empty;
+
+            // only successes are kept across passes: a process that just started may not be queryable yet
+            if (!string.IsNullOrEmpty(path))
+            {
+                if (ProcessPathCache.Count > 256)
+                {
+                    ProcessPathCache.Clear();
+                }
+
+                ProcessPathCache[processId] = (created, path);
+            }
+
+            return path;
         }
         finally
         {

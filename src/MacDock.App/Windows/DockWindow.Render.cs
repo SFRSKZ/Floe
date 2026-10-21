@@ -114,8 +114,15 @@ public partial class DockWindow
         if (_metalEffect is not null && !_glassPreview)
         {
             _metalTime += dt;
-            _metalEffect.Time = _metalTime;
-            _metalEffect.CursorY = IsMouseOver ? Math.Clamp((Mouse.GetPosition(Root).Y - RestTop) / RestBarHeight, 0, 1) : 0;
+            // the folded reflection drifts at time * 0.025, so 10 Hz is enough while the rim rests;
+            // a drop flash or a shape change (UpdateGlassShape) already re-renders, so keep time current then
+            if (_dropTime >= 0 || _metalTime - _metalTimeApplied >= 0.1)
+            {
+                _metalTimeApplied = _metalTime;
+                _metalEffect.Time = _metalTime;
+            }
+            var cursorY = IsMouseOver ? Math.Clamp((Mouse.GetPosition(Root).Y - RestTop) / RestBarHeight, 0, 1) : 0;
+            if (Changed(ref _metalCursorY, cursorY)) _metalEffect.CursorY = cursorY;
         }
         _currentHoverX = Spring(_currentHoverX, ref _hoverVel, _targetHoverX, dt);
         _currentBulge = Spring(_currentBulge, ref _bulgeVel, _targetBulge, dt);
@@ -152,6 +159,8 @@ public partial class DockWindow
             _rootScale.ScaleX = _dockScale;
             _rootScale.ScaleY = _dockScale;
             UpdateShape();
+            // UpdateShape may skip its rebuild here, but the warp has to go once the bulge is gone
+            UpdateRimWarp();
             if (_metalEffect is null || !IsMouseOver) StopAnimation();
         }
     }

@@ -9,6 +9,13 @@ public sealed record MediaInfo(string Title, string Artist, double Progress, Ima
 
 public static class MediaService
 {
+    private static GlobalSystemMediaTransportControlsSessionManager? _manager;
+
+    // the artwork of the current track, so the 1 s poll does not decode it again
+    private static string? _artworkTitle;
+    private static string? _artworkArtist;
+    private static ImageSource? _artwork;
+
     public static async Task<MediaInfo?> GetAsync()
     {
         try
@@ -40,11 +47,13 @@ public static class MediaService
                 // timeline may be unavailable
             }
 
+            var title = properties.Title ?? string.Empty;
+            var artist = properties.Artist ?? string.Empty;
             return new MediaInfo(
-                properties.Title ?? string.Empty,
-                properties.Artist ?? string.Empty,
+                title,
+                artist,
                 progress,
-                await ReadArtworkAsync(properties));
+                await ReadArtworkAsync(properties, title, artist));
         }
         catch
         {
@@ -52,7 +61,29 @@ public static class MediaService
         }
     }
 
-    private static async Task<ImageSource?> ReadArtworkAsync(GlobalSystemMediaTransportControlsSessionMediaProperties properties)
+    private static async Task<ImageSource?> ReadArtworkAsync(
+        GlobalSystemMediaTransportControlsSessionMediaProperties properties,
+        string title,
+        string artist)
+    {
+        if (title == _artworkTitle && artist == _artworkArtist)
+        {
+            return _artwork;
+        }
+
+        var artwork = await DecodeArtworkAsync(properties);
+        if (artwork is not null)
+        {
+            // no artwork is not cached: a late thumbnail for the same track must still appear
+            _artworkTitle = title;
+            _artworkArtist = artist;
+            _artwork = artwork;
+        }
+
+        return artwork;
+    }
+
+    private static async Task<ImageSource?> DecodeArtworkAsync(GlobalSystemMediaTransportControlsSessionMediaProperties properties)
     {
         try
         {
@@ -141,7 +172,20 @@ public static class MediaService
 
     private static async Task<GlobalSystemMediaTransportControlsSession?> GetSessionAsync()
     {
-        var manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
-        return manager?.GetCurrentSession();
+        if (_manager is null)
+        {
+            _manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
+        }
+
+        try
+        {
+            return _manager?.GetCurrentSession();
+        }
+        catch
+        {
+            // a dead manager is re-requested on the next call
+            _manager = null;
+            return null;
+        }
     }
 }

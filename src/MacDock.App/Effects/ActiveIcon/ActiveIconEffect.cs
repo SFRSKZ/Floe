@@ -46,11 +46,22 @@ public sealed class ActiveIconEffect : ShaderEffect
     public Point Box { get => (Point)GetValue(BoxProperty); set => SetValue(BoxProperty, value); }
 
     private readonly PacedClock _clock;
+    private double _lastTime = double.NegativeInfinity;
 
     public ActiveIconEffect(double iconSize)
     {
         // inside the dock window: every other visualizer frame is plenty for a slow colour flow
-        _clock = new PacedClock(now => Time = now, 2, everyFrameWhileDockAnimates: true);
+        _clock = new PacedClock(now =>
+        {
+            // the shader only flows its colour slowly: 12 fps is indistinguishable and saves half the constant writes
+            if (!VisualizerPacing.DockAnimating && now - _lastTime < 1.0 / 12)
+            {
+                return;
+            }
+
+            _lastTime = now;
+            Time = now;
+        }, 2, everyFrameWhileDockAnimates: true);
         PixelShader = Shader.Value;
         PaddingLeft = PaddingTop = PaddingRight = PaddingBottom = Pad;
         Box = new Point(iconSize + (2 * Pad), 0);

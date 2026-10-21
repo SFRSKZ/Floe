@@ -28,6 +28,11 @@ public partial class DockWindow
     private ActiveIconEffect? _activeFx;
     private Image? _fxImage;
     private AuroraWindow? _aurora;
+    private bool _auraPaused;
+    private DockItemViewModel? _spectralItem;
+    private ImageSource? _spectralIcon;
+    private double _spectralIntensity = -1;
+    private readonly List<SolidColorBrush> _spectralWispBrushes = new();
 
     private void UpdateEffectVisibility()
     {
@@ -35,6 +40,32 @@ public partial class DockWindow
         _activeFx?.SetVisible(visible && _fxImage is not null);
         if (visible && AuraSettings.Effect == AuraEffect.Aurora && _activeIndex >= 0) _aurora?.Begin();
         else _aurora?.End();
+
+        if (visible)
+        {
+            // restart the glow / burst animations the hide stopped, through the normal path
+            if (_auraPaused)
+            {
+                _auraPaused = false;
+                UpdateAura();
+            }
+
+            return;
+        }
+
+        PauseAura();
+    }
+
+    /// <summary>Stops the aura's forever-running animations while the dock is off-screen or behind a fullscreen app.</summary>
+    private void PauseAura()
+    {
+        _auraPaused = true;
+        for (var k = 0; k < _auraEffects.Length; k++)
+        {
+            _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, null);
+        }
+
+        SetSpectralVisible(false);
     }
 
     private void SetAurora(bool on)
@@ -108,6 +139,16 @@ public partial class DockWindow
     }
 
     private void UpdateAura()
+    {
+        ApplyAura();
+        // UpdateAura also runs while hidden (settings, foreground changes): keep the animations off then
+        if (_auraPaused)
+        {
+            PauseAura();
+        }
+    }
+
+    private void ApplyAura()
     {
         _activeIndex = -1;
         if (!string.IsNullOrEmpty(_activeProcess))
@@ -265,16 +306,26 @@ public partial class DockWindow
 
     private void UpdateSpectral(DockItemViewModel item)
     {
+        var k = AuraSettings.SpectralIntensity;
+        // the foreground changes constantly; the spectral look only changes with the item, its icon or its intensity
+        if (ReferenceEquals(item, _spectralItem) && ReferenceEquals(item.Icon, _spectralIcon) && k == _spectralIntensity)
+        {
+            return;
+        }
+
         var colors = AuraSettings.GetColors(item);
         if (colors.Length == 0)
         {
             return;
         }
 
+        _spectralItem = item;
+        _spectralIcon = item.Icon;
+        _spectralIntensity = k;
+
         var first = Spectral(colors[0]);
         var second = Spectral(colors[1 % colors.Length]);
         var third = Spectral(colors[2 % colors.Length]);
-        var k = AuraSettings.SpectralIntensity;
 
         // soft radial distortion around the icon edges
         _spectralHaloBrush.GradientStops[0].Color = Color.FromArgb(0x00, first.R, first.G, first.B);
@@ -293,11 +344,18 @@ public partial class DockWindow
         _spectralWaveBrush.GradientStops.Add(new GradientStop(Color.FromArgb(Alpha(0x70, k), third.R, third.G, third.B), 0.5));
         _spectralWaveBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, first.R, first.G, first.B), 1.0));
 
-        // faint smoky wisps
+        // faint smoky wisps: one brush each, recoloured in place
         for (var i = 0; i < _spectralWisps.Count; i++)
         {
+            if (i >= _spectralWispBrushes.Count)
+            {
+                var brush = new SolidColorBrush();
+                _spectralWisps[i].Wisp.Fill = brush;
+                _spectralWispBrushes.Add(brush);
+            }
+
             var color = Spectral(colors[i % colors.Length]);
-            _spectralWisps[i].Wisp.Fill = new SolidColorBrush(Color.FromArgb(Alpha(0x50, k), color.R, color.G, color.B));
+            _spectralWispBrushes[i].Color = Color.FromArgb(Alpha(0x50, k), color.R, color.G, color.B);
         }
     }
 
@@ -323,6 +381,11 @@ public partial class DockWindow
         }
     }
 
-    private void OnAuraSettingsChanged() => UpdateAura();
+    private void OnAuraSettingsChanged()
+    {
+        // palettes and per-item colours live in the settings: the spectral cache is stale now
+        _spectralItem = null;
+        UpdateAura();
+    }
 
 }

@@ -35,6 +35,7 @@ internal sealed class AuroraWindow : Window
     private double _fade;
     private double _target;
     private double _last = -1;
+    private double _lastRaster = double.NegativeInfinity;
 
     /// <param name="anchor">Active icon centre in screen DIP and its on-screen scale; null to fade out.</param>
     public AuroraWindow(IntPtr dock, Func<(Point Center, double Scale)?> anchor, bool excludeFromCapture)
@@ -133,6 +134,13 @@ internal sealed class AuroraWindow : Window
 
     private void Tick(double now)
     {
+        // the dock and the visualizer both drive this clock: 24 fps loses nothing a smooth curtain shows
+        if (now - _lastRaster < 1.0 / 24)
+        {
+            return;
+        }
+
+        _lastRaster = now;
         var dt = _last < 0 ? 1.0 / 30 : Math.Clamp(now - _last, 0.001, 0.1);
         _last = now;
         if (_target > 0)

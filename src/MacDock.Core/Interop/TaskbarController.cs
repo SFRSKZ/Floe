@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Text;
 
 namespace MacDock.Core.Interop;
 
@@ -8,13 +7,23 @@ public static class TaskbarController
     private const int SwHide = 0;
     private const int SwShow = 5;
 
-    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    private const string PrimaryClass = "Shell_TrayWnd";
+    private const string SecondaryClass = "Shell_SecondaryTrayWnd";
 
-    [DllImport("user32.dll")]
-    private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+    // re-scan occasionally so a monitor hot-plugged after caching still gets hidden
+    private const long RescanMs = 5000;
+
+    private static IntPtr[] _cached = Array.Empty<IntPtr>();
+    private static long _cachedAt;
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetClassName(IntPtr hWnd, StringBuilder className, int maxCount);
+    private static extern IntPtr FindWindow(string? className, string? windowName);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string? className, string? windowName);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
@@ -22,25 +31,42 @@ public static class TaskbarController
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr hWnd);
 
-    private static IEnumerable<IntPtr> TaskbarWindows()
+    private static IntPtr[] TaskbarWindows()
     {
-        var result = new List<IntPtr>();
-
-        EnumWindows((hWnd, _) =>
+        var stale = _cached.Length == 0 || Environment.TickCount64 - _cachedAt > RescanMs;
+        if (!stale)
         {
-            var buffer = new StringBuilder(64);
-            GetClassName(hWnd, buffer, buffer.Capacity);
-            var className = buffer.ToString();
-
-            if (className == "Shell_TrayWnd" || className == "Shell_SecondaryTrayWnd")
+            foreach (var handle in _cached)
             {
-                result.Add(hWnd);
+                if (!IsWindow(handle))
+                {
+                    stale = true;
+                    break;
+                }
             }
+        }
 
-            return true;
-        }, IntPtr.Zero);
+        if (!stale)
+        {
+            return _cached;
+        }
 
-        return result;
+        var found = new List<IntPtr>();
+        var primary = FindWindow(null, PrimaryClass);
+        if (primary != IntPtr.Zero)
+        {
+            found.Add(primary);
+        }
+
+        var secondary = IntPtr.Zero;
+        while ((secondary = FindWindowEx(IntPtr.Zero, secondary, null, SecondaryClass)) != IntPtr.Zero)
+        {
+            found.Add(secondary);
+        }
+
+        _cached = found.ToArray();
+        _cachedAt = Environment.TickCount64;
+        return _cached;
     }
 
     public static void Hide()

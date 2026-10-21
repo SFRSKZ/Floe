@@ -30,6 +30,10 @@ public sealed class VisualizerGlow : FrameworkElement
     private const double FadeInSeconds = 0.22;
     private const double BalanceSeconds = 0.18;
 
+    // Brush alpha ladder: gradients are cached per colour and grade, so a
+    // repaint only looks a frozen brush up. One grade is ~1/255 of MaxAlpha.
+    private const int AlphaGrades = 64;
+
     // Resting lobe layout, normalised across the capsule: centre first, then
     // pairs fanning outward. The last pair sits on the sides themselves.
     private static readonly double[] LobeX = { 0.5, 0.35, 0.65, 0.20, 0.80, 0.06, 0.94 };
@@ -48,6 +52,12 @@ public sealed class VisualizerGlow : FrameworkElement
     };
 
     private readonly Stopwatch _clock = Stopwatch.StartNew();
+
+    // Frozen brushes keyed by colour, alpha grade and falloff shape, so the
+    // render pass allocates nothing. Relative mapping keeps them reusable
+    // across lobes: the gradient spans whatever ellipse it fills.
+    private readonly Dictionary<(Color Color, int Grade, bool Soft), Brush> _blobs = new();
+    private readonly float[] _channelPeaks = new float[2];
 
     private AudioPeakMeter? _meter;
     private Color[] _palette = DefaultPalette;
@@ -77,6 +87,7 @@ public sealed class VisualizerGlow : FrameworkElement
         set
         {
             _palette = value is { Length: > 0 } ? value : DefaultPalette;
+            _blobs.Clear();
             InvalidateVisual();
         }
     }
@@ -180,12 +191,7 @@ public sealed class VisualizerGlow : FrameworkElement
         double ambienceX = width * 0.50 + 12;
         double ambienceY = 14 + 4 * intensity;
         var ambienceCenter = new Point(centerX, bottom + 2);
-        var ambienceBrush = CreateBlobBrush(
-            Blend(palette), ambienceCenter, ambienceX, ambienceY, 0.24 * intensity, soft: true);
-        if (ambienceBrush is not null)
-        {
-            dc.DrawEllipse(ambienceBrush, null, ambienceCenter, ambienceX, ambienceY);
-        }
+        DrawBlob(dc, Blend(palette), ambienceCenter, ambienceX, ambienceY, 0.24 * intensity, soft: true);
 
         // Overlapping lobe lights. Each drifts on its own slow sine so the
         // glow breathes and ripples instead of pumping as one shape.
@@ -218,46 +224,27 @@ public sealed class VisualizerGlow : FrameworkElement
         foreach (var lobe in lobes)
         {
             var haloCenter = new Point(lobe.X, lobe.Y + 1.5);
-            double haloX = lobe.RadiusX * 1.45;
-            double haloY = lobe.RadiusY * 1.55;
-            var haloBrush = CreateBlobBrush(lobe.Color, haloCenter, haloX, haloY, lobe.Alpha * 0.42, soft: true);
-            if (haloBrush is not null)
-            {
-                dc.DrawEllipse(haloBrush, null, haloCenter, haloX, haloY);
-            }
+            DrawBlob(dc, lobe.Color, haloCenter, lobe.RadiusX * 1.45, lobe.RadiusY * 1.55,
+                lobe.Alpha * 0.42, soft: true);
         }
 
         foreach (var lobe in lobes)
         {
-            var center = new Point(lobe.X, lobe.Y);
-            var brush = CreateBlobBrush(lobe.Color, center, lobe.RadiusX, lobe.RadiusY, lobe.Alpha, soft: false);
-            if (brush is not null)
-            {
-                dc.DrawEllipse(brush, null, center, lobe.RadiusX, lobe.RadiusY);
-            }
+            DrawBlob(dc, lobe.Color, new Point(lobe.X, lobe.Y), lobe.RadiusX, lobe.RadiusY,
+                lobe.Alpha, soft: false);
         }
 
         // A luminous lip along the edge itself — still a gradient, never a bar.
         double lipX = width * 0.44;
         double lipY = 3.0 + 1.3 * intensity;
         var lipCenter = new Point(centerX + balance * 2, bottom - 0.5);
-        var lipBrush = CreateBlobBrush(BlendPalette(palette, 0.55), lipCenter, lipX, lipY,
-            0.30 * intensity, soft: true);
-        if (lipBrush is not null)
-        {
-            dc.DrawEllipse(lipBrush, null, lipCenter, lipX, lipY);
-        }
+        DrawBlob(dc, BlendPalette(palette, 0.55), lipCenter, lipX, lipY, 0.30 * intensity, soft: true);
 
         // Tiny white-hot core: the premium "light source" at the centre.
         double coreX = width * 0.12 + 16;
         double coreY = 5 + 2 * intensity;
         var coreCenter = new Point(centerX + balance * 3, bottom);
-        var coreBrush = CreateBlobBrush(Colors.White, coreCenter, coreX, coreY,
-            0.20 * intensity, soft: true);
-        if (coreBrush is not null)
-        {
-            dc.DrawEllipse(coreBrush, null, coreCenter, coreX, coreY);
-        }
+        DrawBlob(dc, Colors.White, coreCenter, coreX, coreY, 0.20 * intensity, soft: true);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -315,6 +302,18 @@ public sealed class VisualizerGlow : FrameworkElement
             : Math.Clamp(now - _lastFrameSeconds, 0.001, 0.1);
         _lastFrameSeconds = now;
 
+        // See VisualizerPacing: the strip shares the render thread with the dock.
+        // Sampling and the envelopes only need to run once per painted frame,
+        // so accumulate dt and do that work inside the gate.
+        _sinceRepaint += dt;
+        if (_sinceRepaint < VisualizerPacing.RepaintInterval)
+        {
+            return;
+        }
+
+        dt = _sinceRepaint;
+        _sinceRepaint = 0;
+
         if (_active)
         {
             _fade = Math.Min(1, _fade + dt / FadeInSeconds);
@@ -336,14 +335,14 @@ public sealed class VisualizerGlow : FrameworkElement
             }
         }
 
-        // See VisualizerPacing: the strip shares the render thread with the dock.
-        _sinceRepaint += dt;
-        if (_sinceRepaint < VisualizerPacing.RepaintInterval)
+        // Below the render threshold OnRender draws nothing at all, so while the
+        // light is dark a repaint would only burn the shared render thread.
+        double visible = Math.Sqrt(Math.Clamp(_level, 0, 1)) * _fade;
+        if (_active && _debugLevel < 0 && visible <= 0.001)
         {
             return;
         }
 
-        _sinceRepaint = 0;
         VisualizerPacing.MarkRepaint();
         InvalidateVisual();
     }
@@ -360,15 +359,16 @@ public sealed class VisualizerGlow : FrameworkElement
         double tau = target > _level ? AttackSeconds : ReleaseSeconds;
         _level += (target - _level) * (1 - Math.Exp(-dt / tau));
 
-        var channels = _meter.GetChannelPeaks();
+        var channels = _channelPeaks;
+        int count = _meter.GetChannelPeaks(channels);
         double left = 0;
         double right = 0;
-        if (channels.Length >= 2)
+        if (count >= 2)
         {
             left = channels[0];
             right = channels[1];
         }
-        else if (channels.Length == 1)
+        else if (count == 1)
         {
             left = right = channels[0];
         }
@@ -378,23 +378,57 @@ public sealed class VisualizerGlow : FrameworkElement
         _balance += (balance - _balance) * (1 - Math.Exp(-dt / BalanceSeconds));
     }
 
-    private static RadialGradientBrush? CreateBlobBrush(
-        Color color, Point center, double radiusX, double radiusY, double alpha, bool soft)
+    private void DrawBlob(DrawingContext dc, Color color, Point center, double radiusX, double radiusY,
+        double alpha, bool soft)
     {
-        if (alpha <= 0.001 || radiusX <= 0 || radiusY <= 0 ||
-            !double.IsFinite(radiusX) || !double.IsFinite(radiusY))
+        if (radiusX <= 0 || radiusY <= 0 || !double.IsFinite(radiusX) || !double.IsFinite(radiusY))
+        {
+            return;
+        }
+
+        var brush = BlobBrush(color, alpha, soft);
+        if (brush is not null)
+        {
+            dc.DrawEllipse(brush, null, center, radiusX, radiusY);
+        }
+    }
+
+    private Brush? BlobBrush(Color color, double alpha, bool soft)
+    {
+        if (alpha <= 0.001)
         {
             return null;
         }
 
-        double peak = Math.Min(MaxAlpha, alpha);
+        // Rounding the peak to a grade changes no pixel by more than ~1/255 of alpha.
+        int grade = Math.Clamp((int)Math.Round(Math.Min(alpha, MaxAlpha) / MaxAlpha * AlphaGrades), 0, AlphaGrades);
+        if (grade == 0)
+        {
+            return null;
+        }
+
+        var key = (color, grade, soft);
+        if (_blobs.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
+        var brush = CreateBlobBrush(color, MaxAlpha * grade / AlphaGrades, soft);
+        _blobs[key] = brush;
+        return brush;
+    }
+
+    // Relative mapping makes the gradient follow whatever ellipse it fills, so
+    // one frozen brush serves every position and size.
+    private static RadialGradientBrush CreateBlobBrush(Color color, double peak, bool soft)
+    {
         var brush = new RadialGradientBrush
         {
-            MappingMode = BrushMappingMode.Absolute,
-            Center = center,
-            GradientOrigin = center,
-            RadiusX = radiusX,
-            RadiusY = radiusY,
+            MappingMode = BrushMappingMode.RelativeToBoundingBox,
+            Center = new Point(0.5, 0.5),
+            GradientOrigin = new Point(0.5, 0.5),
+            RadiusX = 0.5,
+            RadiusY = 0.5,
             SpreadMethod = GradientSpreadMethod.Pad
         };
 

@@ -27,8 +27,18 @@ public partial class DockWindow
     private void UpdateClock()
     {
         var now = DateTime.Now;
-        _clockTime.Text = now.ToString("HH:mm");
-        _clockDate.Text = now.ToString("ddd d MMM");
+        var time = now.ToString("HH:mm");
+        if (_clockTime.Text != time)
+        {
+            _clockTime.Text = time;
+        }
+
+        var date = now.ToString("ddd d MMM");
+        if (_clockDate.Text != date)
+        {
+            // the date only changes once a day
+            _clockDate.Text = date;
+        }
     }
 
 }

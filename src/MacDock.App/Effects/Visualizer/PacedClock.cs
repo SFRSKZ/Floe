@@ -10,12 +10,17 @@ namespace MacDock.App.Effects.Visualizer;
 /// </summary>
 public sealed class PacedClock
 {
+    // Two ticks this close together belong to the same animation frame: a
+    // duplicate would only repaint the same content twice.
+    private const double SameFrameSeconds = 0.002;
+
     private readonly Action<double> _tick;
     private readonly int _divider;
     private readonly bool _everyFrameWhileDockAnimates;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private double _lastTick = double.NegativeInfinity;
     private double _lastVisualizerRepaint = double.NegativeInfinity;
+    private double _lastRendering = double.NegativeInfinity;
     private int _repaints;
 
     /// <param name="tick">Called with seconds since the clock was made.</param>
@@ -56,6 +61,18 @@ public sealed class PacedClock
 
     private void OnRendering(object? sender, EventArgs e)
     {
+        // Rendering can be raised more than once for one frame; the timestamp
+        // identifies the frame.
+        double frame = e is RenderingEventArgs args
+            ? args.RenderingTime.TotalSeconds
+            : _clock.Elapsed.TotalSeconds;
+        if (frame <= _lastRendering)
+        {
+            return;
+        }
+
+        _lastRendering = frame;
+
         var now = _clock.Elapsed.TotalSeconds;
         if (_everyFrameWhileDockAnimates && VisualizerPacing.DockAnimating)
         {
@@ -78,6 +95,13 @@ public sealed class PacedClock
 
     private void Tick(double now)
     {
+        // Repainted is raised from inside a visualizer's Rendering handler, so a
+        // frame can reach Tick from both sources; keep only the first.
+        if (now - _lastTick < SameFrameSeconds)
+        {
+            return;
+        }
+
         _lastTick = now;
         _tick(now);
     }

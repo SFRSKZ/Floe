@@ -100,7 +100,13 @@ public partial class DockWindow
     {
         var cpu = SystemMetrics.GetCpuUsage();
         _ambientLevel += (cpu - _ambientLevel) * 0.35;
-        _separator.Opacity = 0.5 + (0.5 * (_ambientLevel / 100.0));
+        var opacity = 0.5 + (0.5 * (_ambientLevel / 100.0));
+
+        // sub-2% moves are invisible on a 1 px line and would redraw it every tick
+        if (Math.Abs(opacity - _separator.Opacity) > 0.02)
+        {
+            _separator.Opacity = opacity;
+        }
     }
 
     private static bool IsIgnoredForeground(string name)

@@ -32,6 +32,7 @@ public sealed class AudioPeakMeter : IDisposable
     private IMMDevice? _device;
     private IAudioMeterInformation? _meter;
     private float[] _channelBuffer = Array.Empty<float>();
+    private int _channelCount;
     private long _lastAcquireMs = -ReacquireIntervalMs;
     private bool _disposed;
 
@@ -64,52 +65,51 @@ public sealed class AudioPeakMeter : IDisposable
     }
 
     /// <summary>
-    /// Per-channel peaks (normally left, right), 0..1. Returns an empty array
-    /// on any failure. The returned array is a fresh copy owned by the caller.
+    /// Copies per-channel peaks (normally left, right), 0..1, into
+    /// <paramref name="destination"/> and returns how many values were written;
+    /// 0 on any failure. The channel count is cached until the endpoint changes,
+    /// so a steady sample loop allocates nothing.
     /// </summary>
-    public float[] GetChannelPeaks()
+    public int GetChannelPeaks(float[] destination)
     {
+        if (destination.Length == 0)
+        {
+            return 0;
+        }
+
         lock (_gate)
         {
-            if (!TryGetMeter(out var meter))
+            if (!TryGetMeter(out var meter) || !TryGetChannelCount(meter, out int count))
             {
-                return Array.Empty<float>();
+                return 0;
             }
 
             try
             {
-                if (meter.GetMeteringChannelCount(out uint channelCount) < 0 ||
-                    channelCount == 0 || channelCount > MaxChannels)
-                {
-                    DropEndpoint();
-                    return Array.Empty<float>();
-                }
-
-                int count = (int)channelCount;
                 if (_channelBuffer.Length < count)
                 {
                     _channelBuffer = new float[count];
                 }
 
                 var buffer = _channelBuffer;
-                if (meter.GetChannelsPeakValues(channelCount, buffer) < 0)
+                if (meter.GetChannelsPeakValues((uint)count, buffer) < 0)
                 {
                     DropEndpoint();
-                    return Array.Empty<float>();
+                    return 0;
                 }
 
-                var result = new float[count];
-                for (int i = 0; i < count; i++)
+                int written = Math.Min(count, destination.Length);
+                for (int i = 0; i < written; i++)
                 {
-                    result[i] = Sanitize(buffer[i]);
+                    destination[i] = Sanitize(buffer[i]);
                 }
 
-                return result;
+                return written;
             }
             catch
             {
                 DropEndpoint();
-                return Array.Empty<float>();
+                return 0;
             }
         }
     }
@@ -183,12 +183,36 @@ public sealed class AudioPeakMeter : IDisposable
         }
     }
 
+    /// <summary>
+    /// Channel count of the current endpoint, asked once per endpoint: a new
+    /// device can change it, so it is dropped together with the meter.
+    /// </summary>
+    private bool TryGetChannelCount(IAudioMeterInformation meter, out int count)
+    {
+        count = _channelCount;
+        if (count > 0)
+        {
+            return true;
+        }
+
+        if (meter.GetMeteringChannelCount(out uint channelCount) < 0 ||
+            channelCount == 0 || channelCount > MaxChannels)
+        {
+            DropEndpoint();
+            return false;
+        }
+
+        count = _channelCount = (int)channelCount;
+        return true;
+    }
+
     /// <summary>Drops the endpoint/meter but keeps the enumerator for a quick re-acquire.</summary>
     private void DropEndpoint()
     {
         Release(ref _meter);
         Release(ref _device);
         _channelBuffer = Array.Empty<float>();
+        _channelCount = 0;
     }
 
     private void ReleaseAll()

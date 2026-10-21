@@ -83,7 +83,7 @@ public partial class DockWindow
         _clockLayer.Children.Add(_weather);
         _clockLayer.Children.Add(_quickSettings);
 
-        _mediaTimer.Tick += async (_, _) => await RefreshMediaAsync();
+        _mediaTimer.Tick += async (_, _) => await PollMediaAsync();
         _mediaTimer.Start();
         _weatherTimer.Tick += async (_, _) => await RefreshWeatherAsync();
         _weatherTimer.Start();
@@ -212,6 +212,18 @@ public partial class DockWindow
         await RefreshMediaAsync();
     }
 
+    private async Task PollMediaAsync()
+    {
+        // nothing of the media section can be on screen while the dock is tucked away;
+        // the first tick after it comes back refreshes it again
+        if (!IsVisible || !_shown || _fullscreenHidden)
+        {
+            return;
+        }
+
+        await RefreshMediaAsync();
+    }
+
     private async Task RefreshMediaAsync()
     {
         if (_mediaRefreshing)
@@ -226,10 +238,28 @@ public partial class DockWindow
             var playing = media is not null && !string.IsNullOrWhiteSpace(media.Title) && await MediaService.IsPlayingAsync();
             if (media is not null && !string.IsNullOrWhiteSpace(media.Title))
             {
-                _mediaTitle.Text = media.Title;
-                _mediaArtist.Text = media.Artist;
-                _mediaArt.Source = media.Artwork;
-                _mediaProgress.ScaleX = media.Progress;
+                // the poll runs every second - only touch what actually changed
+                if (_mediaTitle.Text != media.Title)
+                {
+                    _mediaTitle.Text = media.Title;
+                }
+
+                if (_mediaArtist.Text != media.Artist)
+                {
+                    _mediaArtist.Text = media.Artist;
+                }
+
+                // MediaService hands back the same frozen bitmap for the same track
+                if (!ReferenceEquals(_mediaArt.Source, media.Artwork))
+                {
+                    _mediaArt.Source = media.Artwork;
+                }
+
+                // sub-pixel progress moves are not worth invalidating the transform
+                if (Math.Abs(_mediaProgress.ScaleX - media.Progress) > 0.001)
+                {
+                    _mediaProgress.ScaleX = media.Progress;
+                }
             }
 
             if (playing != _mediaPlaying)

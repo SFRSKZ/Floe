@@ -63,7 +63,7 @@ public partial class DockWindow : Window
     private readonly List<DockItemViewModel> _pinnedList = new();
     private readonly DispatcherTimer _hideTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
     private readonly DispatcherTimer _runningTimer = new() { Interval = TimeSpan.FromMilliseconds(2500) };
-    private readonly DispatcherTimer _foregroundTimer = new() { Interval = TimeSpan.FromMilliseconds(800) };
+    private readonly DispatcherTimer _foregroundTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _foregroundDebounce = new() { Interval = TimeSpan.FromMilliseconds(80) };
     private string _pendingForeground = string.Empty;
     private string _pendingTitle = string.Empty;
@@ -301,6 +301,7 @@ public partial class DockWindow : Window
         _clockTimer.Tick += (_, _) => UpdateClock();
         _clockTimer.Start();
 
+        // the EVENT_SYSTEM_FOREGROUND hook does the real work; this poll is only a safety net
         _foregroundTimer.Tick += (_, _) => UpdateForeground();
         _foregroundTimer.Start();
         _foregroundDebounce.Tick += (_, _) => ApplyForeground();

@@ -178,7 +178,8 @@ internal sealed class GlassBackdrop : FrameworkElement
     {
         IsHitTestVisible = false;
         _small.Effect = _blur;
-        RenderOptions.SetBitmapScalingMode(_image, BitmapScalingMode.HighQuality);
+        // the source is blurred, so linear upscaling is indistinguishable and much cheaper
+        RenderOptions.SetBitmapScalingMode(_image, BitmapScalingMode.Linear);
         if (RenderCapability.IsPixelShaderVersionSupported(3, 0) && !NoFx.Contains("vibrancy"))
         {
             _image.Effect = new VibrancyEffect();

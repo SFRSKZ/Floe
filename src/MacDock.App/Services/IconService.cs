@@ -28,9 +28,19 @@ public static class IconService
     [DllImport("user32.dll", EntryPoint = "GetClassLongPtrW")]
     private static extern IntPtr GetClassLongPtr(IntPtr hWnd, int index);
 
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
     private const int WmGetIcon = 0x007F;
     private const int GclpHIcon = -14;
     private const int GclpHIconSm = -34;
+
+    private const long WindowIconLifetimeMs = 30_000;
+
+    private static readonly Dictionary<(IntPtr Hwnd, int Box), (ImageSource? Icon, uint ProcessId, long Stamp)> WindowIconCache = new();
 
     public static ImageSource? GetWindowIcon(IntPtr hwnd, int box = 58)
     {
@@ -39,6 +49,29 @@ public static class IconService
             return null;
         }
 
+        GetWindowThreadProcessId(hwnd, out var processId);
+        var key = (hwnd, box);
+        // negative results are cached too: an iconless window would otherwise repeat the WM_GETICON roundtrip every refresh
+        if (WindowIconCache.TryGetValue(key, out var cached) &&
+            cached.ProcessId == processId &&
+            Environment.TickCount64 - cached.Stamp < WindowIconLifetimeMs &&
+            IsWindow(hwnd))
+        {
+            return cached.Icon;
+        }
+
+        var icon = ResolveWindowIcon(hwnd, box);
+        if (WindowIconCache.Count >= 256)
+        {
+            WindowIconCache.Clear();
+        }
+
+        WindowIconCache[key] = (icon, processId, Environment.TickCount64);
+        return icon;
+    }
+
+    private static ImageSource? ResolveWindowIcon(IntPtr hwnd, int box)
+    {
         var handle = SendMessage(hwnd, WmGetIcon, (IntPtr)1, IntPtr.Zero);
         if (handle == IntPtr.Zero)
         {

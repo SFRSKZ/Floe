@@ -23,7 +23,13 @@ internal static class CaptureReveal
     public static bool Recording
     {
         get => _recording;
-        set { _recording = value; Apply(); }
+        set
+        {
+            _recording = value;
+            Apply();
+            // a deadline may still be armed from before recording started
+            Arm();
+        }
     }
 
     public static void Initialize(HwndSource source)
@@ -33,7 +39,17 @@ internal static class CaptureReveal
         _dispatcher = source.Dispatcher;
         source.AddHook(WndProc);
         AddClipboardFormatListener(source.Handle);
-        _timer = new DispatcherTimer(TimeSpan.FromMilliseconds(50), DispatcherPriority.Normal, (_, _) => Apply(), _dispatcher);
+        var timer = new DispatcherTimer(DispatcherPriority.Normal, _dispatcher) { Interval = TimeSpan.FromMilliseconds(50) };
+        _timer = timer;
+        timer.Tick += (_, _) =>
+        {
+            Apply();
+            // nothing changes until the next reveal, and recording applies its state directly
+            if (_recording || Environment.TickCount64 >= Math.Max(_deadline, _screenshotDeadline))
+            {
+                timer.Stop();
+            }
+        };
         _signal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\MacDock.Reveal");
         _wait = ThreadPool.RegisterWaitForSingleObject(_signal, (_, _) =>
             _dispatcher.BeginInvoke(new Action(() => { if (!_stopped) Reveal(TimeSpan.FromSeconds(4)); })), null, Timeout.Infinite, false);
@@ -42,9 +58,17 @@ internal static class CaptureReveal
             if (_stopped) return;
             _screenshotDeadline = Environment.TickCount64 + 12000;
             Apply();
+            Arm();
             await Task.Delay(120);
             if (!_stopped) replay();
         })));
+    }
+
+    /// <summary>Polls while a reveal or screenshot deadline is armed; recording needs no timer.</summary>
+    private static void Arm()
+    {
+        if (_timer is null || _timer.IsEnabled) return;
+        if (Environment.TickCount64 < Math.Max(_deadline, _screenshotDeadline)) _timer.Start();
     }
 
     public static void Exclude(IntPtr hwnd)
@@ -70,6 +94,7 @@ internal static class CaptureReveal
     {
         _deadline = Math.Max(_deadline, Environment.TickCount64 + (long)duration.TotalMilliseconds);
         Apply();
+        Arm();
     }
 
     private static void Apply()

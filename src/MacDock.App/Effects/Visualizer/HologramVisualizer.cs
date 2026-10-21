@@ -83,6 +83,8 @@ public sealed class HologramVisualizer : FrameworkElement
     private readonly double[] _particleDrift = new double[ParticleCount];
     private readonly double[] _particleSize = new double[ParticleCount];
 
+    private readonly float[] _channelPeaks = new float[2];
+
     private AudioPeakMeter? _meter;
     private Rect _capsule = Rect.Empty;
     private bool _active;
@@ -286,8 +288,10 @@ public sealed class HologramVisualizer : FrameworkElement
             double cx = x + sway * 0.5;
             dc.DrawImage(sprite, new Rect(cx - (SpriteWidth / 2), y0 - h - 1, SpriteWidth, h + 1));
 
+            // Faint tips are lost in the strand sprite; drawing them anyway cost an
+            // ellipse per strand.
             double tipAlpha = (0.06 + 0.24 * noise) * energy * (0.35 + 0.65 * heightRatio);
-            if (tipAlpha > 0.002)
+            if (tipAlpha > 0.15)
             {
                 dc.DrawEllipse(Graded(SparkBrushes, tipAlpha), null, new Point(x + sway, y0 - h), 1.05, 1.05);
             }
@@ -380,6 +384,18 @@ public sealed class HologramVisualizer : FrameworkElement
             : Math.Clamp(now - _lastFrameSeconds, 0.001, 0.1);
         _lastFrameSeconds = now;
 
+        // See VisualizerPacing: the strip shares the render thread with the dock.
+        // Sampling and the envelopes only need to run once per painted frame,
+        // so accumulate dt and do that work inside the gate.
+        _sinceRepaint += dt;
+        if (_sinceRepaint < VisualizerPacing.RepaintInterval)
+        {
+            return;
+        }
+
+        dt = _sinceRepaint;
+        _sinceRepaint = 0;
+
         if (_active)
         {
             _fade = Math.Min(1, _fade + dt / FadeInSeconds);
@@ -401,14 +417,14 @@ public sealed class HologramVisualizer : FrameworkElement
             }
         }
 
-        // See VisualizerPacing: the strip shares the render thread with the dock.
-        _sinceRepaint += dt;
-        if (_sinceRepaint < VisualizerPacing.RepaintInterval)
+        // Below the render threshold OnRender draws nothing, so a repaint would
+        // only burn the shared render thread.
+        double energy = _fade * (0.30 + 0.70 * Math.Sqrt(Math.Clamp(_level, 0, 1)));
+        if (_active && _debugLevel < 0 && energy <= 0.001)
         {
             return;
         }
 
-        _sinceRepaint = 0;
         VisualizerPacing.MarkRepaint();
         InvalidateVisual();
     }
@@ -425,15 +441,16 @@ public sealed class HologramVisualizer : FrameworkElement
         double tau = target > _level ? AttackSeconds : ReleaseSeconds;
         _level += (target - _level) * (1 - Math.Exp(-dt / tau));
 
-        var channels = _meter.GetChannelPeaks();
+        var channels = _channelPeaks;
+        int count = _meter.GetChannelPeaks(channels);
         double left = 0;
         double right = 0;
-        if (channels.Length >= 2)
+        if (count >= 2)
         {
             left = channels[0];
             right = channels[1];
         }
-        else if (channels.Length == 1)
+        else if (count == 1)
         {
             left = right = channels[0];
         }

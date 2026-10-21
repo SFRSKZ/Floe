@@ -108,22 +108,32 @@ public static class IconField
         // anything the outside can't reach from the border is a hole
         var reached = new bool[n * n];
         var stack = new Stack<int>();
+        void Visit(int p)
+        {
+            if (!inside[p] && !reached[p])
+            {
+                reached[p] = true;
+                stack.Push(p);
+            }
+        }
+
+        var bottomRow = (n - 1) * n;
         for (int i = 0; i < n; i++)
         {
-            foreach (var p in new[] { i, ((n - 1) * n) + i, i * n, (i * n) + n - 1 })
-            {
-                if (!inside[p] && !reached[p]) { reached[p] = true; stack.Push(p); }
-            }
+            Visit(i);
+            Visit(bottomRow + i);
+            Visit(i * n);
+            Visit((i * n) + n - 1);
         }
 
         while (stack.Count > 0)
         {
             var p = stack.Pop();
-            int x = p % n, y = p / n;
-            foreach (var q in new[] { x > 0 ? p - 1 : -1, x < n - 1 ? p + 1 : -1, y > 0 ? p - n : -1, y < n - 1 ? p + n : -1 })
-            {
-                if (q >= 0 && !inside[q] && !reached[q]) { reached[q] = true; stack.Push(q); }
-            }
+            int x = p % n;
+            if (x > 0) Visit(p - 1);
+            if (x < n - 1) Visit(p + 1);
+            if (p >= n) Visit(p - n);
+            if (p < bottomRow) Visit(p + n);
         }
 
         for (int i = 0; i < n * n; i++)

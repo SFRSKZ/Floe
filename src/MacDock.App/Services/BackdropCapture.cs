@@ -10,11 +10,27 @@ namespace MacDock.App.Services;
 internal sealed class BackdropCapture : IDisposable
 {
     private static readonly object FreezeGate = new();
+    // Signalled while not frozen, so a frozen worker sleeps instead of polling every tick.
+    private static readonly ManualResetEvent Unfrozen = new(true);
     private static bool _frozen;
     public static bool Frozen
     {
         get { lock (FreezeGate) return _frozen; }
-        set { lock (FreezeGate) _frozen = value; }
+        set
+        {
+            lock (FreezeGate)
+            {
+                _frozen = value;
+                if (value)
+                {
+                    Unfrozen.Reset();
+                }
+                else
+                {
+                    Unfrozen.Set();
+                }
+            }
+        }
     }
 
     private const int ActiveIntervalMs = 33;
@@ -27,6 +43,7 @@ internal sealed class BackdropCapture : IDisposable
     private readonly Func<bool>? _isActive;
     private readonly object _sync = new();
     private readonly AutoResetEvent _wake = new(false);
+    private readonly WaitHandle[] _waits;
     private readonly Action _presentLatest;
     private volatile bool _visible;
     private volatile bool _disposed;
@@ -51,6 +68,7 @@ internal sealed class BackdropCapture : IDisposable
         _present = present;
         _isActive = isActive;
         _presentLatest = PresentLatest;
+        _waits = new WaitHandle[] { _wake, Unfrozen };
         _visible = owner.IsVisible;
         owner.IsVisibleChanged += OnVisibilityChanged;
         new Thread(CaptureLoop) { IsBackground = true, Name = "MacDockBackdrop" }.Start();
@@ -76,11 +94,13 @@ internal sealed class BackdropCapture : IDisposable
             int unchangedFrames = 0;
             while (!_disposed)
             {
+                bool frozen = false;
                 try
                 {
                     lock (FreezeGate)
                     {
-                        if (!_frozen && _visible && ScreenInput.TryGetWindowRect(_hwnd, out var rect))
+                        frozen = _frozen;
+                        if (!frozen && _visible && ScreenInput.TryGetWindowRect(_hwnd, out var rect))
                         {
                             var sourceWidth = rect.Right - rect.Left;
                             var sourceHeight = rect.Bottom - rect.Top;
@@ -125,18 +145,29 @@ internal sealed class BackdropCapture : IDisposable
                     // that is shutting down must not kill the process; retry next tick.
                 }
 
+                if (frozen)
+                {
+                    // Frozen popups are part of the capture, so the grab is paused; sleep until
+                    // the unfreeze signal or a visibility/dispose wake instead of polling.
+                    WaitHandle.WaitAny(_waits);
+                    continue;
+                }
+
                 int delay;
+                var active = _isActive?.Invoke() ?? false;
                 if (!_visible)
                 {
                     delay = Timeout.Infinite;
                 }
-                else if (unchangedFrames < 4)
+                else if (active && unchangedFrames < 4)
                 {
                     delay = ActiveIntervalMs;
                 }
                 else
                 {
-                    delay = !(_isActive?.Invoke() ?? false) && ScreenInput.GetIdleMilliseconds() > 2000 ? IdlePausedIntervalMs : IdleIntervalMs;
+                    // A settled dock can still see changes (video, cursor) but 30 Hz is wasted
+                    // work there; the idle cadence keeps it fresh and only active frames run hot.
+                    delay = !active && ScreenInput.GetIdleMilliseconds() > 2000 ? IdlePausedIntervalMs : IdleIntervalMs;
                 }
 
                 _wake.WaitOne(delay);
