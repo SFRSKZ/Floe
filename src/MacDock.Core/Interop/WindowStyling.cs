@@ -65,6 +65,15 @@ public static class WindowStyling
         NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GwlExStyle, new IntPtr(style));
     }
 
+    /// <summary>Puts <paramref name="hwnd"/> directly under <paramref name="above"/> in the z-order.</summary>
+    public static void PlaceBelow(IntPtr hwnd, IntPtr above)
+    {
+        if (hwnd != IntPtr.Zero && above != IntPtr.Zero)
+        {
+            SetWindowPos(hwnd, above, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+        }
+    }
+
     public static void BringToTop(IntPtr hwnd)
     {
         if (hwnd != IntPtr.Zero)

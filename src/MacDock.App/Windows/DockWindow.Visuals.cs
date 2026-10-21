@@ -176,7 +176,6 @@ public partial class DockWindow
         var pixel = 1 / (VisualTreeHelper.GetDpi(this).DpiScaleX * Math.Max(0.1, _dockScale));
         _rim.StrokeThickness = 2 * pixel; // clipping discards the outer half: a 1px inner hairline
         _outerRim.StrokeThickness = 2 * pixel; // exterior clip discards the inner half
-        UpdateVisualizerCapsule();
         if (_metalEffect is null) return;
         var width = Math.Max(1, _capsuleWidth);
         var hover = _currentHoverX - _capsuleLeft;

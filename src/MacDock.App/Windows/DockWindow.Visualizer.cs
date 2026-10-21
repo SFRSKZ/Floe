@@ -9,8 +9,7 @@ namespace MacDock.App.Windows;
 
 public partial class DockWindow
 {
-    private readonly VisualizerGlow _visualizer = new();
-    private readonly HologramVisualizer _hologram = new();
+    private VisualizerWindow? _visualizerWindow;
     private DispatcherTimer? _visualizerPoll;
     private bool _visualizerPolling;
     private bool _visualizerRunning;
@@ -24,13 +23,6 @@ public partial class DockWindow
             return;
         }
 
-        // Above the backdrop so the light shows through the glass tint and spills below the capsule.
-        ShapeLayer.Children.Insert(1, _visualizer);
-
-        // The hologram lives inside the glass, so it sits over the dark tint (or it all but vanishes).
-        ShapeLayer.Children.Insert(ShapeLayer.Children.IndexOf(_glass) + 1, _hologram);
-        _hologram.Clip = _shapeGeometry;
-        UpdateVisualizerCapsule();
         SetIconsDimmed(true);
 
         _visualizerPoll = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1.5) };
@@ -45,7 +37,7 @@ public partial class DockWindow
             try
             {
                 var playing = await VisualizerGlow.ShouldRunAsync();
-                _visualizerRunning = GlassSettings.Visualizer && IsVisible && playing;
+                _visualizerRunning = GlassSettings.Visualizer && IsVisible && _shown && !_fullscreenHidden && playing;
                 ApplyVisualizerState();
             }
             finally
@@ -58,9 +50,8 @@ public partial class DockWindow
         Closed += (_, _) =>
         {
             _visualizerPoll?.Stop();
-            _visualizer.IsActive = false;
-            _hologram.IsActive = false;
             GlassSettings.Changed -= OnVisualizerSettingChanged;
+            _visualizerWindow?.Close();
         };
     }
 
@@ -75,12 +66,26 @@ public partial class DockWindow
 
     private void ApplyVisualizerState()
     {
-        var hologram = GlassSettings.VisualizerLook == VisualizerStyle.Hologram;
-        _visualizer.IsActive = _visualizerRunning && !hologram;
-        _hologram.IsActive = _visualizerRunning && hologram;
+        if (!_visualizerRunning && _visualizerWindow is null)
+        {
+            return;
+        }
+
+        if (_visualizerWindow is null)
+        {
+            _visualizerWindow = new VisualizerWindow();
+            _visualizerWindow.Show();
+        }
+
+        // the strip covers the space the dock reserves at the bottom of the monitor
+        var scale = DockScale;
+        var area = _monitorInfo.Monitor;
+        var height = RestBarHeight + BottomMargin;
+        _visualizerWindow.Place(new Rect(area.Left / scale, (area.Bottom / scale) - height, (area.Right - area.Left) / scale, height), _hwnd);
+        _visualizerWindow.SetRunning(_visualizerRunning);
     }
 
-    /// <summary>Icons rest a little faded while the pointer is away, so the glass and the visualizer read through.</summary>
+    /// <summary>Icons rest a little faded while the pointer is away, so the glass reads through.</summary>
     private void SetIconsDimmed(bool dimmed)
     {
         if (_glassPreview || _iconsDimmed == dimmed)
@@ -94,18 +99,5 @@ public partial class DockWindow
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
         };
         IconLayer.BeginAnimation(OpacityProperty, animation);
-    }
-
-    private void UpdateVisualizerCapsule()
-    {
-        var capsule = new Rect(_capsuleLeft, RestTop, Math.Max(1, _capsuleWidth), RestBarHeight);
-        foreach (var element in new FrameworkElement[] { _visualizer, _hologram })
-        {
-            element.Width = _windowWidth;
-            element.Height = WindowHeight;
-        }
-
-        _visualizer.Capsule = capsule;
-        _hologram.Capsule = capsule;
     }
 }

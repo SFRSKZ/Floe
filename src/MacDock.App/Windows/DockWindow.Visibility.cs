@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -247,7 +247,8 @@ public partial class DockWindow
 
         // use the rest capsule width so it does not have to follow hover magnification
         var right = ToScreenX(_restCapsuleLeft + _restCapsuleWidth) + 16;
-        var centerY = Top + RestTop + (RestBarHeight / 2);
+        // the resting top, not Top: Top is mid-animation while the dock shows, hides or resizes
+        var centerY = ShownTop + RestTop + (RestBarHeight / 2);
         var top = centerY - (_desktopButton.Height / 2);
 
         if (double.IsNaN(_desktopButtonX)
@@ -278,6 +279,13 @@ public partial class DockWindow
     {
         var button = new DesktopButtonWindow();
         button.Clicked += DesktopController.ShowDesktop;
+
+        // a new style or size changes the window box; keep it centred on the dock
+        button.SizeChanged += (_, _) =>
+        {
+            _desktopButtonY = double.NaN;
+            PositionDesktopButton();
+        };
         button.Show();
         button.Hide();
         return button;
