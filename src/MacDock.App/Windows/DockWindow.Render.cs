@@ -120,6 +120,7 @@ public partial class DockWindow
         _currentHoverX = Spring(_currentHoverX, ref _hoverVel, _targetHoverX, dt);
         _currentBulge = Spring(_currentBulge, ref _bulgeVel, _targetBulge, dt);
         _dockScale = Spring(_dockScale, ref _dockScaleVel, _targetDockScale, dt, 180, 24);
+        AnimateSections(dt);
         _currentGlowColor = Lerp(_currentGlowColor, _targetGlowColor, Math.Min(1.0, dt * 9));
         _rootScale.ScaleX = _dockScale;
         _rootScale.ScaleY = _dockScale;
@@ -129,7 +130,6 @@ public partial class DockWindow
         ApplyLayout(scales);
         UpdateShape();
         UpdateGlow();
-        EnsureWidgetRendering();
 
         var settled = _targetBulge == 0
             && _currentBulge < 0.3
@@ -138,7 +138,8 @@ public partial class DockWindow
             && Math.Abs(_bulgeVel) < 4
             && Math.Abs(_dockScale - _targetDockScale) < 0.002
             && Math.Abs(_dockScaleVel) < 0.02
-            && scales.All(s => Math.Abs(s - 1) < 0.0015);
+            && scales.All(s => Math.Abs(s - 1) < 0.0015)
+            && SectionsSettled;
 
         if (settled)
         {

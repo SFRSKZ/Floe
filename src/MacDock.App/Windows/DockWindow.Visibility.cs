@@ -156,7 +156,6 @@ public partial class DockWindow
         Top = _shown ? ShownTop : HiddenTop;
 
         EnsureAppBar();
-        PositionWidgets();
     }
 
     private void UpdateMonitor()
@@ -255,21 +254,12 @@ public partial class DockWindow
 
         if (fullscreen)
         {
-            _widgetsHiddenForFullscreen = _weatherWidget?.IsVisible ?? false;
-            _weatherWidget?.Hide();
-            _mediaWidget?.Hide();
             Hide();
         }
         else
         {
             Show();
             Reposition();
-            if (_widgetsHiddenForFullscreen)
-            {
-                _weatherWidget?.Show();
-                _mediaWidget?.Show();
-                ArrangeWidgets();
-            }
         }
     }
 

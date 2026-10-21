@@ -159,16 +159,11 @@ public partial class DockWindow
         if (IsVisible)
         {
             Hide();
-            _weatherWidget?.Hide();
-            _mediaWidget?.Hide();
         }
         else
         {
             Show();
             Reposition();
-            _weatherWidget?.Show();
-            _mediaWidget?.Show();
-            ArrangeWidgets();
         }
     }
 
@@ -195,7 +190,6 @@ public partial class DockWindow
     protected override void OnClosed(EventArgs e)
     {
         StopAnimation();
-        StopWidgetRendering();
         AuraSettings.Changed -= OnAuraSettingsChanged;
         _settings?.Close();
         for (var k = 0; k < _auraEffects.Length; k++)

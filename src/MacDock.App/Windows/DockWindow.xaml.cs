@@ -180,13 +180,10 @@ public partial class DockWindow : Window
     private readonly TextBlock _clockTime = new();
     private readonly TextBlock _clockDate = new();
     private readonly Rectangle _clockDivider = new();
-    private WeatherWidgetWindow? _weatherWidget;
-    private MediaWidgetWindow? _mediaWidget;
     private PreviewWindow? _preview;
     private HwndSource? _source;
     private IntPtr _trayIcon;
 
-    private bool _widgetRenderingHooked;
     private readonly DispatcherTimer _clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private Color _currentGlowColor = Colors.White;
     private Color _targetGlowColor = Colors.White;
@@ -230,7 +227,6 @@ public partial class DockWindow : Window
     private double _shapeScale = double.NaN;
     private int _shapeCount = -1;
     private RadialMenuWindow? _radial;
-    private bool _widgetsHiddenForFullscreen;
 
     public bool AutoHide { get; set; }
 
@@ -289,8 +285,6 @@ public partial class DockWindow : Window
         _clock.Children.Add(_clockDate);
         _clock.Cursor = Cursors.Hand;
         _clock.Background = Brushes.Transparent;
-        _clock.MouseLeftButtonUp += (_, _) => ToggleWidgets();
-        _clock.ToolTip = "Widget'lar";
 
         _clockDivider.Width = 1;
         _clockDivider.Height = 34;
@@ -524,7 +518,7 @@ public partial class DockWindow : Window
                 _backdropCapture = new BackdropCapture(this, PresentBackdrop, () => _renderingHooked || _menuOpen);
             }
 
-            EnsureWidgets();
+            InitializeSections();
 
             _fullscreenTimer.Tick += (_, _) => UpdateFullscreenState();
             _fullscreenTimer.Start();

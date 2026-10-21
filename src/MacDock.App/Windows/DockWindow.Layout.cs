@@ -46,10 +46,11 @@ public partial class DockWindow
         var extra = HasSeparator ? SeparatorExtra : 0;
 
         var restContent = count == 0 ? 0 : (count * IconBox) + ((count - 1) * Spacing) + extra;
-        _capsuleWidth = LeadX + restContent + ClockGap + ClockWidth + ClockPad;
+        _restContent = restContent;
+        _capsuleWidth = LeadX + restContent + TrailWidth(_mediaReveal);
 
         var maxContent = count == 0 ? 0 : (count * IconBox * HoverMaxScale) + ((count - 1) * Spacing) + extra;
-        _windowWidth = LeadX + maxContent + ClockGap + ClockWidth + ClockPad + (2 * EdgeMargin);
+        _windowWidth = LeadX + maxContent + TrailWidth(1) + (2 * EdgeMargin);
         _restCapsuleLeft = (_windowWidth - _capsuleWidth) / 2;
         _restCapsuleWidth = _capsuleWidth;
         _capsuleLeft = _restCapsuleLeft;
@@ -225,11 +226,7 @@ public partial class DockWindow
         }
 
         PositionStartButton();
-        var clockLeft = startX + total + ClockGap;
-        Canvas.SetLeft(_clockDivider, clockLeft - (ClockGap / 2));
-        Canvas.SetTop(_clockDivider, RestTop + ((RestBarHeight - _clockDivider.Height) / 2));
-        Canvas.SetLeft(_clock, clockLeft);
-        Canvas.SetTop(_clock, RestTop + 6);
+        PositionSections(startX + total);
 
         if (_activeIndex >= 0 && _activeIndex < count && _auraGrid.Visibility == Visibility.Visible)
         {
@@ -258,7 +255,7 @@ public partial class DockWindow
             total += IconBox * scales[i];
         }
 
-        _capsuleWidth = LeadX + total + ClockGap + ClockWidth + ClockPad;
+        _capsuleWidth = LeadX + total + TrailWidth(_mediaReveal);
         _capsuleLeft = (_windowWidth - _capsuleWidth) / 2;
     }
 
