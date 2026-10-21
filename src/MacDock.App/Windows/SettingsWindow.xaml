@@ -199,6 +199,12 @@
                 </WrapPanel>
 
                 <UniformGrid x:Name="PaletteList" Columns="2" Margin="0,2,-6,0" />
+                <TextBlock Text="Tıklama efekti" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,10,0,6" />
+                <CheckBox x:Name="ClickEffectToggle" Style="{StaticResource GlassToggle}" Content="Cam damla" />
+                <WrapPanel Margin="0,6,0,0">
+                    <RadioButton x:Name="ClickDark" GroupName="ClickTone" Style="{StaticResource ModeToggle}" Content="Koyu" />
+                    <RadioButton x:Name="ClickLight" GroupName="ClickTone" Style="{StaticResource ModeToggle}" Content="Açık" />
+                </WrapPanel>
             </StackPanel>
 
             <StackPanel x:Name="ButtonPage">

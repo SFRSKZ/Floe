@@ -113,7 +113,7 @@ internal static class ShaderCompiler
         }
     }
 
-    private static byte[] CompileBytes(byte[] bytes, string target)
+    internal static byte[] CompileBytes(byte[] bytes, string target)
     {
         IntPtr code = IntPtr.Zero, errors = IntPtr.Zero;
         try

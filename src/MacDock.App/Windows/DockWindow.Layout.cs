@@ -277,6 +277,8 @@ public partial class DockWindow
 
     private void ActivateItem(DockItemViewModel item)
     {
+        PlayClickGlass(item);
+
         // group: cycle through the windows of the same app
         if (item.Windows.Count > 0)
         {

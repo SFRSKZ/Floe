@@ -25,6 +25,13 @@ public partial class SettingsWindow : Window
 
         AuraSettings.Load();
         BuildPaletteRows();
+        ClickEffectToggle.IsChecked = AuraSettings.ClickEffect;
+        ClickDark.IsChecked = AuraSettings.ClickTone == ClickTone.Dark;
+        ClickLight.IsChecked = AuraSettings.ClickTone == ClickTone.Light;
+        ClickEffectToggle.Checked += (_, _) => AuraSettings.SetClickEffect(true);
+        ClickEffectToggle.Unchecked += (_, _) => AuraSettings.SetClickEffect(false);
+        ClickDark.Checked += (_, _) => AuraSettings.SetClickTone(ClickTone.Dark);
+        ClickLight.Checked += (_, _) => AuraSettings.SetClickTone(ClickTone.Light);
 
         EffectGlow.IsChecked = AuraSettings.Effect == AuraEffect.Glow;
         EffectBurst.IsChecked = AuraSettings.Effect == AuraEffect.Burst;

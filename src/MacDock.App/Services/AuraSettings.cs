@@ -14,6 +14,12 @@ public enum AuraColorMode
     Icon,
 }
 
+public enum ClickTone
+{
+    Dark,
+    Light,
+}
+
 public enum AuraEffect
 {
     Glow,
@@ -65,6 +71,10 @@ public static class AuraSettings
     /// <summary>Spectral ("Hayalet") effect strength, 0.5 .. 2.5.</summary>
     public static double SpectralIntensity { get; private set; } = 1.5;
 
+    public static bool ClickEffect { get; private set; } = true;
+
+    public static ClickTone ClickTone { get; private set; } = ClickTone.Dark;
+
     public static int PaletteIndex { get; private set; }
 
     public static void Load()
@@ -82,6 +92,8 @@ public static class AuraSettings
                 return;
             }
 
+            ClickEffect = model.ClickEffect;
+            ClickTone = Enum.TryParse<ClickTone>(model.ClickTone, true, out var tone) && Enum.IsDefined(tone) ? tone : ClickTone.Dark;
             Mode = Enum.TryParse<AuraColorMode>(model.Mode, true, out var mode) ? mode : AuraColorMode.Palette;
             Effect = Enum.TryParse<AuraEffect>(model.Effect, true, out var effect) ? effect : AuraEffect.Glow;
             SpectralIntensity = model.SpectralIntensity <= 0 ? 1.5 : Math.Clamp(model.SpectralIntensity, 0.5, 2.5);
@@ -91,6 +103,22 @@ public static class AuraSettings
         {
             // fall back to defaults
         }
+    }
+
+    public static void SetClickEffect(bool enabled)
+    {
+        if (ClickEffect == enabled) return;
+        ClickEffect = enabled;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetClickTone(ClickTone tone)
+    {
+        if (ClickTone == tone) return;
+        ClickTone = tone;
+        Save();
+        Changed?.Invoke();
     }
 
     public static void SetMode(AuraColorMode mode)
@@ -166,6 +194,8 @@ public static class AuraSettings
             Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
             MacDock.Core.Services.AtomicFile.WriteAllText(ConfigPath, JsonSerializer.Serialize(new Model
             {
+                ClickEffect = ClickEffect,
+                ClickTone = ClickTone.ToString(),
                 Mode = Mode.ToString(),
                 Effect = Effect.ToString(),
                 SpectralIntensity = SpectralIntensity,
@@ -182,6 +212,10 @@ public static class AuraSettings
 
     private sealed class Model
     {
+        public bool ClickEffect { get; set; } = true;
+
+        public string ClickTone { get; set; } = nameof(global::MacDock.App.Services.ClickTone.Dark);
+
         public string Mode { get; set; } = nameof(AuraColorMode.Palette);
 
         public string Effect { get; set; } = nameof(AuraEffect.Glow);
