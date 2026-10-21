@@ -78,6 +78,7 @@ internal sealed class VisualizerWindow : Window
         // The whole strip is the "capsule": the light rises from the screen's bottom edge.
         var strip = new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
         _glow.Capsule = strip with { Y = strip.Height - 2, Height = 2 };
-        _hologram.Capsule = strip;
+        // the hologram keeps its base line 4 DIP above the capsule's bottom; push that onto the screen edge
+        _hologram.Capsule = strip with { Height = strip.Height + 4 };
     }
 }
