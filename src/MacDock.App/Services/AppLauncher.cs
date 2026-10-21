@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Xml.Linq;
 using MacDock.Core.Interop;
 using MacDock.Core.Models;
 
@@ -41,6 +42,12 @@ public static class AppLauncher
 
         try
         {
+            if (StoreAppTarget(target) is { } store)
+            {
+                Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = store, UseShellExecute = true });
+                return new LaunchResult($"launched:{store}", true);
+            }
+
             Process.Start(new ProcessStartInfo
             {
                 FileName = target,
@@ -73,6 +80,10 @@ public static class AppLauncher
             if (target.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
             {
                 Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = target, UseShellExecute = true });
+            }
+            else if (StoreAppTarget(target) is { } store)
+            {
+                Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = store, UseShellExecute = true });
             }
             else
             {
@@ -116,5 +127,55 @@ public static class AppLauncher
         }
 
         return string.Empty;
+    }
+
+    /// <summary>
+    /// Store (MSIX) apps can't be started from their exe under WindowsApps ("access denied");
+    /// maps such a path to shell:AppsFolder\{family}!{app id} read from the package manifest.
+    /// </summary>
+    private static string? StoreAppTarget(string exePath)
+    {
+        var marker = exePath.IndexOf(@"\WindowsApps\", StringComparison.OrdinalIgnoreCase);
+        if (marker < 0)
+        {
+            return null;
+        }
+
+        var rest = exePath[(marker + @"\WindowsApps\".Length)..];
+        var slash = rest.IndexOf('\\');
+        if (slash <= 0)
+        {
+            return null;
+        }
+
+        // full name: Name_Version_Arch_ResourceId_PublisherId -> family: Name_PublisherId
+        var packageDir = exePath[..(marker + @"\WindowsApps\".Length + slash)];
+        var parts = rest[..slash].Split('_');
+        if (parts.Length < 5)
+        {
+            return null;
+        }
+
+        var family = $"{parts[0]}_{parts[^1]}";
+        var exeName = Path.GetFileName(exePath);
+        var appId = "App";
+        try
+        {
+            var apps = XDocument.Load(Path.Combine(packageDir, "AppxManifest.xml")).Descendants()
+                .Where(e => e.Name.LocalName == "Application")
+                .Select(e => (Id: (string?)e.Attribute("Id"), Exe: (string?)e.Attribute("Executable")))
+                .Where(a => a.Id is not null)
+                .ToList();
+            var match = apps.FirstOrDefault(a => string.Equals(Path.GetFileName(a.Exe ?? string.Empty), exeName, StringComparison.OrdinalIgnoreCase));
+            match = match.Id is not null ? match : apps.FirstOrDefault(a => string.Equals(a.Id, Path.GetFileNameWithoutExtension(exeName), StringComparison.OrdinalIgnoreCase));
+            match = match.Id is not null ? match : apps.FirstOrDefault();
+            appId = match.Id ?? appId;
+        }
+        catch (Exception)
+        {
+            // unreadable manifest: "App" is the default id most packages use
+        }
+
+        return $@"shell:AppsFolder\{family}!{appId}";
     }
 }
