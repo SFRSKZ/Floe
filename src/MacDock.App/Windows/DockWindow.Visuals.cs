@@ -104,13 +104,16 @@ public partial class DockWindow
     private double _backdropLogicalWidth;
     private readonly RectangleGeometry _windowGlassBounds = new();
 
+    // Diagnostics: MACDOCK_NOFX=shadow,vibrancy,metal switches single effects off to find render costs.
+    private static readonly string NoFx = Environment.GetEnvironmentVariable("MACDOCK_NOFX") ?? "";
+
     private void InitializeGlass()
     {
         _glassPreview = Environment.GetCommandLineArgs().Any(a => a.StartsWith("--render=", StringComparison.OrdinalIgnoreCase));
         Root.Clip = _windowGlassBounds;
         _shadow.Data = _shapeGeometry;
         _shadow.Fill = Brushes.Black;
-        _shadow.Effect = new DropShadowEffect { BlurRadius = 24, ShadowDepth = 6, Direction = 270, Opacity = 0.35, Color = Colors.Black, RenderingBias = RenderingBias.Quality };
+        if (!NoFx.Contains("shadow")) _shadow.Effect = new DropShadowEffect { BlurRadius = 24, ShadowDepth = 6, Direction = 270, Opacity = 0.35, Color = Colors.Black, RenderingBias = RenderingBias.Quality };
         var exterior = new CombinedGeometry(GeometryCombineMode.Exclude,
             new RectangleGeometry(new Rect(-4096, -4096, 16384, 8192)), _shapeGeometry);
         _shadowHost.Clip = exterior;
@@ -121,7 +124,7 @@ public partial class DockWindow
         _outerRim.Stroke = new SolidColorBrush(Color.FromArgb(0x30, 0, 0, 0));
         _smallBackdrop.Effect = _smallBlur;
         RenderOptions.SetBitmapScalingMode(_backdrop, BitmapScalingMode.HighQuality);
-        if (RenderCapability.IsPixelShaderVersionSupported(3, 0)) _backdrop.Effect = new VibrancyEffect();
+        if (RenderCapability.IsPixelShaderVersionSupported(3, 0) && !NoFx.Contains("vibrancy")) _backdrop.Effect = new VibrancyEffect();
         _metalHost.Children.Add(_metalSurface);
         _metalHost.Children.Add(_metalPreview);
         Canvas.SetLeft(_metalSurface, 24);
@@ -154,7 +157,7 @@ public partial class DockWindow
             RimStyle.MetalChromatic => MetalRimEffect.ApplyPreset("chromatic", true),
             _ => null,
         };
-        if (_metalEffect is { IsAvailable: false } || (!_glassPreview && !RenderCapability.IsPixelShaderVersionSupported(3, 0))) _metalEffect = null;
+        if (NoFx.Contains("metal") || _metalEffect is { IsAvailable: false } || (!_glassPreview && !RenderCapability.IsPixelShaderVersionSupported(3, 0))) _metalEffect = null;
         _metalHost.Visibility = _metalEffect is null ? Visibility.Collapsed : Visibility.Visible;
         _rim.Visibility = _outerRim.Visibility = _metalEffect is null ? Visibility.Visible : Visibility.Collapsed;
         _metalSurface.Effect = _metalEffect;
@@ -218,6 +221,7 @@ public partial class DockWindow
     private void PresentBackdrop(byte[] pixels, int width, int height, int stride)
     {
         if (width <= 0 || height <= 0) return;
+        PerfBackdrops++;
         if (_backdropBitmap is null || _backdropBitmap.PixelWidth != width || _backdropBitmap.PixelHeight != height)
         {
             _backdropBitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgr32, null);

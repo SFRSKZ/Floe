@@ -53,7 +53,7 @@ public partial class DockWindow
 
     private void EnsureWidgets()
     {
-        if (_weatherWidget is not null)
+        if (_weatherWidget is not null || NoFx.Contains("widgets"))
         {
             return;
         }

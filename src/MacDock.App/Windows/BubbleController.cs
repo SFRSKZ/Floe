@@ -210,7 +210,7 @@ public sealed class BubbleController
         EnsureAnimation();
         if (Blur)
         {
-            _capture = new BackdropCapture(_window, PresentBackdrop, () => _window.IsMouseOver || _dragging);
+            if (!(Environment.GetEnvironmentVariable("MACDOCK_NOFX") ?? "").Contains("capture")) _capture = new BackdropCapture(_window, PresentBackdrop, () => _window.IsMouseOver || _dragging);
             Log($"capture started {_name}");
         }
     }

@@ -519,7 +519,7 @@ public partial class DockWindow : Window
             RefreshRunning();
             _runningTimer.Start();
 
-            if (BlurBackdrop)
+            if (BlurBackdrop && !NoFx.Contains("capture"))
             {
                 _backdropCapture = new BackdropCapture(this, PresentBackdrop, () => _renderingHooked || _menuOpen);
             }

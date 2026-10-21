@@ -34,7 +34,7 @@ public partial class DockWindow
         DesktopController.RegisterHotKey(_hwnd, DesktopController.HotkeyIdVeil, DesktopController.ModControl | DesktopController.ModAlt, DesktopController.VkV);
         if (BlurBackdrop)
         {
-            WindowAffinity.ExcludeFromCapture(_hwnd);
+            if (!NoFx.Contains("exclude")) WindowAffinity.ExcludeFromCapture(_hwnd);
         }
 
         _source = HwndSource.FromHwnd(_hwnd);

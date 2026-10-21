@@ -60,7 +60,6 @@ public sealed class VisualizerGlow : FrameworkElement
     private double _fade;
     private double _lastFrameSeconds = -1;
     private double _sinceRepaint;
-    private const double RepaintInterval = 1.0 / 30;
     private double _debugLevel = -1;
 
     public VisualizerGlow()
@@ -337,10 +336,9 @@ public sealed class VisualizerGlow : FrameworkElement
             }
         }
 
-        // Every repaint re-runs the dock's glass and rim shaders on a layered window,
-        // so 30 fps is plenty for a soft light and keeps hover animations smooth.
+        // See VisualizerPacing: the strip shares the render thread with the dock.
         _sinceRepaint += dt;
-        if (_sinceRepaint < RepaintInterval)
+        if (_sinceRepaint < VisualizerPacing.RepaintInterval)
         {
             return;
         }

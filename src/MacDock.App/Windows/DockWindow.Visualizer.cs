@@ -18,7 +18,7 @@ public partial class DockWindow
 
     private void InitializeVisualizer()
     {
-        if (_glassPreview)
+        if (_glassPreview || NoFx.Contains("viz"))
         {
             return;
         }

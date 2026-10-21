@@ -31,6 +31,7 @@ public partial class DockWindow
         {
             CompositionTarget.Rendering += OnRendering;
             _renderingHooked = true;
+            Effects.Visualizer.VisualizerPacing.DockAnimating = true;
             _lastTick = Stopwatch.GetTimestamp();
         }
     }
@@ -41,14 +42,70 @@ public partial class DockWindow
         {
             CompositionTarget.Rendering -= OnRendering;
             _renderingHooked = false;
+            Effects.Visualizer.VisualizerPacing.DockAnimating = false;
         }
     }
 
+    private static readonly bool PerfLog = Environment.GetEnvironmentVariable("MACDOCK_PERF") is not null;
+    private int _perfFrames;
+    private double _perfWork;
+    private double _perfMaxWork;
+    private double _perfMaxGap;
+    private long _perfStart;
+    internal static int PerfBackdrops;
+    internal static int PerfMoves;
+    internal static double PerfMoveMs;
+    private TimeSpan _perfCpu;
+    private double _perfBusy;
+    private long _perfOpStart;
+    private bool _perfHooked;
+
     private void OnRendering(object? sender, EventArgs e)
+    {
+        var started = Stopwatch.GetTimestamp();
+        OnRenderingCore();
+        if (PerfLog)
+        {
+            if (!_perfHooked)
+            {
+                _perfHooked = true;
+                Log($"perf tier={RenderCapability.Tier >> 16} window={_windowWidth:F0}x{WindowHeight:F0}dip dpi={VisualTreeHelper.GetDpi(this).DpiScaleX} mode={(PresentationSource.FromVisual(this) as System.Windows.Interop.HwndSource)?.CompositionTarget.RenderMode} nofx={NoFx}");
+                Dispatcher.Hooks.OperationStarted += (_, _) => _perfOpStart = Stopwatch.GetTimestamp();
+                Dispatcher.Hooks.OperationCompleted += (_, e) =>
+                {
+                    if (_perfOpStart == 0) return;
+                    var ms = (Stopwatch.GetTimestamp() - _perfOpStart) * 1000.0 / Stopwatch.Frequency;
+                    _perfBusy += ms;
+                    if (ms > 15)
+                    {
+                        var method = typeof(System.Windows.Threading.DispatcherOperation).GetField("_method", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(e.Operation) as Delegate;
+                        Log($"perf slowop {ms:F0}ms {e.Operation.Priority} {method?.Method.DeclaringType?.Name}.{method?.Method.Name}");
+                    }
+                };
+            }
+            var work = (Stopwatch.GetTimestamp() - started) * 1000.0 / Stopwatch.Frequency;
+            _perfFrames++;
+            _perfWork += work;
+            _perfMaxWork = Math.Max(_perfMaxWork, work);
+            if (_perfStart == 0) _perfStart = started;
+            var elapsed = (started - _perfStart) / (double)Stopwatch.Frequency;
+            if (elapsed >= 1)
+            {
+                var cpu = Process.GetCurrentProcess().TotalProcessorTime;
+                Log($"perf cpu={(cpu - _perfCpu).TotalMilliseconds / elapsed:F0}ms/s uiOps={_perfBusy / elapsed:F0}ms/s moves={PerfMoves} moveMs={PerfMoveMs:F1}");
+                _perfCpu = cpu; _perfBusy = 0; PerfMoves = 0; PerfMoveMs = 0;
+                Log($"perf frames={_perfFrames} avg={_perfWork / _perfFrames:F2}ms max={_perfMaxWork:F2}ms maxGap={_perfMaxGap:F1}ms backdrops={PerfBackdrops} bulge={_currentBulge:F1} scale={_dockScale:F3}");
+                _perfFrames = 0; _perfWork = 0; _perfMaxWork = 0; _perfMaxGap = 0; _perfStart = started; PerfBackdrops = 0;
+            }
+        }
+    }
+
+    private void OnRenderingCore()
     {
         var now = Stopwatch.GetTimestamp();
         var dt = (now - _lastTick) / (double)Stopwatch.Frequency;
         _lastTick = now;
+        _perfMaxGap = Math.Max(_perfMaxGap, dt * 1000);
         if (dt <= 0 || dt > 0.1)
         {
             dt = 1.0 / 60.0;
@@ -100,9 +157,19 @@ public partial class DockWindow
 
     private static double Spring(double position, ref double velocity, double target, double dt, double stiffness = 260, double damping = 27)
     {
-        var accel = (stiffness * (target - position)) - (damping * velocity);
-        velocity += accel * dt;
-        return position + (velocity * dt);
+        // Explicit integration blows up once dt * damping nears 2 (a slow 12 fps frame is enough),
+        // so step in small slices whatever the frame time was.
+        const double maxStep = 1.0 / 240;
+        var steps = Math.Max(1, (int)Math.Ceiling(dt / maxStep));
+        var step = dt / steps;
+        for (var i = 0; i < steps; i++)
+        {
+            var accel = (stiffness * (target - position)) - (damping * velocity);
+            velocity += accel * step;
+            position += velocity * step;
+        }
+
+        return position;
     }
 
     private static Color Lerp(Color from, Color to, double t)

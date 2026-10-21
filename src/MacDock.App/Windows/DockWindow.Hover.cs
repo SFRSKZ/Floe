@@ -29,6 +29,20 @@ public partial class DockWindow
 
     private void Window_PreviewMouseMove(object sender, MouseEventArgs e)
     {
+        var moveStart = Stopwatch.GetTimestamp();
+        try
+        {
+            MouseMoveCore(e);
+        }
+        finally
+        {
+            PerfMoves++;
+            PerfMoveMs += (Stopwatch.GetTimestamp() - moveStart) * 1000.0 / Stopwatch.Frequency;
+        }
+    }
+
+    private void MouseMoveCore(MouseEventArgs e)
+    {
         if (_isDragging)
         {
             return;

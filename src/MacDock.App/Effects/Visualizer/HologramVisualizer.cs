@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using MacDock.App.Services;
 using MacDock.Core.Interop;
 
@@ -33,7 +34,6 @@ public sealed class HologramVisualizer : FrameworkElement
     // Geometry budget.
     private const int MaxFilaments = 640;
     private const double FilamentSpacing = 3.0;
-    private const int HeightBuckets = 12;
     private const int ColorFamilies = 3;
     private const int ParticleCount = 20;
     private const int AlphaGrades = 8;
@@ -51,16 +51,21 @@ public sealed class HologramVisualizer : FrameworkElement
     // itself never changes.
     private static readonly double[] AlphaLadder = { 0.06, 0.09, 0.13, 0.18, 0.25, 0.33, 0.43, 0.56 };
 
-    private static readonly Pen[][] CorePens = CreatePens(1.15, 1.0);
-    private static readonly Pen[][] HeavyPens = CreatePens(2.4, 0.55);
-    private static readonly Pen[][] GlowPens = CreatePens(4.6, 0.32);
-    private static readonly Pen[][] BloomPens = CreatePens(8.5, 0.10);
+    // A strand sprite holds the old pen stack (bloom 8.5, glow 4.6, core 1.15 DIP; heavy adds 2.4)
+    // composited once, with the base-to-tip fade baked in.
+    private const double SpriteWidth = 10;
+    private static readonly (double Thickness, double Alpha)[] StrandLayers = { (8.5, 0.10), (4.6, 0.32), (1.15, 1.0) };
+    private static readonly (double Thickness, double Alpha)[] HeavyLayers = { (8.5, 0.10), (4.6, 0.32), (2.4, 0.55), (1.15, 1.0) };
+    private static readonly BitmapSource[][] StrandSprites = CreateSprites(StrandLayers);
+    private static readonly BitmapSource[][] HeavySprites = CreateSprites(HeavyLayers);
 
-    private static readonly Brush SparkBrush = CreateSparkBrush();
-    private static readonly Brush HazeBlueBrush = CreateHazeBrush(FamilyColors[1]);
-    private static readonly Brush HazeCoreBrush = CreateHazeBrush(Color.FromRgb(0xD2, 0xEC, 0xFF));
-    private static readonly Brush PoolBrush = CreatePoolBrush();
-    private static readonly Brush PoolWideBrush = CreateHazeBrush(FamilyColors[1]);
+    // Opacity ladders for the soft shapes, so nothing needs PushOpacity (an offscreen layer each).
+    private const int OpacitySteps = 24;
+    private static readonly Brush[] SparkBrushes = Ladder(CreateSparkBrush());
+    private static readonly Brush[] HazeBlueBrushes = Ladder(CreateHazeBrush(FamilyColors[1]));
+    private static readonly Brush[] HazeCoreBrushes = Ladder(CreateHazeBrush(Color.FromRgb(0xD2, 0xEC, 0xFF)));
+    private static readonly Brush[] PoolBrushes = Ladder(CreatePoolBrush());
+    private static readonly Brush[] PoolWideBrushes = Ladder(CreateHazeBrush(FamilyColors[1]));
 
     private readonly Stopwatch _clock = Stopwatch.StartNew();
 
@@ -77,9 +82,6 @@ public sealed class HologramVisualizer : FrameworkElement
     private readonly double[] _particleSpeed = new double[ParticleCount];
     private readonly double[] _particleDrift = new double[ParticleCount];
     private readonly double[] _particleSize = new double[ParticleCount];
-    private readonly double[] _tipX = new double[MaxFilaments];
-    private readonly double[] _tipY = new double[MaxFilaments];
-    private readonly double[] _tipAlpha = new double[MaxFilaments];
 
     private AudioPeakMeter? _meter;
     private Rect _capsule = Rect.Empty;
@@ -91,7 +93,6 @@ public sealed class HologramVisualizer : FrameworkElement
     private double _fade;
     private double _lastFrameSeconds = -1;
     private double _sinceRepaint;
-    private const double RepaintInterval = 1.0 / 30;
     private double _debugLevel = -1;
 
     public HologramVisualizer()
@@ -216,24 +217,18 @@ public sealed class HologramVisualizer : FrameworkElement
         // ------------------------------------------------------------------
         // Wide atmospheric bloom behind the strands.
         // ------------------------------------------------------------------
-        dc.PushOpacity(Math.Clamp(0.11 + 0.27 * energy, 0, 1));
-        dc.DrawEllipse(HazeBlueBrush, null,
+        dc.DrawEllipse(Graded(HazeBlueBrushes, 0.11 + 0.27 * energy), null,
             new Point(centerX, baseY - maxHeight * 0.30), width * 0.37, maxHeight * 0.64);
-        dc.Pop();
 
-        dc.PushOpacity(Math.Clamp(0.08 + 0.20 * energy, 0, 1));
-        dc.DrawEllipse(HazeCoreBrush, null,
+        dc.DrawEllipse(Graded(HazeCoreBrushes, 0.08 + 0.20 * energy), null,
             new Point(centerX, baseY - maxHeight * 0.36), width * 0.125, maxHeight * 0.62);
-        dc.Pop();
 
-        dc.PushOpacity(Math.Clamp(0.05 + 0.13 * energy, 0, 1));
-        dc.DrawEllipse(HazeCoreBrush, null,
+        dc.DrawEllipse(Graded(HazeCoreBrushes, 0.05 + 0.13 * energy), null,
             new Point(centerX, baseY - maxHeight * 0.44), width * 0.042, maxHeight * 0.54);
-        dc.Pop();
 
         // ------------------------------------------------------------------
-        // Filaments, batched by (height bucket, colour family) so a whole
-        // bucket shares one frozen pen and one StreamGeometry.
+        // Filaments: one pre-rendered sprite per strand, picked by colour
+        // family and alpha grade.
         // ------------------------------------------------------------------
         int count = Math.Clamp((int)Math.Round(width / FilamentSpacing), 8, MaxFilaments);
         double spacing = width / count;
@@ -244,17 +239,11 @@ public sealed class HologramVisualizer : FrameworkElement
         double secondarySigma = 0.085;
         double amplitude = 0.12 + 1.10 * Math.Pow(level, 0.66);
 
-        var geometries = new StreamGeometry?[HeightBuckets, ColorFamilies];
-        var contexts = new StreamGeometryContext?[HeightBuckets, ColorFamilies];
-        var heavyGeometries = new StreamGeometry?[HeightBuckets, ColorFamilies];
-        var heavyContexts = new StreamGeometryContext?[HeightBuckets, ColorFamilies];
-        var tipX = _tipX;
-        var tipY = _tipY;
-        var tipAlpha = _tipAlpha;
-
+        // Every strand is one pre-rendered sprite stretched to its height. Stroking hundreds of
+        // wide gradient pens (and a PushOpacity per tip) cost ~100 ms a frame on the shared
+        // render thread and dragged the dock's own animation down to 10 fps.
         for (int i = 0; i < count; i++)
         {
-            tipAlpha[i] = 0;
             double xn = (i + 0.5) / count - 0.5;
             double x = capsule.Left + (i + 0.5) * spacing + _jitter[i] * spacing * 0.70;
             x = Math.Clamp(x, capsule.Left + 0.75, capsule.Right - 0.75);
@@ -280,122 +269,40 @@ public sealed class HologramVisualizer : FrameworkElement
                 clump *= 1.22;
             }
 
-            h *= Math.Clamp(clump, 0.45, 1.24);
-            if (h > maxHeight)
-            {
-                h = maxHeight;
-            }
-
+            h = Math.Min(maxHeight, h * Math.Clamp(clump, 0.45, 1.24));
             if (h < 0.8)
             {
                 continue;
             }
 
             double heightRatio = h / maxHeight;
-            double sway = Math.Sin(t * _swaySpeed[i] + _swayPhase[i]) * 1.5 * heightRatio *
-                          (0.35 + 0.65 * noise);
-            double baseJitter = -Math.Abs(_jitter[(i * 7 + 3) % MaxFilaments]) * 0.8;
-            double y0 = baseY + baseJitter;
-            double x0 = x;
-
-            int heightBucket = Math.Clamp((int)(heightRatio * HeightBuckets), 0, HeightBuckets - 1);
+            double sway = Math.Sin(t * _swaySpeed[i] + _swayPhase[i]) * 1.5 * heightRatio * (0.35 + 0.65 * noise);
+            double y0 = baseY - Math.Abs(_jitter[(i * 7 + 3) % MaxFilaments]) * 0.8;
             double distance = Math.Abs(xn - primaryCenter);
             int family = distance < 0.055 ? 0 : distance < 0.26 ? 1 : 2;
-
             bool heavy = Hash01(i, 0x33A7) > 0.86;
-            var geometry = heavy
-                ? heavyGeometries[heightBucket, family] ??= new StreamGeometry()
-                : geometries[heightBucket, family] ??= new StreamGeometry();
-            var context = heavy
-                ? heavyContexts[heightBucket, family] ??= geometry.Open()
-                : contexts[heightBucket, family] ??= geometry.Open();
-            context.BeginFigure(new Point(x0, y0), false, false);
-            context.LineTo(new Point(x0 + sway * 0.28, y0 - h * 0.55), true, false);
-            context.LineTo(new Point(x0 + sway, y0 - h), true, false);
 
-            tipX[i] = x0 + sway;
-            tipY[i] = y0 - h;
-            tipAlpha[i] = Math.Clamp((0.06 + 0.24 * noise) * energy * (0.35 + 0.65 * heightRatio), 0, 1);
-        }
+            var sprite = (heavy ? HeavySprites : StrandSprites)[family][grade];
+            double cx = x + sway * 0.5;
+            dc.DrawImage(sprite, new Rect(cx - (SpriteWidth / 2), y0 - h - 1, SpriteWidth, h + 1));
 
-        for (int hb = 0; hb < HeightBuckets; hb++)
-        {
-            for (int family = 0; family < ColorFamilies; family++)
+            double tipAlpha = (0.06 + 0.24 * noise) * energy * (0.35 + 0.65 * heightRatio);
+            if (tipAlpha > 0.002)
             {
-                contexts[hb, family]?.Close();
-                heavyContexts[hb, family]?.Close();
+                dc.DrawEllipse(Graded(SparkBrushes, tipAlpha), null, new Point(x + sway, y0 - h), 1.05, 1.05);
             }
-        }
-
-        // Wide soft pass first: overlapping strands build the plasma haze.
-        for (int hb = 0; hb < HeightBuckets; hb++)
-        {
-            for (int family = 0; family < ColorFamilies; family++)
-            {
-                var geometry = geometries[hb, family];
-                if (geometry is not null)
-                {
-                    dc.DrawGeometry(null, BloomPens[family][grade], geometry);
-                    dc.DrawGeometry(null, GlowPens[family][grade], geometry);
-                }
-
-                var heavyGeometry = heavyGeometries[hb, family];
-                if (heavyGeometry is not null)
-                {
-                    dc.DrawGeometry(null, HeavyPens[family][grade], heavyGeometry);
-                }
-            }
-        }
-
-        // Thin bright core pass.
-        for (int hb = 0; hb < HeightBuckets; hb++)
-        {
-            for (int family = 0; family < ColorFamilies; family++)
-            {
-                var geometry = geometries[hb, family];
-                if (geometry is not null)
-                {
-                    dc.DrawGeometry(null, CorePens[family][grade], geometry);
-                }
-
-                var heavyGeometry = heavyGeometries[hb, family];
-                if (heavyGeometry is not null)
-                {
-                    dc.DrawGeometry(null, CorePens[family][grade], heavyGeometry);
-                }
-            }
-        }
-
-        // Tiny brighter spark at every strand tip.
-        for (int i = 0; i < count; i++)
-        {
-            if (tipAlpha[i] <= 0.002 || tipY[i] > baseY - 1 ||
-                tipX[i] < capsule.Left - 8 || tipX[i] > capsule.Right + 8)
-            {
-                continue;
-            }
-
-            dc.PushOpacity(tipAlpha[i]);
-            dc.DrawEllipse(SparkBrush, null, new Point(tipX[i], tipY[i]), 1.05, 1.05);
-            dc.Pop();
         }
 
         // ------------------------------------------------------------------
         // Base pool: a wide, soft light spill along the bottom line.
         // ------------------------------------------------------------------
         double poolAlpha = Math.Clamp((0.30 + 0.45 * Math.Sqrt(level)) * fade, 0, 1);
-        dc.PushOpacity(poolAlpha * 0.46);
-        dc.DrawEllipse(PoolWideBrush, null, new Point(centerX, baseY + 1.5), width * 0.48, 8.5);
-        dc.Pop();
+        dc.DrawEllipse(Graded(PoolWideBrushes, poolAlpha * 0.46), null, new Point(centerX, baseY + 1.5), width * 0.48, 8.5);
 
-        dc.PushOpacity(poolAlpha * 0.72);
-        dc.DrawEllipse(PoolBrush, null, new Point(centerX, baseY + 0.5), width * 0.36, 4.2 + 3.4 * level);
-        dc.Pop();
+        dc.DrawEllipse(Graded(PoolBrushes, poolAlpha * 0.72), null, new Point(centerX, baseY + 0.5), width * 0.36, 4.2 + 3.4 * level);
 
         // A narrow white-hot line inside the pool.
-        dc.PushOpacity(poolAlpha * 0.36);
-        dc.DrawEllipse(SparkBrush, null, new Point(centerX, baseY), width * 0.20, 1.6);
-        dc.Pop();
+        dc.DrawEllipse(Graded(SparkBrushes, poolAlpha * 0.36), null, new Point(centerX, baseY), width * 0.20, 1.6);
 
         // ------------------------------------------------------------------
         // A few faint particles drifting upward through and above the cluster.
@@ -414,9 +321,7 @@ public sealed class HologramVisualizer : FrameworkElement
 
             double px = centerX + (_particleX[i] - 0.5) * width * 0.78 +
                         Math.Sin(t * _particleDrift[i] + _particlePhase[i] * 9) * 3.0;
-            dc.PushOpacity(alpha);
-            dc.DrawEllipse(SparkBrush, null, new Point(px, y), _particleSize[i], _particleSize[i]);
-            dc.Pop();
+            dc.DrawEllipse(Graded(SparkBrushes, alpha), null, new Point(px, y), _particleSize[i], _particleSize[i]);
         }
     }
 
@@ -496,10 +401,9 @@ public sealed class HologramVisualizer : FrameworkElement
             }
         }
 
-        // Every repaint re-runs the dock's glass and rim shaders on a layered window,
-        // so 30 fps is plenty for a soft light and keeps hover animations smooth.
+        // See VisualizerPacing: the strip shares the render thread with the dock.
         _sinceRepaint += dt;
-        if (_sinceRepaint < RepaintInterval)
+        if (_sinceRepaint < VisualizerPacing.RepaintInterval)
         {
             return;
         }
@@ -538,42 +442,84 @@ public sealed class HologramVisualizer : FrameworkElement
         _balance += (balance - _balance) * (1 - Math.Exp(-dt / BalanceSeconds));
     }
 
-    private static Pen[][] CreatePens(double thickness, double alphaScale)
+    private static BitmapSource[][] CreateSprites((double Thickness, double Alpha)[] layers)
     {
-        var pens = new Pen[ColorFamilies][];
+        const int scale = 3;
+        int width = (int)(SpriteWidth * scale);
+        const int height = 96;
+        var sprites = new BitmapSource[ColorFamilies][];
         for (int family = 0; family < ColorFamilies; family++)
         {
-            pens[family] = new Pen[AlphaGrades];
+            sprites[family] = new BitmapSource[AlphaGrades];
+            var color = FamilyColors[family];
             for (int grade = 0; grade < AlphaGrades; grade++)
             {
-                double alpha = AlphaLadder[grade] * FamilyScale[family] * alphaScale;
-                var brush = new LinearGradientBrush
+                double baseAlpha = AlphaLadder[grade] * FamilyScale[family];
+                var pixels = new byte[width * height * 4];
+                for (int y = 0; y < height; y++)
                 {
-                    MappingMode = BrushMappingMode.RelativeToBoundingBox,
-                    StartPoint = new Point(0.5, 1),
-                    EndPoint = new Point(0.5, 0),
-                    SpreadMethod = GradientSpreadMethod.Pad
-                };
-                brush.GradientStops.Add(new GradientStop(WithAlpha(FamilyColors[family], alpha), 0));
-                brush.GradientStops.Add(new GradientStop(WithAlpha(FamilyColors[family], alpha * 0.68), 0.30));
-                brush.GradientStops.Add(new GradientStop(WithAlpha(FamilyColors[family], alpha * 0.28), 0.62));
-                brush.GradientStops.Add(new GradientStop(WithAlpha(FamilyColors[family], alpha * 0.07), 0.85));
-                brush.GradientStops.Add(new GradientStop(WithAlpha(FamilyColors[family], 0), 1));
-                brush.Freeze();
+                    // 0 at the base (bottom row) to 1 at the tip, the old pen gradient's stops
+                    double v = 1 - ((y + 0.5) / height);
+                    double fade = Ramp(v, (0, 1), (0.30, 0.68), (0.62, 0.28), (0.85, 0.07), (1, 0));
+                    for (int x = 0; x < width; x++)
+                    {
+                        double dx = Math.Abs(((x + 0.5) / scale) - (SpriteWidth / 2));
+                        double clear = 1;
+                        foreach (var (thickness, alpha) in layers)
+                        {
+                            double coverage = Math.Clamp((thickness / 2) - dx + 0.5, 0, 1);
+                            clear *= 1 - (Math.Clamp(baseAlpha * alpha * fade, 0, 1) * coverage);
+                        }
 
-                var pen = new Pen(brush, thickness)
-                {
-                    StartLineCap = PenLineCap.Round,
-                    EndLineCap = PenLineCap.Round,
-                    LineJoin = PenLineJoin.Round
-                };
-                pen.Freeze();
-                pens[family][grade] = pen;
+                        double a = 1 - clear;
+                        int i = ((y * width) + x) * 4;
+                        pixels[i] = (byte)Math.Round(color.B * a);
+                        pixels[i + 1] = (byte)Math.Round(color.G * a);
+                        pixels[i + 2] = (byte)Math.Round(color.R * a);
+                        pixels[i + 3] = (byte)Math.Round(255 * a);
+                    }
+                }
+
+                var bitmap = BitmapSource.Create(width, height, 96.0 * scale, 96.0 * scale, PixelFormats.Pbgra32, null, pixels, width * 4);
+                bitmap.Freeze();
+                sprites[family][grade] = bitmap;
             }
         }
 
-        return pens;
+        return sprites;
     }
+
+    private static double Ramp(double v, params (double At, double Value)[] stops)
+    {
+        for (int i = 1; i < stops.Length; i++)
+        {
+            if (v <= stops[i].At)
+            {
+                var (a0, v0) = stops[i - 1];
+                var (a1, v1) = stops[i];
+                return v0 + ((v1 - v0) * (v - a0) / Math.Max(1e-6, a1 - a0));
+            }
+        }
+
+        return stops[^1].Value;
+    }
+
+    private static Brush[] Ladder(Brush brush)
+    {
+        var ladder = new Brush[OpacitySteps + 1];
+        for (int i = 0; i <= OpacitySteps; i++)
+        {
+            var step = brush.Clone();
+            step.Opacity = (double)i / OpacitySteps;
+            step.Freeze();
+            ladder[i] = step;
+        }
+
+        return ladder;
+    }
+
+    private static Brush Graded(Brush[] ladder, double opacity) =>
+        ladder[(int)Math.Round(Math.Clamp(opacity, 0, 1) * OpacitySteps)];
 
     private static Brush CreateSparkBrush()
     {
