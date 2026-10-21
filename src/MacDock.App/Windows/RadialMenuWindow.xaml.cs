@@ -19,6 +19,18 @@ public partial class RadialMenuWindow : Window
     private const double Inner = 46;
     private const double Outer = 134;
 
+    // the dock's tint, a shade darker so the labels read over any background
+    private static readonly Brush SliceFill = Frozen(new SolidColorBrush(Color.FromArgb(0xB4, 0x16, 0x18, 0x1E)));
+    private static readonly Brush SliceHover = Frozen(new SolidColorBrush(Color.FromArgb(0xB4, 0x2C, 0x36, 0x48)));
+    private static readonly Brush Rim = DockWindow.BuildRimBrush();
+
+    private static T Frozen<T>(T freezable)
+        where T : Freezable
+    {
+        freezable.Freeze();
+        return freezable;
+    }
+
     private readonly DispatcherTimer _watchdog = new() { Interval = TimeSpan.FromMilliseconds(120) };
 
     public event Action? Dismissed;
@@ -80,6 +92,11 @@ public partial class RadialMenuWindow : Window
         Root.Children.Clear();
         Root.ReleaseMouseCapture();
 
+        // the dock's glass under the slices and the hub
+        var glassShape = new GeometryGroup { FillRule = FillRule.Nonzero };
+        var backdrop = new GlassBackdrop { Clip = glassShape };
+        Root.Children.Add(backdrop);
+
         var count = Math.Max(1, items.Count);
         var step = 360.0 / count;
         var start = -90.0 - (step / 2);
@@ -88,18 +105,20 @@ public partial class RadialMenuWindow : Window
         {
             var angle0 = start + (i * step) + 2;
             var angle1 = start + ((i + 1) * step) - 2;
+            var shape = PieSlice(angle0, angle1);
+            glassShape.Children.Add(shape);
             var slice = new Path
             {
-                Data = PieSlice(angle0, angle1),
-                Fill = new SolidColorBrush(Color.FromArgb(0xE6, 0x14, 0x16, 0x1C)),
-                Stroke = new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)),
+                Data = shape,
+                Fill = SliceFill,
+                Stroke = Rim,
                 StrokeThickness = 1,
                 Cursor = Cursors.Hand,
             };
 
             var action = items[i];
-            slice.MouseEnter += (_, _) => slice.Fill = new SolidColorBrush(Color.FromArgb(0xF2, 0x24, 0x2A, 0x38));
-            slice.MouseLeave += (_, _) => slice.Fill = new SolidColorBrush(Color.FromArgb(0xE6, 0x14, 0x16, 0x1C));
+            slice.MouseEnter += (_, _) => slice.Fill = SliceHover;
+            slice.MouseLeave += (_, _) => slice.Fill = SliceFill;
             slice.MouseLeftButtonUp += (_, _) =>
             {
                 Dismiss();
@@ -130,11 +149,12 @@ public partial class RadialMenuWindow : Window
         {
             Width = (Inner * 2) - 6,
             Height = (Inner * 2) - 6,
-            Fill = new SolidColorBrush(Color.FromArgb(0xF2, 0x0E, 0x10, 0x14)),
-            Stroke = new SolidColorBrush(Color.FromArgb(0x3A, 0xFF, 0xFF, 0xFF)),
+            Fill = SliceFill,
+            Stroke = Rim,
             StrokeThickness = 1,
             IsHitTestVisible = false,
         };
+        glassShape.Children.Add(new EllipseGeometry(new Point(CenterX, CenterY), hub.Width / 2, hub.Height / 2));
         Canvas.SetLeft(hub, CenterX - (hub.Width / 2));
         Canvas.SetTop(hub, CenterY - (hub.Height / 2));
         Root.Children.Add(hub);

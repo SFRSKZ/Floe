@@ -13,7 +13,7 @@ internal sealed class BackdropCapture : IDisposable
     private const int IdleIntervalMs = 250;
     private const int IdlePausedIntervalMs = 600;
 
-    private readonly Window _window;
+    private readonly FrameworkElement _window;
     private readonly IntPtr _hwnd;
     private readonly Action<byte[], int, int, int> _present;
     private readonly Func<bool>? _isActive;
@@ -30,15 +30,21 @@ internal sealed class BackdropCapture : IDisposable
     private int _stride;
 
     public BackdropCapture(Window window, Action<byte[], int, int, int> present, Func<bool>? isActive = null)
+        : this(window, new WindowInteropHelper(window).Handle, present, isActive)
     {
-        _window = window;
-        _hwnd = new WindowInteropHelper(window).Handle;
+        window.Closed += OnClosed;
+    }
+
+    /// <summary>Captures behind <paramref name="hwnd"/> (a window or a popup) while <paramref name="owner"/> is shown.</summary>
+    public BackdropCapture(FrameworkElement owner, IntPtr hwnd, Action<byte[], int, int, int> present, Func<bool>? isActive = null)
+    {
+        _window = owner;
+        _hwnd = hwnd;
         _present = present;
         _isActive = isActive;
         _presentLatest = PresentLatest;
-        _visible = window.IsVisible;
-        window.IsVisibleChanged += OnVisibilityChanged;
-        window.Closed += OnClosed;
+        _visible = owner.IsVisible;
+        owner.IsVisibleChanged += OnVisibilityChanged;
         new Thread(CaptureLoop) { IsBackground = true, Name = "MacDockBackdrop" }.Start();
     }
 
@@ -171,6 +177,9 @@ internal sealed class BackdropCapture : IDisposable
         }
 
         _window.IsVisibleChanged -= OnVisibilityChanged;
-        _window.Closed -= OnClosed;
+        if (_window is Window window)
+        {
+            window.Closed -= OnClosed;
+        }
     }
 }

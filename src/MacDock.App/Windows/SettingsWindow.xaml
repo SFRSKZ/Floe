@@ -1,6 +1,7 @@
 <Window x:Class="MacDock.App.Windows.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:MacDock.App.Windows"
         Title="MacDock Ayarları"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -132,12 +133,8 @@
         </Style>
     </Window.Resources>
 
-    <Border Background="#F20E1014"
-            BorderBrush="#2EFFFFFF"
-            BorderThickness="1"
-            CornerRadius="14"
-            Padding="18,14,18,12">
-        <StackPanel Width="360">
+    <local:GlassPanel CornerRadius="16">
+        <StackPanel Width="360" Margin="18,14,18,12">
             <Grid Margin="0,0,0,12">
                 <TextBlock Text="Ayarlar"
                            Foreground="#F2FFFFFF"
@@ -267,5 +264,5 @@
                 </WrapPanel>
             </StackPanel>
         </StackPanel>
-    </Border>
+    </local:GlassPanel>
 </Window>

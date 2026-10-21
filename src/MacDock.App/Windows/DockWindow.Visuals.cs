@@ -27,7 +27,7 @@ namespace MacDock.App.Windows;
 public partial class DockWindow
 {
 
-    private static BitmapSource MakeNoiseBitmap()
+    internal static BitmapSource MakeNoiseBitmap()
     {
         const int size = 64;
         var random = new Random(20260921);
@@ -47,7 +47,7 @@ public partial class DockWindow
         return bitmap;
     }
 
-    private static Brush BuildGlassBrush()
+    internal static Brush BuildGlassBrush()
     {
         var brush = new LinearGradientBrush
         {
@@ -62,7 +62,7 @@ public partial class DockWindow
         return brush;
     }
 
-    private static LinearGradientBrush BuildSheenBrush()
+    internal static LinearGradientBrush BuildSheenBrush()
     {
         var brush = new LinearGradientBrush
         {
@@ -74,7 +74,7 @@ public partial class DockWindow
         return brush;
     }
 
-    private static Brush BuildRimBrush()
+    internal static Brush BuildRimBrush()
     {
         var brush = new LinearGradientBrush
         {
