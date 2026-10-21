@@ -55,7 +55,39 @@ public partial class SettingsWindow : Window
 
         BuildDesktopButtonControls();
         BuildGlassControls();
+        BuildTabs();
         RefreshRows();
+
+        // the window sits above the dock: keep its bottom edge put when a page changes its height
+        SizeChanged += (_, e) =>
+        {
+            if (IsLoaded && e.HeightChanged && e.PreviousSize.Height > 0)
+            {
+                Top -= e.NewSize.Height - e.PreviousSize.Height;
+            }
+        };
+    }
+
+    private static int _lastTab;
+
+    private void BuildTabs()
+    {
+        var tabs = new[] { TabEffect, TabButton, TabGlass };
+        var pages = new FrameworkElement[] { EffectPage, ButtonPage, GlassPage };
+        for (var i = 0; i < tabs.Length; i++)
+        {
+            var index = i;
+            tabs[i].Checked += (_, _) =>
+            {
+                _lastTab = index;
+                for (var k = 0; k < pages.Length; k++)
+                {
+                    pages[k].Visibility = k == index ? Visibility.Visible : Visibility.Collapsed;
+                }
+            };
+        }
+
+        tabs[_lastTab].IsChecked = true;
     }
 
     private readonly List<Border> _colorSwatches = new();
@@ -167,7 +199,7 @@ public partial class SettingsWindow : Window
             {
                 CornerRadius = new CornerRadius(9),
                 Padding = new Thickness(10, 7, 10, 7),
-                Margin = new Thickness(0, 0, 0, 6),
+                Margin = new Thickness(0, 0, 6, 6),
                 BorderThickness = new Thickness(1),
                 Cursor = Cursors.Hand,
             };
@@ -206,8 +238,7 @@ public partial class SettingsWindow : Window
     private void RefreshRows()
     {
         var spectral = AuraSettings.Effect == AuraEffect.Burst;
-        IntensityPanel.Opacity = spectral ? 1 : 0.4;
-        IntensitySlider.IsEnabled = spectral;
+        IntensityPanel.Visibility = spectral ? Visibility.Visible : Visibility.Collapsed;
 
         var paletteActive = AuraSettings.Mode == AuraColorMode.Palette;
 
@@ -220,11 +251,9 @@ public partial class SettingsWindow : Window
             row.BorderBrush = new SolidColorBrush(selected
                 ? Color.FromArgb(0x80, 0x5B, 0xC8, 0xFF)
                 : Color.FromArgb(0x1E, 0xFF, 0xFF, 0xFF));
-            row.Opacity = paletteActive ? 1 : 0.45;
-            row.IsHitTestVisible = paletteActive;
         }
 
-        PaletteHeader.Opacity = paletteActive ? 1 : 0.45;
+        PaletteList.Visibility = paletteActive ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();

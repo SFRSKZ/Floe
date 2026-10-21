@@ -16,7 +16,7 @@ namespace MacDock.App.Windows;
 /// </summary>
 internal sealed class AuroraWindow : Window
 {
-    private const double OverlayWidth = 360;
+    private const double OverlayWidth = 220;
     private const double OverlayHeight = 230;
 
     /// <summary>Where the icon centre sits inside the overlay (DIP).</summary>
@@ -152,11 +152,16 @@ internal sealed class AuroraWindow : Window
 /// </summary>
 internal sealed class AuroraVisual : FrameworkElement
 {
-    private const int Strands = 150;
-    private const double Span = 230;
-    private const double CurtainHeight = 120;
-    private const double Fold = 22;
-    private const double Sway = 6;
+    // narrow enough that it reads as one icon's light: bases across the icon, tips fanning a little wider
+    private const int Strands = 64;
+    private const double BaseSpan = 50;
+    private const double Fan = 1.45;
+    private const double CurtainHeight = 115;
+    private const double Fold = 9;
+    private const double Sway = 4;
+
+    /// <summary>Half the dock's icon box; the strands leave from the icon's top edge.</summary>
+    private const double IconHalf = 27;
     private const double HueFrom = 150;
     private const double HueSpan = 90;
     private const double Speed = 0.8;
@@ -171,7 +176,6 @@ internal sealed class AuroraVisual : FrameworkElement
 
     /// <summary>Premultiplied rgb along a strand, base to tip, per hue bucket.</summary>
     private static readonly float[][] Ramp = BuildRamps();
-    private static readonly Brush Pool = BuildPool();
 
     private readonly double _anchorX;
     private readonly double _anchorY;
@@ -212,7 +216,8 @@ internal sealed class AuroraVisual : FrameworkElement
         var s = Math.Clamp(0.8 + ((Scale - 1) * 0.5), 0.8, 1.3);
         var k = s * _dpi;
         var ax = _anchorX * _dpi;
-        var baseY = (_anchorY - (6 * s)) * _dpi;
+        var topY = (_anchorY - (IconHalf * Scale)) * _dpi;
+        Source(ax, topY, IconHalf * Scale * 0.8 * _dpi, s * _dpi, t);
         // a tent of radius w carries as much light as a solid line w wide
         var core = Math.Max(1, CoreWidth * k);
         var glow = GlowWidth * k;
@@ -220,8 +225,8 @@ internal sealed class AuroraVisual : FrameworkElement
         for (var i = 0; i < Strands; i++)
         {
             var u = i / (double)(Strands - 1);
-            var xn = (u - 0.5) * Span;
-            var env = Math.Exp(-Math.Pow(xn / (Span * 0.36), 2));
+            var xn = (u - 0.5) * BaseSpan;
+            var env = Math.Exp(-Math.Pow(xn / (BaseSpan * 0.45), 2));
             var fold = (Math.Sin((u * 9) + (t * 0.7)) * Fold) + (Math.Sin((u * 23) - (t * 1.3)) * Fold * 0.35);
             var burst = Math.Pow(Math.Max(0, Math.Sin((u * 31) + (t * 3.1) + (_seed[i] * 6))), 3);
             var h = CurtainHeight * env * Noise(u * 6, t * Speed) * (0.75 + (0.5 * burst));
@@ -231,12 +236,13 @@ internal sealed class AuroraVisual : FrameworkElement
             }
 
             var flick = Gain * (float)(0.65 + (0.35 * Math.Sin((t * (4 + (_seed[i] * 6))) + i)));
-            var bx = xn + (fold * 0.25);
-            var tx = xn + fold + (Math.Sin((t * 1.2) + (u * 5)) * Sway);
-            var cx = bx + ((tx - bx) * 0.2);
+            // the base stays put on the icon; only the upper part folds and sways
+            var bx = xn;
+            var tx = (xn * Fan) + fold + (Math.Sin((t * 1.2) + (u * 5)) * Sway);
+            var cx = bx + ((tx - bx) * 0.1);
             var hue = Noise((u * 2.3) + 3, t * 0.4);
             var ramp = Ramp[Math.Clamp((int)Math.Round(hue * (Buckets - 1)), 0, Buckets - 1)];
-            Strand(ax + (bx * k), ax + (cx * k), ax + (tx * k), baseY, h * k, core, glow, ramp, flick);
+            Strand(ax + (bx * k), ax + (cx * k), ax + (tx * k), topY, h * k, core, glow, ramp, flick);
         }
 
         Present();
@@ -244,13 +250,44 @@ internal sealed class AuroraVisual : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
-        var poolY = _anchorY + 27;
-        dc.PushTransform(new ScaleTransform(1, 0.22, _anchorX, poolY));
-        dc.DrawEllipse(Pool, null, new Point(_anchorX, poolY), 70, 70);
-        dc.Pop();
         if (_bitmap is not null)
         {
             dc.DrawImage(_bitmap, new Rect(0, 0, _width / _dpi, _height / _dpi));
+        }
+    }
+
+    /// <summary>The bright seam on the icon's top edge the strands rise from, so the light clearly belongs to this icon.</summary>
+    private void Source(double cx, double y, double halfWidth, double k, double t)
+    {
+        var pulse = (float)(0.85 + (0.15 * Math.Sin(t * 2.2)));
+        var glow = 5 * k;
+        var reachX = (int)Math.Ceiling(halfWidth * 1.3);
+        var reachY = (int)Math.Ceiling(glow);
+        for (var dy = -reachY; dy <= reachY; dy++)
+        {
+            var row = (int)y + dy;
+            if (row < 0 || row >= _height)
+            {
+                continue;
+            }
+
+            var d = Math.Abs(row + 0.5 - y);
+            var vertical = (float)(Math.Max(0, 1 - (d / Math.Max(1, 1.2 * k))) + (0.22 * Math.Max(0, 1 - (d / glow))));
+            for (var dx = -reachX; dx <= reachX; dx++)
+            {
+                var px = (int)cx + dx;
+                if (px < 0 || px >= _width)
+                {
+                    continue;
+                }
+
+                var across = (px + 0.5 - cx) / halfWidth;
+                var w = vertical * pulse * (float)Math.Exp(-across * across * across * across);
+                var o = ((row * _width) + px) * 3;
+                _light[o] += 0.72f * w;
+                _light[o + 1] += 1.0f * w;
+                _light[o + 2] += 0.95f * w;
+            }
         }
     }
 
@@ -378,16 +415,6 @@ internal sealed class AuroraVisual : FrameworkElement
         }
 
         return ramps;
-    }
-
-    private static Brush BuildPool()
-    {
-        var pool = new RadialGradientBrush();
-        pool.GradientStops.Add(new GradientStop(Color.FromArgb(0x59, 170, 255, 220), 0));
-        pool.GradientStops.Add(new GradientStop(Color.FromArgb(0x24, 90, 220, 200), 0.4));
-        pool.GradientStops.Add(new GradientStop(Color.FromArgb(0, 60, 160, 255), 1));
-        pool.Freeze();
-        return pool;
     }
 
     private static double Noise(double x, double t) =>
