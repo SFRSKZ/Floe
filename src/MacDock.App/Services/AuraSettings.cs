@@ -83,7 +83,7 @@ public static class AuraSettings
 
     public static ClickTone ClickTone { get; private set; } = ClickTone.Dark;
 
-    public static ClickPalette ClickPalette { get; private set; } = ClickPalette.Rainbow;
+    public static ClickPalette ClickPalette { get; private set; } = ClickPalette.Clear;
 
     /// <summary>Playback speed of the click effect, 0.5 .. 2 (1 = 900 ms).</summary>
     public static double ClickSpeed { get; private set; } = 1.0;
@@ -107,7 +107,7 @@ public static class AuraSettings
 
             ClickEffect = model.ClickEffect;
             ClickTone = Enum.TryParse<ClickTone>(model.ClickTone, true, out var tone) && Enum.IsDefined(tone) ? tone : ClickTone.Dark;
-            ClickPalette = Enum.TryParse<ClickPalette>(model.ClickPalette, true, out var palette) && Enum.IsDefined(palette) ? palette : ClickPalette.Rainbow;
+            ClickPalette = Enum.TryParse<ClickPalette>(model.ClickPalette, true, out var palette) && Enum.IsDefined(palette) ? palette : ClickPalette.Clear;
             ClickSpeed = model.ClickSpeed <= 0 ? 1.0 : Math.Clamp(model.ClickSpeed, 0.5, 2.0);
             Mode = Enum.TryParse<AuraColorMode>(model.Mode, true, out var mode) ? mode : AuraColorMode.Palette;
             Effect = Enum.TryParse<AuraEffect>(model.Effect, true, out var effect) ? effect : AuraEffect.Glow;
@@ -251,7 +251,7 @@ public static class AuraSettings
 
         public string ClickTone { get; set; } = nameof(global::MacDock.App.Services.ClickTone.Dark);
 
-        public string ClickPalette { get; set; } = nameof(global::MacDock.App.Services.ClickPalette.Rainbow);
+        public string ClickPalette { get; set; } = nameof(global::MacDock.App.Services.ClickPalette.Clear);
 
         public double ClickSpeed { get; set; } = 1.0;
 
