@@ -41,4 +41,7 @@ internal sealed record MistStyle(
         new("Orman", 0.40, 0.2, 0.9, 1.50, 4, 0.9, 1.0, 30, IceCore, IceBody, IceEdge),
         new("Minimal", 0.35, 0.8, 3.2, 0.90, 2, 0.6, 0.4, 12, IceCore, IceBody, IceEdge),
     };
+
+    /// <summary>The look the dock uses: dust columns.</summary>
+    public static MistStyle Default => All[1];
 }

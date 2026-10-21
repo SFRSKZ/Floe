@@ -97,8 +97,8 @@ public sealed class MistVisualizer : FrameworkElement
     private readonly float[] _channelPeaks = new float[2];
 
     private AudioPeakMeter? _meter;
-    private MistStyle _style = MistStyle.All[0];
-    private Assets _assets = AssetsFor(MistStyle.All[0]);
+    private MistStyle _style = MistStyle.Default;
+    private Assets _assets = AssetsFor(MistStyle.Default);
     private Rect _capsule = Rect.Empty;
     private bool _active;
     private bool _hooked;
