@@ -17,10 +17,11 @@ namespace MacDock.App.Effects.Visualizer;
 public static class MistPreview
 {
     private const int StripWidth = 2560;
-    private const int StripHeight = 76;
+    private const int Headroom = 40;
+    private const int StripHeight = 76 + Headroom;
 
     private const double DockWidth = 1030;
-    private const double DockHeight = 65;
+    private const double DockHeight = 68;
     private const double DockRadius = 20;
 
     private const int Padding = 16;
@@ -81,6 +82,7 @@ public static class MistPreview
                 Width = StripWidth,
                 Height = StripHeight,
                 Capsule = new Rect(0, 0, StripWidth, StripHeight),
+                Dock = new Rect((StripWidth - DockWidth) * 0.5, Headroom, DockWidth, DockHeight),
                 DebugLevel = level
             };
             stage.Children.Add(mist);
@@ -112,14 +114,14 @@ public static class MistPreview
                 // 25% stroke, radius 20 - the real dock is ~1030x65 DIP.
                 DrawDock(dc,
                     new Rect((StripWidth - DockWidth) * 0.5,
-                        rowOneTop + (StripHeight - DockHeight) * 0.5,
+                        rowOneTop + Headroom,
                         DockWidth, DockHeight),
                     DockRadius, 1.0);
 
                 // Same capsule at 2x in the zoomed row.
                 DrawDock(dc,
                     new Rect((StripWidth - DockWidth * 2) * 0.5,
-                        rowTwoTop + (ZoomedHeight - DockHeight * 2) * 0.5,
+                        rowTwoTop + Headroom * 2,
                         DockWidth * 2, DockHeight * 2),
                     DockRadius * 2, 2.0);
             }

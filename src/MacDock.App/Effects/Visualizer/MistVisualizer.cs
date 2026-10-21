@@ -110,6 +110,8 @@ public sealed class MistVisualizer : FrameworkElement
     private double _sinceRepaint;
     private double _debugLevel = -1;
     private double _debugTime = -1;
+    private Rect _dockTarget = Rect.Empty;
+    private Rect _dock = Rect.Empty;
 
     public MistVisualizer()
     {
@@ -186,6 +188,25 @@ public sealed class MistVisualizer : FrameworkElement
         }
     }
 
+    /// <summary>
+    /// The dock's capsule in this element's coordinates. The fog gathers against its ends and
+    /// drapes a little over its top edge; the dock window sits above and hides what falls behind it.
+    /// </summary>
+    public Rect Dock
+    {
+        get => _dockTarget;
+        set
+        {
+            _dockTarget = value;
+            if (_dock.IsEmpty || value.IsEmpty)
+            {
+                _dock = value;
+            }
+
+            InvalidateVisual();
+        }
+    }
+
     internal MistStyle Style
     {
         get => _style;
@@ -250,7 +271,21 @@ public sealed class MistVisualizer : FrameworkElement
         double t = (_debugTime >= 0 ? _debugTime : _clock.Elapsed.TotalSeconds) * 0.5;
         double width = capsule.Width;
         double baseY = capsule.Bottom - 4;
-        double maxHeight = Math.Max(1, capsule.Height * 0.95);
+        // the dock follows its target softly, so the fog flows along when the dock widens
+        if (!_dock.IsEmpty && !_dockTarget.IsEmpty && _dock != _dockTarget)
+        {
+            _dock = new Rect(
+                _dock.X + (_dockTarget.X - _dock.X) * 0.12,
+                _dock.Y + (_dockTarget.Y - _dock.Y) * 0.12,
+                _dock.Width + (_dockTarget.Width - _dock.Width) * 0.12,
+                _dock.Height + (_dockTarget.Height - _dock.Height) * 0.12);
+        }
+
+        var dock = _dock;
+        bool hasDock = !dock.IsEmpty && dock.Width > 0 && dock.Top > capsule.Top;
+        // strands and glows stand in the bar the dock rests in; the headroom above is for the fog
+        double barTop = hasDock ? dock.Top : capsule.Top;
+        double maxHeight = Math.Max(1, (baseY - barTop) * 0.95);
         double shift = Math.Clamp(_balance, -1, 1) * width * 0.02;
 
         int grade = Math.Clamp((int)Math.Round(energy * (AlphaGrades - 1)), 0, AlphaGrades - 1);
@@ -297,7 +332,20 @@ public sealed class MistVisualizer : FrameworkElement
                     double wave = (0.5 + 0.5 * Math.Sin(xn * (9 + 4 * v) + t * (0.35 + 0.12 * v) + v * 2.1)) *
                                   (0.5 + 0.5 * Math.Sin(xn * (23 - 5 * v) - t * (0.22 + 0.07 * v) + v));
                     double lift = 0.06 + (0.20 + 0.05 * (v % 5)) * wave + 0.22 * Envelope(px) * amplitude;
-                    double y = baseY - Math.Min(0.55, lift * (0.6 + 0.4 * energy)) * maxHeight * EdgeFade(xn);
+                    double rise = Math.Min(0.55, lift * (0.6 + 0.4 * energy)) * maxHeight;
+                    if (hasDock)
+                    {
+                        // banked against the dock's ends and draped over its top: each veil reaches a
+                        // little higher and further out than the one before
+                        double outside = px < dock.Left ? dock.Left - px : px > dock.Right ? px - dock.Right : 0;
+                        double reach = 90 + 45 * v;
+                        double hug = Math.Exp(-(outside / reach) * (outside / reach));
+                        double ripple = 0.5 + 0.5 * Math.Sin(xn * (31 + 7 * v) + t * (0.5 + 0.1 * v) + v * 1.3);
+                        double cover = (4 + 5 * v) * (0.55 + 0.45 * ripple) * (0.65 + 0.35 * energy);
+                        rise = Math.Max(rise, hug * (baseY - dock.Top + cover));
+                    }
+
+                    double y = Math.Max(capsule.Top + 1, baseY - rise * EdgeFade(xn));
                     g.LineTo(new Point(px, y), true, true);
                 }
 
@@ -313,7 +361,7 @@ public sealed class MistVisualizer : FrameworkElement
         // Filaments: one sprite per strand (a thin line or a column of dust),
         // shaped by the cluster envelope.
         // ------------------------------------------------------------------
-        int count = Math.Clamp((int)Math.Round(width / (FilamentSpacing * style.Spacing)), 8, MaxFilaments);
+        int count = style.Spacing <= 0 ? 0 : Math.Clamp((int)Math.Round(width / (FilamentSpacing * style.Spacing)), 8, MaxFilaments);
         double spacing = width / count;
         double dustPhase = t * 2;
 
@@ -626,7 +674,7 @@ public sealed class MistVisualizer : FrameworkElement
                 Pool = Ladder(CreatePoolBrush(style)),
                 VeilFill = CreateVeilFill(style.Body, style.Edge, veil),
                 VeilHalo = FrozenPen(WithAlpha(style.Body, 0.063 * veil), 7),
-                VeilCore = FrozenPen(WithAlpha(Mix(style.Core, style.Body, 0.4), 0.19 * veil), 0.8),
+                VeilCore = FrozenPen(WithAlpha(Mix(style.Core, style.Body, 0.4), 0.09 * veil), 0.8),
             };
             AssetCache[style] = assets;
             return assets;
@@ -834,9 +882,9 @@ public sealed class MistVisualizer : FrameworkElement
     private static Brush CreateVeilFill(Color body, Color edge, double strength)
     {
         var brush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
-        brush.GradientStops.Add(new GradientStop(WithAlpha(Mix(body, Colors.White, 0.2), 0.20 * strength), 0));
-        brush.GradientStops.Add(new GradientStop(WithAlpha(Mix(body, edge, 0.5), 0.086 * strength), 0.55));
-        brush.GradientStops.Add(new GradientStop(WithAlpha(edge, 0), 1));
+        brush.GradientStops.Add(new GradientStop(WithAlpha(Mix(body, Colors.White, 0.2), 0.06 * strength), 0));
+        brush.GradientStops.Add(new GradientStop(WithAlpha(Mix(body, edge, 0.5), 0.05 * strength), 0.55));
+        brush.GradientStops.Add(new GradientStop(WithAlpha(edge, 0.02 * strength), 1));
         brush.Freeze();
         return brush;
     }

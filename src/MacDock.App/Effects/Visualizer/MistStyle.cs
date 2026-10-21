@@ -11,7 +11,7 @@ internal sealed record MistStyle(
     string Name,
     double StrandWidth, // 1 = the hologram's pen stack
     double Dust,        // share of strands drawn as dust columns, 0..1
-    double Spacing,     // strand spacing as a multiple of the hologram's
+    double Spacing,     // strand spacing as a multiple of the hologram's; 0 = no strands
     double Height,      // field height multiplier
     int Veils,
     double VeilAlpha,
@@ -42,6 +42,7 @@ internal sealed record MistStyle(
         new("Minimal", 0.35, 0.8, 3.2, 0.90, 2, 0.6, 0.4, 12, IceCore, IceBody, IceEdge),
     };
 
-    /// <summary>The look the dock uses: dust columns.</summary>
-    public static MistStyle Default => All[1];
+    /// <summary>The look the dock uses: fog only, no strands.</summary>
+    public static readonly MistStyle Default =
+        new("Sis", 0.45, 0.0, 0, 1.0, 5, 1.4, 1.0, 24, IceCore, IceBody, IceEdge);
 }

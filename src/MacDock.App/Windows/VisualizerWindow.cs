@@ -25,6 +25,7 @@ internal sealed class VisualizerWindow : Window
     private IntPtr _hwnd;
     private IntPtr _dock;
     private Rect _bounds = Rect.Empty;
+    private double _barHeight;
     private DispatcherTimer? _hideTimer;
     private bool _placed;
     private bool _running;
@@ -71,8 +72,18 @@ internal sealed class VisualizerWindow : Window
         CaptureReveal.Exclude(_hwnd);
     }
 
-    public void Place(Rect bounds, IntPtr dock)
+    /// <summary>
+    /// Places the strip. Only its bottom <paramref name="barHeight"/> belongs to the bar the glow and
+    /// hologram stand in; anything above is headroom the mist uses to drape over the dock.
+    /// </summary>
+    public void Place(Rect bounds, IntPtr dock, double barHeight)
     {
+        if (barHeight != _barHeight)
+        {
+            _barHeight = barHeight;
+            UpdateCapsule();
+        }
+
         // The dock re-places the strip on every poll; touching the window (and
         // the z-order) only when something changed keeps that poll cheap.
         if (!_placed || bounds != _bounds)
@@ -91,6 +102,12 @@ internal sealed class VisualizerWindow : Window
         }
 
         _placed = true;
+    }
+
+    /// <summary>The dock's capsule in screen DIP, so the mist can wrap around it.</summary>
+    public void SetDockBounds(Rect screen)
+    {
+        _mist.Dock = _bounds.IsEmpty ? Rect.Empty : screen with { X = screen.X - _bounds.X, Y = screen.Y - _bounds.Y };
     }
 
     public void PlaceBelowDock(IntPtr dock)
@@ -117,7 +134,7 @@ internal sealed class VisualizerWindow : Window
                 {
                     // Show() restores the window's own placement; re-apply the strip at once.
                     _placed = false;
-                    Place(_bounds, _dock);
+                    Place(_bounds, _dock, _barHeight);
                 }
             }
         }
@@ -149,10 +166,12 @@ internal sealed class VisualizerWindow : Window
     private void UpdateCapsule()
     {
         // The whole strip is the "capsule": the light rises from the screen's bottom edge.
-        var strip = new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
-        _glow.Capsule = strip with { Y = strip.Height - 2, Height = 2 };
+        var all = new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
+        _mist.Capsule = all;
+        var bar = _barHeight > 0 ? Math.Min(_barHeight, all.Height) : all.Height;
+        var strip = all with { Y = all.Height - bar, Height = bar };
+        _glow.Capsule = strip with { Y = strip.Bottom - 2, Height = 2 };
         // the hologram keeps its base line 4 DIP above the capsule's bottom; push that onto the screen edge
         _hologram.Capsule = strip with { Height = strip.Height + 4 };
-        _mist.Capsule = strip;
     }
 }
