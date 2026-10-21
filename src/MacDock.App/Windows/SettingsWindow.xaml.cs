@@ -34,6 +34,8 @@ public partial class SettingsWindow : Window
         EffectGlass.IsChecked = AuraSettings.Effect == AuraEffect.Glass;
         EffectNeon.Checked += (_, _) => AuraSettings.SetEffect(AuraEffect.Neon);
         EffectGlass.Checked += (_, _) => AuraSettings.SetEffect(AuraEffect.Glass);
+        EffectAurora.IsChecked = AuraSettings.Effect == AuraEffect.Aurora;
+        EffectAurora.Checked += (_, _) => AuraSettings.SetEffect(AuraEffect.Aurora);
 
         IntensitySlider.Value = AuraSettings.SpectralIntensity;
         IntensityValue.Text = AuraSettings.SpectralIntensity.ToString("0.0");

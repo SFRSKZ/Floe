@@ -152,6 +152,7 @@
                 <RadioButton x:Name="EffectBurst" Style="{StaticResource ModeToggle}" Content="Hayalet" />
                 <RadioButton x:Name="EffectNeon" Style="{StaticResource ModeToggle}" Content="Neon" />
                 <RadioButton x:Name="EffectGlass" Style="{StaticResource ModeToggle}" Content="Sıvı cam" />
+                <RadioButton x:Name="EffectAurora" Style="{StaticResource ModeToggle}" Content="Aurora" />
             </StackPanel>
 
             <StackPanel x:Name="IntensityPanel" Margin="0,14,0,0">

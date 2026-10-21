@@ -27,6 +27,44 @@ public partial class DockWindow
 {
     private ActiveIconEffect? _activeFx;
     private Image? _fxImage;
+    private AuroraWindow? _aurora;
+
+    private void SetAurora(bool on)
+    {
+        if (on)
+        {
+            _aurora ??= CreateAurora();
+            _aurora.Begin();
+        }
+        else
+        {
+            _aurora?.End();
+        }
+    }
+
+    private AuroraWindow CreateAurora()
+    {
+        var aurora = new AuroraWindow(_hwnd, AuroraAnchor, !NoFx.Contains("exclude"));
+        Closed += (_, _) => aurora.Close();
+        return aurora;
+    }
+
+    /// <summary>The active icon's centre in screen DIP and its on-screen scale, while the dock shows it.</summary>
+    private (Point Center, double Scale)? AuroraAnchor()
+    {
+        if (!IsVisible || !_shown || _fullscreenHidden || _activeIndex < 0 || _activeIndex >= _slots.Count
+            || AuraSettings.Effect != AuraEffect.Aurora
+            || ((Grid)_slots[_activeIndex].Button.Content).Children[0] is not FrameworkElement icon
+            || PresentationSource.FromVisual(icon) is null)
+        {
+            return null;
+        }
+
+        var middle = new Point(icon.ActualWidth / 2, icon.ActualHeight / 2);
+        var center = icon.PointToScreen(middle);
+        var edge = icon.PointToScreen(new Point(middle.X + 10, middle.Y));
+        return (new Point(center.X / DpiScale, center.Y / DpiScale), (edge.X - center.X) / DpiScale / 10);
+    }
 
     /// <summary>Puts the neon / liquid glass effect on one icon image, or takes it off (null).</summary>
     private void SetIconEffect(Image? image, DockItemViewModel? item)
@@ -94,6 +132,7 @@ public partial class DockWindow
         if (_activeIndex < 0 || _slots[_activeIndex].Item.Icon is not { } icon)
         {
             SetIconEffect(null, null);
+            SetAurora(false);
             _auraGrid.Visibility = Visibility.Collapsed;
             SetSpectralVisible(false);
             for (var k = 0; k < _auraEffects.Length; k++)
@@ -105,6 +144,22 @@ public partial class DockWindow
         }
 
         var item = _slots[_activeIndex].Item;
+
+        if (AuraSettings.Effect == AuraEffect.Aurora)
+        {
+            _auraGrid.Visibility = Visibility.Collapsed;
+            SetSpectralVisible(false);
+            for (var k = 0; k < _auraEffects.Length; k++)
+            {
+                _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, null);
+            }
+
+            SetIconEffect(null, null);
+            SetAurora(true);
+            return;
+        }
+
+        SetAurora(false);
 
         if (AuraSettings.Effect is AuraEffect.Neon or AuraEffect.Glass && ActiveIconEffect.IsAvailable)
         {

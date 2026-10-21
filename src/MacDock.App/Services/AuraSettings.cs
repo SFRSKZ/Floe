@@ -20,6 +20,7 @@ public enum AuraEffect
     Burst,
     Neon,
     Glass,
+    Aurora,
 }
 
 public sealed class AuraPalette

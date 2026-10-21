@@ -237,6 +237,11 @@ public partial class DockWindow
         {
             PositionSpectral(_slots[_activeIndex]);
         }
+
+        if (_aurora is { IsVisible: true })
+        {
+            _aurora.Track();
+        }
     }
 
     private void UpdateCapsule(IReadOnlyList<double> scales)
