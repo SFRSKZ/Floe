@@ -1,27 +1,25 @@
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using MacDock.App.Services;
 using MacDock.Core.Interop;
 
 namespace MacDock.App.Effects.Visualizer;
 
 /// <summary>
-/// A cold "mist" field of blue light: seven wandering hot spots, each a
-/// flame-shaped bundle of thin strands that stay near vertical and bend at
-/// most a few DIP at the tip. A dense carpet of short faint strands runs the
-/// full width so the strip never looks empty, a few luminous wisps drift just
-/// above the floor, and a soft glow sits behind every bundle.
+/// The hologram's cold-flame filaments spread across the whole strip: flame
+/// clusters of different widths and heights drift and breathe over a low
+/// carpet of short strands, with smoky veils flowing along the floor.
 /// <para>
-/// Sampling follows the same lifecycle as <see cref="VisualizerGlow"/> and
-/// <see cref="HologramVisualizer"/>: the render callback is hooked only while
-/// <see cref="IsActive"/> is set or the ~400 ms fade-out is still running.
+/// Sampling follows the same lifecycle as <see cref="VisualizerGlow"/>: the
+/// render callback is hooked only while <see cref="IsActive"/> is set or the
+/// ~400 ms fade-out is still running.
 /// </para>
 /// </summary>
 public sealed class MistVisualizer : FrameworkElement
 {
-    // Audio shaping, matching VisualizerGlow/HologramVisualizer so all three
-    // visualizers react alike.
+    // Audio shaping, matching VisualizerGlow so both visualizers react alike.
     private const double GainDecaySeconds = 4.0;
     private const double GainFloor = 0.002;
     private const double SilenceFloor = 0.0003;
@@ -31,127 +29,59 @@ public sealed class MistVisualizer : FrameworkElement
     private const double FadeOutSeconds = 0.40;
     private const double FadeInSeconds = 0.22;
 
-    // Seven hot spots across the width, each a flame-shaped bundle 40-90 DIP
-    // wide with 18 strands. The remaining budget is a dense low carpet: at the
-    // dock's ~1030 DIP width that is one strand every ~8 DIP.
-    private const int BundleCount = 7;
-    private const int StrandsPerBundle = 18;
-    private const int CarpetCount = 134;
-    private const int MaxStrands = BundleCount * StrandsPerBundle + CarpetCount;
+    // Geometry budget.
+    private const int MaxFilaments = 640;
+    private const double FilamentSpacing = 3.0;
+    private const int ColorFamilies = 3;
+    private const int ParticleCount = 20;
+    private const int AlphaGrades = 8;
 
-    private const double BundleMinWidth = 40.0;
-    private const double BundleWidthRange = 50.0;
+    private static readonly Color[] FamilyColors =
+    {
+        Color.FromRgb(0xEA, 0xF6, 0xFF), // icy core
+        Color.FromRgb(0x6F, 0xB8, 0xFF), // body blue
+        Color.FromRgb(0x2A, 0x6F, 0xD6)  // faint edge
+    };
 
-    // Strands are near vertical: the tip may wander at most this far from the
-    // root, so a bundle never fans out from a common point.
-    private const double MaxTipBend = 4.0;
+    private static readonly double[] FamilyScale = { 1.0, 0.90, 0.62 };
 
-    private const int SparkCount = 24;
-    private const int WispCount = 3;
-    private const double WispSampleStep = 8.0;
+    // Pre-frozen alpha ladder: a strand picks one grade per frame, the brush
+    // itself never changes.
+    private static readonly double[] AlphaLadder = { 0.06, 0.09, 0.13, 0.18, 0.25, 0.33, 0.43, 0.56 };
 
-    private const int OpacitySteps = 32;
+    // A strand sprite holds the old pen stack (bloom 8.5, glow 4.6, core 1.15 DIP; heavy adds 2.4)
+    // composited once, with the base-to-tip fade baked in.
+    private const double SpriteWidth = 10;
+    private static readonly (double Thickness, double Alpha)[] StrandLayers = { (8.5, 0.10), (4.6, 0.32), (1.15, 1.0) };
+    private static readonly (double Thickness, double Alpha)[] HeavyLayers = { (8.5, 0.10), (4.6, 0.32), (2.4, 0.55), (1.15, 1.0) };
+    private static readonly BitmapSource[][] StrandSprites = CreateSprites(StrandLayers);
+    private static readonly BitmapSource[][] HeavySprites = CreateSprites(HeavyLayers);
 
-    // Pen ladders: strand strokes are cached frozen pens, quantised by width
-    // and alpha, so a frame never builds a brush or a pen.
-    private const int PenAlphaSteps = 12;
-    private const double CoreWidthMin = 0.30;
-    private const double CoreWidthStep = 0.13;
-    private const int CoreWidthSteps = 10;
-    private const double HaloWidthMin = 1.8;
-    private const double HaloWidthStep = 0.4;
-    private const int HaloWidthSteps = 8;
-
-    // The required blue ramp: pale icy root, cyan at 40%, deep blue at 80%,
-    // transparent tip. The root is the only near-white part of a strand.
-    private static readonly Color RootColor = Color.FromRgb(0xE6, 0xF6, 0xFF);
-    private static readonly Color MidColor = Color.FromRgb(0x7C, 0xC8, 0xFF);
-    private static readonly Color DeepColor = Color.FromRgb(0x2E, 0x8B, 0xFF);
-    private static readonly Color GlowColor = Color.FromRgb(0x2F, 0x7D, 0xFF);
-
-    // Frozen brush ladders. Every strand/wisp/glow picks one pre-built brush
-    // per frame; no brushes are created inside OnRender.
-    private static readonly Brush[] ReflectionBrushes = Ladder(CreateReflectionBrush());
-    private static readonly Brush[] SparkBrushes = Ladder(new SolidColorBrush(RootColor));
-    private static readonly Brush[] CoreLineBrushes = Ladder(new SolidColorBrush(Color.FromRgb(0xF6, 0xFC, 0xFF)));
-
-    // ~8 DIP visible cyan bloom standing on the base line.
-    private static readonly Brush[] BaseBloomBrushes = Ladder(CreateBaseBloomBrush());
-
-    // Wide elliptical glow behind a bundle and the brighter pool it casts on
-    // the floor.
-    private static readonly Brush[] BundleGlowBrushes = Ladder(CreateBundleGlowBrush());
+    // Opacity ladders for the soft shapes, so nothing needs PushOpacity (an offscreen layer each).
+    private const int OpacitySteps = 24;
+    private static readonly Brush[] SparkBrushes = Ladder(CreateSparkBrush());
+    private static readonly Brush[] HazeBlueBrushes = Ladder(CreateHazeBrush(FamilyColors[1]));
+    private static readonly Brush[] HazeCoreBrushes = Ladder(CreateHazeBrush(Color.FromRgb(0xD2, 0xEC, 0xFF)));
     private static readonly Brush[] PoolBrushes = Ladder(CreatePoolBrush());
-
-    // Cached gradient pens for the strand cores: every pen restarts the ramp
-    // at its own root, so a short carpet strand and a tall bundle strand both
-    // read pale at the root and transparent at the tip.
-    private static readonly Pen[][] CorePens =
-        BuildGradientPens(CoreWidthMin, CoreWidthStep, CoreWidthSteps, PenAlphaSteps);
-
-    // A single deep-blue halo pen ladder; halos never use a light colour.
-    private static readonly Pen[][] HaloPens =
-        BuildPens(DeepColor, HaloWidthMin, HaloWidthStep, HaloWidthSteps);
-
-    // One smooth curve per wisp: round joins and round caps, no dots.
-    private static readonly Pen WispCorePen = CreateWispPen(MidColor, 0.22, 1.05);
-    private static readonly Pen WispHaloPen = CreateWispPen(DeepColor, 0.06, 4.6);
+    private static readonly Brush[] PoolWideBrushes = Ladder(CreateHazeBrush(FamilyColors[1]));
 
     private readonly Stopwatch _clock = Stopwatch.StartNew();
 
-    // Per-strand deterministic constants, allocated once. Bundle strands carry
-    // a DIP offset from the bundle centre; carpet strands carry a normalised
-    // position across the full width.
-    private readonly int[] _strandBundle = new int[MaxStrands];
-    private readonly double[] _offset = new double[MaxStrands];
-    private readonly double[] _heightScale = new double[MaxStrands];
-    private readonly double[] _widthScale = new double[MaxStrands];
-    private readonly double[] _bright = new double[MaxStrands];
-    private readonly double[] _bend = new double[MaxStrands];
-    private readonly double[] _swayPhase = new double[MaxStrands];
-    private readonly double[] _swaySpeed = new double[MaxStrands];
-    private readonly double[] _seed = new double[MaxStrands];
-    private readonly double[] _noiseSpeed = new double[MaxStrands];
-    private readonly double[] _noisePhase = new double[MaxStrands];
+    // Per-strand deterministic constants, allocated once.
+    private readonly double[] _jitter = new double[MaxFilaments];
+    private readonly double[] _tipSeed = new double[MaxFilaments];
+    private readonly double[] _swaySpeed = new double[MaxFilaments];
+    private readonly double[] _swayPhase = new double[MaxFilaments];
+    private readonly double[] _flickerSpeed = new double[MaxFilaments];
 
-    // Eased strand heights (0..1 of the strip height) and this frame's targets.
-    private readonly double[] _heights = new double[MaxStrands];
-    private readonly double[] _targets = new double[MaxStrands];
-
-    // Bundle state, refreshed from the clock every frame.
-    private readonly double[] _bundlePos = new double[BundleCount];
-    private readonly double[] _bundleEnergy = new double[BundleCount];
-    private readonly double[] _bundleSpeed = new double[BundleCount];
-    private readonly double[] _bundlePhase = new double[BundleCount];
-    private readonly double[] _bundleAmp = new double[BundleCount];
-    private readonly double[] _bundleSeed = new double[BundleCount];
-    private readonly double[] _bundleHeight = new double[BundleCount];
-    private readonly double[] _bundleWidth = new double[BundleCount];
-
-    // Three wisps, each cached as one reusable StreamGeometry. Open() clears
-    // the previous content, so nothing is allocated after the first paint.
-    private readonly StreamGeometry?[] _wispGeometry = new StreamGeometry?[WispCount];
-    private readonly double[] _wispPhase = new double[WispCount];
-    private readonly double[] _wispSpeed = new double[WispCount];
-
-    // Strands tall enough to carry a sparkle or a reflection, gathered per frame.
-    private readonly int[] _tallStrands = new int[MaxStrands];
-    private int _tallCount;
-
-    // Sparkles are a fixed pool animated from the clock; no state churn.
-    private readonly double[] _sparkX = new double[SparkCount];
-    private readonly double[] _sparkPhase = new double[SparkCount];
-    private readonly double[] _sparkSpeed = new double[SparkCount];
-    private readonly double[] _sparkDrift = new double[SparkCount];
+    // Particles are a fixed pool animated from the clock; no state churn.
+    private readonly double[] _particleX = new double[ParticleCount];
+    private readonly double[] _particlePhase = new double[ParticleCount];
+    private readonly double[] _particleSpeed = new double[ParticleCount];
+    private readonly double[] _particleDrift = new double[ParticleCount];
+    private readonly double[] _particleSize = new double[ParticleCount];
 
     private readonly float[] _channelPeaks = new float[2];
-
-    // Cached clip geometry and edge-fade mask, rebuilt only when the capsule
-    // actually changes.
-    private Geometry? _clipGeometry;
-    private Rect _clipRect;
-    private Brush? _edgeMask;
-    private Rect _maskRect;
 
     private AudioPeakMeter? _meter;
     private Rect _capsule = Rect.Empty;
@@ -172,83 +102,30 @@ public sealed class MistVisualizer : FrameworkElement
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
 
-        int strand = 0;
-        for (int b = 0; b < BundleCount; b++)
+        for (int i = 0; i < MaxFilaments; i++)
         {
-            _bundleSpeed[b] = 0.055 + 0.055 * Hash01(b, 0x1D3F51);
-            _bundlePhase[b] = 6.283 * (b / (double)BundleCount) + 1.2 * Hash01(b, 0x6C2A77);
-            _bundleAmp[b] = 0.028 + 0.018 * Hash01(b, 0x40B1E3);
-            _bundleSeed[b] = Hash01(b, 0x5E9C21);
-            _bundleWidth[b] = Hash01(b, 0x73AD05);
-            _bundleHeight[b] = Hash01(b, 0x2F91A3);
-
-            double bundleWidth = BundleMinWidth + BundleWidthRange * _bundleSeed[b];
-            for (int k = 0; k < StrandsPerBundle; k++, strand++)
-            {
-                _strandBundle[strand] = b;
-
-                // Roots are spread across the bundle width with a little
-                // jitter. There is no common root, and the tip stays within
-                // MaxTipBend of its own root.
-                double u = (k + 0.5) / StrandsPerBundle;
-                double jitter = (Hash01(strand, 0x51ED27) - 0.5) * bundleWidth * 0.07;
-                double off = (u - 0.5) * bundleWidth + jitter;
-                _offset[strand] = off;
-
-                // Flame envelope: tall in the middle, shorter at the edges.
-                double edge = Math.Clamp(Math.Abs(off) / (bundleWidth * 0.5), 0, 1);
-                double flame = Math.Pow(Math.Cos(edge * Math.PI * 0.5), 0.72);
-                _heightScale[strand] = (0.30 + 0.68 * flame) *
-                                       (0.84 + 0.20 * Hash01(strand, 0x2F91A3));
-                _widthScale[strand] = 0.60 + 1.00 * Hash01(strand, 0x7C3B19);
-                _bright[strand] = 0.65 + 0.40 * Hash01(strand, 0x19AF43);
-                _bend[strand] = Hash01(strand, 0x2D6B11) * 2 - 1;
-                _swayPhase[strand] = 6.283 * Hash01(strand, 0x58C3A7);
-                _swaySpeed[strand] = 0.45 + 1.10 * Hash01(strand, 0x6F14D9);
-                _seed[strand] = Hash01(strand, 0x77A31D);
-                _noiseSpeed[strand] = 0.65 + 1.55 * Hash01(strand, 0x3B7E55);
-                _noisePhase[strand] = 6.283 * Hash01(strand, 0x19AF43);
-            }
+            _jitter[i] = Hash01(i, 0x51ED27) - 0.5;
+            _tipSeed[i] = Hash01(i, 0x2F91A3);
+            _swaySpeed[i] = 0.35 + 1.25 * Hash01(i, 0x7C3B19);
+            _swayPhase[i] = 6.283 * Hash01(i, 0x19AF43);
+            _flickerSpeed[i] = 0.55 + 1.65 * Hash01(i, 0x4D8C61);
         }
 
-        for (int c = 0; c < CarpetCount; c++, strand++)
+        for (int i = 0; i < ParticleCount; i++)
         {
-            _strandBundle[strand] = -1;
-
-            // Random positions at roughly one every width/CarpetCount DIP,
-            // jittered so no two carpet strands line up.
-            _offset[strand] = (c + 0.15 + 0.70 * Hash01(strand, 0x60D1B7)) / CarpetCount;
-            _heightScale[strand] = 0.05 + 0.15 * Hash01(strand, 0x14C9E1);
-            _widthScale[strand] = 0.45 + 0.55 * Hash01(strand, 0x7A21F5);
-            _bright[strand] = 0.25 + 0.40 * Hash01(strand, 0x3720B9);
-            _bend[strand] = Hash01(strand, 0x4C8D23) * 2 - 1;
-            _swayPhase[strand] = 6.283 * Hash01(strand, 0x2E5F87);
-            _swaySpeed[strand] = 0.40 + 1.00 * Hash01(strand, 0x0B3C6D);
-            _seed[strand] = Hash01(strand, 0x71B2D9);
-            _noiseSpeed[strand] = 0.65 + 1.55 * Hash01(strand, 0x5FA0C7);
-            _noisePhase[strand] = 6.283 * Hash01(strand, 0x27C6E5);
-        }
-
-        for (int w = 0; w < WispCount; w++)
-        {
-            _wispPhase[w] = 6.283 * Hash01(w, 0x33D2A1);
-            _wispSpeed[w] = 0.13 + 0.08 * Hash01(w, 0x6A14B3);
-        }
-
-        for (int i = 0; i < SparkCount; i++)
-        {
-            _sparkX[i] = Hash01(i, 0x71B2D9);
-            _sparkPhase[i] = Hash01(i, 0x38E4A1);
-            _sparkSpeed[i] = 0.045 + 0.055 * Hash01(i, 0x5FA0C7);
-            _sparkDrift[i] = 0.14 + 0.40 * Hash01(i, 0x27C6E5);
+            _particleX[i] = Hash01(i, 0x71B2D9);
+            _particlePhase[i] = Hash01(i, 0x38E4A1);
+            _particleSpeed[i] = 0.018 + 0.030 * Hash01(i, 0x5FA0C7);
+            _particleDrift[i] = 0.12 + 0.38 * Hash01(i, 0x27C6E5);
+            _particleSize[i] = 0.55 + 1.05 * Hash01(i, 0x6A14B3);
         }
 
         _fade = 0;
     }
 
     /// <summary>
-    /// Capsule bounds in this element's coordinates. The base line sits just
-    /// above the bottom; the loudest strands reach 85-95% of the capsule.
+    /// Capsule bounds in this element's coordinates. The base line sits 4 DIP
+    /// above the bottom; the tallest filaments reach 95% of the capsule height.
     /// </summary>
     public Rect Capsule
     {
@@ -266,7 +143,7 @@ public sealed class MistVisualizer : FrameworkElement
     }
 
     /// <summary>
-    /// Turns sampling on or off. Off fades the mist out (~400 ms) and then
+    /// Turns sampling on or off. Off fades the hologram out (~400 ms) and then
     /// unhooks the render callback entirely.
     /// </summary>
     public bool IsActive
@@ -310,6 +187,30 @@ public sealed class MistVisualizer : FrameworkElement
     /// <summary>True when a media session is actually playing. Never throws.</summary>
     public static async Task<bool> ShouldRunAsync() => await MediaService.IsPlayingAsync();
 
+    // Flame clusters across the strip: centre (0..1 of the width), half-width (DIP), peak height (0..1).
+    private static readonly (double Center, double HalfWidth, double Peak)[] Clusters =
+    {
+        (0.07, 34, 0.92),
+        (0.21, 58, 0.50),
+        (0.36, 26, 0.70),
+        (0.50, 70, 0.62),
+        (0.64, 30, 0.44),
+        (0.79, 62, 0.88),
+        (0.93, 24, 0.58),
+    };
+
+    private const double CarpetHeight = 0.13;
+    private const int VeilCount = 3;
+    private const double VeilStep = 8;
+
+    private static readonly Brush VeilFill = CreateVeilFill();
+    private static readonly Pen VeilHalo = FrozenPen(Color.FromArgb(0x0C, 0x6F, 0xB8, 0xFF), 5);
+    private static readonly Pen VeilCore = FrozenPen(Color.FromArgb(0x24, 0xBF, 0xE4, 0xFF), 1);
+
+    // Where each cluster sits this frame, refreshed once per paint.
+    private readonly double[] _clusterX = new double[Clusters.Length];
+    private readonly double[] _clusterPeak = new double[Clusters.Length];
+
     protected override void OnRender(DrawingContext dc)
     {
         double debug = _debugLevel;
@@ -330,383 +231,197 @@ public sealed class MistVisualizer : FrameworkElement
         }
 
         double t = _clock.Elapsed.TotalSeconds;
-        double stripHeight = capsule.Height;
-
-        // A thin mirrored strip below the line; the mist itself owns almost
-        // all of the height.
-        double reflectionDepth = Math.Clamp(stripHeight * 0.055, 2.5, 5.0);
-        double baseY = capsule.Bottom - reflectionDepth;
-        double maxHeight = Math.Max(1, baseY - capsule.Top - 0.5);
-
-        ComputeFrame(t, level);
-
-        // The live path eases the heights in OnRendering; a preview paints the
-        // targets directly because no rendering hook runs for it.
-        double[] heights = debug >= 0 ? _targets : _heights;
-
-        PushClipAndMask(dc, capsule);
-        try
-        {
-            // --------------------------------------------------------------
-            // Volumetric body: a wide soft glow behind every bundle, then the
-            // luminous wisps flowing just above the floor.
-            // --------------------------------------------------------------
-            DrawBundleGlows(dc, capsule, baseY, stripHeight, level, fade);
-            DrawWisps(dc, capsule, baseY, stripHeight, t, fade);
-
-            // --------------------------------------------------------------
-            // Glowing floor: cyan bloom with a brighter pool under each bundle.
-            // --------------------------------------------------------------
-            DrawFloor(dc, capsule, baseY, level, energy);
-
-            DrawReflection(dc, capsule, baseY, reflectionDepth, heights, energy);
-
-            // --------------------------------------------------------------
-            // Strands: all halos first, then the bright cores, so a later halo
-            // never dims an earlier core.
-            // --------------------------------------------------------------
-            DrawStrandHalos(dc, capsule, baseY, stripHeight, maxHeight, heights, energy, t);
-            DrawStrandCores(dc, capsule, baseY, stripHeight, maxHeight, heights, energy, t);
-
-            // --------------------------------------------------------------
-            // Base line: 1.5 DIP white core with a soft cyan underglow.
-            // --------------------------------------------------------------
-            DrawBaseLine(dc, capsule, baseY, level, fade);
-
-            // --------------------------------------------------------------
-            // Tiny sparkles drifting up along the tall strands.
-            // --------------------------------------------------------------
-            DrawSparkles(dc, capsule, baseY, stripHeight, t, heights, energy);
-        }
-        finally
-        {
-            dc.Pop(); // edge mask
-            dc.Pop(); // clip
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Volumetric mist
-    // ------------------------------------------------------------------
-
-    private void DrawBundleGlows(DrawingContext dc, Rect capsule, double baseY, double stripHeight,
-        double level, double fade)
-    {
-        // 1.5x the old body, capped at 0.35 overall opacity at loud level.
-        double alpha = Math.Min(0.35, (0.10 + 0.25 * level) * fade);
-        if (alpha <= 0.004)
-        {
-            return;
-        }
-
-        for (int b = 0; b < BundleCount; b++)
-        {
-            double x = capsule.Left + _bundlePos[b] * capsule.Width;
-            double w = 1.5 * (120 + 80 * _bundleWidth[b]);
-            double h = 1.5 * stripHeight * (0.60 + 0.30 * _bundleHeight[b]);
-            double a = alpha * _bundleEnergy[b];
-            dc.DrawEllipse(Graded(BundleGlowBrushes, a), null,
-                new Point(x, baseY - h * 0.5), w * 0.5, h * 0.5);
-        }
-    }
-
-    private void DrawWisps(DrawingContext dc, Rect capsule, double baseY, double stripHeight,
-        double t, double fade)
-    {
-        if (fade <= 0.01)
-        {
-            return;
-        }
-
         double width = capsule.Width;
-        if (width <= 1)
+        double baseY = capsule.Bottom - 4;
+        double maxHeight = Math.Max(1, capsule.Height * 0.95);
+        double shift = Math.Clamp(_balance, -1, 1) * width * 0.02;
+
+        int grade = Math.Clamp((int)Math.Round(energy * (AlphaGrades - 1)), 0, AlphaGrades - 1);
+
+        // Clusters drift slowly sideways and breathe on their own beat.
+        for (int k = 0; k < Clusters.Length; k++)
         {
-            return;
+            var c = Clusters[k];
+            _clusterX[k] = capsule.Left + c.Center * width + shift +
+                           Math.Sin(t * (0.07 + 0.03 * k) + k * 1.7) * width * 0.018;
+            _clusterPeak[k] = c.Peak * (0.70 + 0.30 * ValueNoise(t * 0.45 + k * 3.1, 0x5A17 + k));
         }
 
-        int samples = Math.Max(2, (int)Math.Ceiling(width / WispSampleStep));
-        double stepX = width / samples;
-
-        // The pens carry the requested 0.22 core / 0.06 halo alpha; the fade
-        // multiplies both without needing another pen ladder.
-        dc.PushOpacity(fade);
-        try
+        // ------------------------------------------------------------------
+        // Atmospheric bloom behind every cluster.
+        // ------------------------------------------------------------------
+        for (int k = 0; k < Clusters.Length; k++)
         {
-            for (int w = 0; w < WispCount; w++)
+            double peak = _clusterPeak[k];
+            double half = Clusters[k].HalfWidth;
+            double x = _clusterX[k];
+            dc.DrawEllipse(Graded(HazeBlueBrushes, (0.11 + 0.27 * energy) * (0.5 + 0.5 * peak)), null,
+                new Point(x, baseY - maxHeight * 0.30 * peak), half * 3.2, maxHeight * 0.70 * peak);
+            dc.DrawEllipse(Graded(HazeCoreBrushes, (0.08 + 0.20 * energy) * peak), null,
+                new Point(x, baseY - maxHeight * 0.36 * peak), half * 1.1, maxHeight * 0.62 * peak);
+        }
+
+        // ------------------------------------------------------------------
+        // Smoky veils just above the floor, behind the strands.
+        // ------------------------------------------------------------------
+        double amplitude = 0.12 + 1.10 * Math.Pow(level, 0.66);
+        for (int v = 0; v < VeilCount; v++)
+        {
+            var veil = new StreamGeometry();
+            using (var g = veil.Open())
             {
-                StreamGeometry geometry = _wispGeometry[w] ??= new StreamGeometry();
-                using (StreamGeometryContext ctx = geometry.Open())
+                g.BeginFigure(new Point(capsule.Left, baseY), true, true);
+                for (double x = capsule.Left; x < capsule.Right + VeilStep; x += VeilStep)
                 {
-                    double startY = WispY(0, capsule, baseY, stripHeight, t, w);
-                    ctx.BeginFigure(new Point(capsule.Left, startY), false, false);
-                    for (int s = 1; s <= samples; s++)
-                    {
-                        double u = s / (double)samples;
-                        double x = capsule.Left + stepX * s;
-                        ctx.LineTo(new Point(x, WispY(u, capsule, baseY, stripHeight, t, w)),
-                            true, false);
-                    }
+                    double px = Math.Min(x, capsule.Right);
+                    double xn = (px - capsule.Left) / width;
+                    double wave = (0.5 + 0.5 * Math.Sin(xn * (9 + 4 * v) + t * (0.35 + 0.12 * v) + v * 2.1)) *
+                                  (0.5 + 0.5 * Math.Sin(xn * (23 - 5 * v) - t * (0.22 + 0.07 * v) + v));
+                    double lift = 0.05 + 0.14 * wave + 0.18 * Envelope(px) * amplitude;
+                    double y = baseY - Math.Min(0.35, lift * (0.6 + 0.4 * energy)) * maxHeight * EdgeFade(xn);
+                    g.LineTo(new Point(px, y), true, true);
                 }
 
-                dc.DrawGeometry(null, WispHaloPen, geometry);
-                dc.DrawGeometry(null, WispCorePen, geometry);
+                g.LineTo(new Point(capsule.Right, baseY), false, true);
             }
-        }
-        finally
-        {
-            dc.Pop();
-        }
-    }
 
-    private double WispY(double u, Rect capsule, double baseY, double stripHeight,
-        double t, int wisp)
-    {
-        // The bundles only lift the wisp a little; it otherwise hugs the floor.
-        double rise = 0;
-        double width = capsule.Width;
-        for (int b = 0; b < BundleCount; b++)
-        {
-            double dx = (u - _bundlePos[b]) * width;
-            double near = Math.Exp(-(dx * dx) / (2 * 55.0 * 55.0));
-            rise = Math.Max(rise, near * _bundleEnergy[b]);
+            veil.Freeze();
+            dc.DrawGeometry(VeilFill, VeilHalo, veil);
+            dc.DrawGeometry(null, VeilCore, veil);
         }
 
-        // Two sine waves scrolling sideways plus a slow noise wobble.
-        double s1 = Math.Sin((u * 4.2 - t * _wispSpeed[wisp]) * 6.283 + _wispPhase[wisp]);
-        double s2 = Math.Sin((u * 9.1 + t * _wispSpeed[wisp] * 0.55) * 6.283 + _wispPhase[wisp] * 1.7);
-        double n = ValueNoise(u * 7.0 + t * 0.24 + wisp * 13.0, 0x2C71) - 0.5;
+        // ------------------------------------------------------------------
+        // Filaments: the hologram's sprites, shaped by the cluster envelope.
+        // ------------------------------------------------------------------
+        int count = Math.Clamp((int)Math.Round(width / FilamentSpacing), 8, MaxFilaments);
+        double spacing = width / count;
 
-        double lift = 0.080 + 0.045 * s1 + 0.022 * s2 + 0.035 * n + 0.085 * rise;
-        lift = Math.Clamp(lift, 0.015, 0.25);
-        double y = baseY - stripHeight * lift;
-        return Math.Clamp(y, capsule.Top + 0.5, baseY - 0.5);
-    }
-
-    private void DrawFloor(DrawingContext dc, Rect capsule, double baseY, double level, double energy)
-    {
-        // Faint uniform wash under everything; the pools add the hot spots.
-        const double washHeight = 11.0;
-        dc.DrawRectangle(Graded(BaseBloomBrushes, (0.10 + 0.06 * level) * energy), null,
-            new Rect(capsule.Left, baseY - washHeight, capsule.Width, washHeight));
-
-        for (int b = 0; b < BundleCount; b++)
+        for (int i = 0; i < count; i++)
         {
-            double x = capsule.Left + _bundlePos[b] * capsule.Width;
-            double a = (0.16 + 0.24 * level) * _bundleEnergy[b] * energy;
-            double rx = 36 + 14 * _bundleWidth[b];
-            dc.DrawEllipse(Graded(PoolBrushes, a), null, new Point(x, baseY - 0.5), rx, 6.2);
-        }
-    }
+            double xn = (i + 0.5) / count;
+            double x = capsule.Left + (i + 0.5) * spacing + _jitter[i] * spacing * 0.70;
+            x = Math.Clamp(x, capsule.Left + 0.75, capsule.Right - 0.75);
 
-    // ------------------------------------------------------------------
-    // Strands
-    // ------------------------------------------------------------------
+            double envelope = Envelope(x, out double nearest);
 
-    private void DrawReflection(DrawingContext dc, Rect capsule, double baseY, double reflectionDepth,
-        double[] heights, double energy)
-    {
-        double alpha = Math.Min(0.10, 0.10 * energy);
-        for (int i = 0; i < MaxStrands; i++)
-        {
-            double heightRatio = Math.Clamp(heights[i], 0, 1);
-            if (heightRatio < 0.40 || _strandBundle[i] < 0)
+            double seed = _tipSeed[i];
+            double noise = 0.62 * ValueNoise(t * _flickerSpeed[i] + seed * 63.0, (int)(seed * 100003)) +
+                           0.38 * ValueNoise(t * (_flickerSpeed[i] * 2.3 + 0.4) + seed * 17.0, (int)(seed * 70001));
+            noise = Math.Clamp(noise, 0, 1);
+
+            // the strip is shallow, so the clusters run taller than the hologram's single bell
+            double h = envelope * maxHeight * amplitude * (0.45 + 0.55 * noise) * 1.35 * EdgeFade(xn);
+
+            double clump = 0.72 + 0.50 * ValueNoise(xn * 60.0 + t * 0.18 + 4.7, 0x1F3D);
+            if (Hash01(i, 0x6B12) > 0.90)
             {
-                continue;
+                clump *= 1.22;
             }
 
-            double x = StrandX(capsule, i);
-            double w = _widthScale[i] * 2.0;
-            double h = reflectionDepth * Math.Clamp(heightRatio * 1.6, 0.35, 1.0);
-            double a = alpha * (0.45 + 0.55 * heightRatio);
-            dc.DrawRectangle(Graded(ReflectionBrushes, a), null,
-                new Rect(x - w * 0.5, baseY, w, h));
-        }
-    }
-
-    private void DrawStrandHalos(DrawingContext dc, Rect capsule, double baseY, double stripHeight,
-        double maxHeight, double[] heights, double energy, double t)
-    {
-        _tallCount = 0;
-        for (int i = 0; i < MaxStrands; i++)
-        {
-            double heightRatio = Math.Clamp(heights[i], 0, 1);
-            double h = Math.Min(maxHeight, heightRatio * stripHeight);
-            if (h < 1.0)
-            {
-                continue;
-            }
-
-            double x = StrandX(capsule, i);
-            StrandTip(i, x, baseY, h, t, out double tipX, out double tipY);
-
-            if (heightRatio > 0.42)
-            {
-                // One deep-blue stroke behind the core; never a second light
-                // strand.
-                double width = 2.2 + 1.8 * _widthScale[i];
-                double a = (0.07 + 0.10 * heightRatio) * energy * _bright[i];
-                dc.DrawLine(HaloPen(width, a), new Point(x, baseY), new Point(tipX, tipY));
-            }
-
-            if (heightRatio > 0.38 && _tallCount < _tallStrands.Length)
-            {
-                _tallStrands[_tallCount++] = i;
-            }
-        }
-    }
-
-    private void DrawStrandCores(DrawingContext dc, Rect capsule, double baseY, double stripHeight,
-        double maxHeight, double[] heights, double energy, double t)
-    {
-        for (int i = 0; i < MaxStrands; i++)
-        {
-            double heightRatio = Math.Clamp(heights[i], 0, 1);
-            double h = Math.Min(maxHeight, heightRatio * stripHeight);
+            h = Math.Min(maxHeight, h * Math.Clamp(clump, 0.45, 1.24));
             if (h < 0.8)
             {
                 continue;
             }
 
-            double x = StrandX(capsule, i);
-            StrandTip(i, x, baseY, h, t, out double tipX, out double tipY);
+            double heightRatio = h / maxHeight;
+            double sway = Math.Sin(t * _swaySpeed[i] + _swayPhase[i]) * 1.5 * heightRatio * (0.35 + 0.65 * noise);
+            double y0 = baseY - Math.Abs(_jitter[(i * 7 + 3) % MaxFilaments]) * 0.8;
+            int family = nearest < 0.35 ? 0 : nearest < 1.2 ? 1 : 2;
+            bool heavy = Hash01(i, 0x33A7) > 0.86;
 
-            double alpha = (0.55 + 0.35 * _bright[i]) * energy * (0.62 + 0.38 * heightRatio);
-            if (_strandBundle[i] < 0)
+            var sprite = (heavy ? HeavySprites : StrandSprites)[family][grade];
+            double cx = x + sway * 0.5;
+            dc.DrawImage(sprite, new Rect(cx - (SpriteWidth / 2), y0 - h - 1, SpriteWidth, h + 1));
+
+            double tipAlpha = (0.06 + 0.24 * noise) * energy * (0.35 + 0.65 * heightRatio);
+            if (tipAlpha > 0.15)
             {
-                alpha *= 0.70;
+                dc.DrawEllipse(Graded(SparkBrushes, tipAlpha), null, new Point(x + sway, y0 - h), 1.05, 1.05);
             }
-
-            // A single straight root-to-tip stroke: near vertical, no visible
-            // segment joints, and the cached gradient pen supplies the ramp.
-            dc.DrawLine(CorePen(_widthScale[i], alpha),
-                new Point(x, baseY), new Point(tipX, tipY));
-        }
-    }
-
-    private void StrandTip(int i, double x, double baseY, double h, double t,
-        out double tipX, out double tipY)
-    {
-        double sway = Math.Sin(t * _swaySpeed[i] + _swayPhase[i]);
-        double wobble = ValueNoise(t * 0.85 + _seed[i] * 13.0, 0x77C3) - 0.5;
-        double bend = _bend[i] * 2.2 + sway * 1.1 + wobble * 1.2;
-        bend = Math.Clamp(bend, -MaxTipBend, MaxTipBend);
-
-        tipX = x + bend;
-        tipY = baseY - h;
-    }
-
-    private double StrandX(Rect capsule, int i)
-    {
-        double x = _strandBundle[i] >= 0
-            ? capsule.Left + _bundlePos[_strandBundle[i]] * capsule.Width + _offset[i]
-            : capsule.Left + _offset[i] * capsule.Width;
-        return Math.Clamp(x, capsule.Left + 0.5, capsule.Right - 0.5);
-    }
-
-    private void DrawBaseLine(DrawingContext dc, Rect capsule, double baseY, double level, double fade)
-    {
-        // Cyan underglow hugging the line, wide but very faint.
-        double underglow = (0.20 + 0.22 * Math.Sqrt(level)) * fade;
-        dc.DrawRectangle(Graded(BaseBloomBrushes, underglow), null,
-            new Rect(capsule.Left, baseY - 3.4, capsule.Width, 3.4));
-
-        // The white-hot core, 1.5 DIP tall.
-        double core = (0.55 + 0.33 * Math.Sqrt(level)) * fade;
-        dc.DrawRectangle(Graded(CoreLineBrushes, core), null,
-            new Rect(capsule.Left, baseY - 1.5, capsule.Width, 1.5));
-    }
-
-    private void DrawSparkles(DrawingContext dc, Rect capsule, double baseY, double stripHeight,
-        double t, double[] heights, double energy)
-    {
-        if (_tallCount <= 0)
-        {
-            return;
         }
 
-        for (int i = 0; i < SparkCount; i++)
+        // ------------------------------------------------------------------
+        // Floor: a faint line of light across the whole strip, pooled under each cluster.
+        // ------------------------------------------------------------------
+        double poolAlpha = Math.Clamp((0.30 + 0.45 * Math.Sqrt(level)) * fade, 0, 1);
+        double mid = capsule.Left + width * 0.5;
+        dc.DrawEllipse(Graded(PoolWideBrushes, poolAlpha * 0.40), null, new Point(mid, baseY + 1.5), width * 0.52, 7);
+        dc.DrawEllipse(Graded(SparkBrushes, poolAlpha * 0.22), null, new Point(mid, baseY), width * 0.50, 1.4);
+        for (int k = 0; k < Clusters.Length; k++)
         {
-            int strand = _tallStrands[(i + (int)(t * 0.45)) % _tallCount];
-            double heightRatio = Math.Clamp(heights[strand], 0, 1);
-            if (heightRatio < 0.30)
-            {
-                continue;
-            }
+            double peak = _clusterPeak[k];
+            double half = Clusters[k].HalfWidth;
+            dc.DrawEllipse(Graded(PoolBrushes, poolAlpha * 0.72 * (0.5 + 0.5 * peak)), null,
+                new Point(_clusterX[k], baseY + 0.5), half * 2.4, 4.2 + 3.4 * level);
+            dc.DrawEllipse(Graded(SparkBrushes, poolAlpha * 0.36 * peak), null,
+                new Point(_clusterX[k], baseY), half * 1.2, 1.6);
+        }
 
-            double progress = _sparkPhase[i] + t * _sparkSpeed[i];
+        // ------------------------------------------------------------------
+        // Faint particles drifting up out of the clusters.
+        // ------------------------------------------------------------------
+        for (int i = 0; i < ParticleCount; i++)
+        {
+            double progress = _particlePhase[i] + t * _particleSpeed[i];
             progress -= Math.Floor(progress);
-
-            // Start at mid height, climb along the strand and fade before the
-            // tip; a sparkle is never drawn on the base line.
-            double travel = 0.45 + 0.55 * progress;
-            double alpha = Math.Pow(Math.Sin(Math.PI * progress), 1.5) * (0.55 + 0.35 * energy);
-            if (alpha <= 0.01)
+            double span = Math.Min(maxHeight * 1.02, baseY - capsule.Top - 4);
+            double y = baseY - 4 - progress * span;
+            double alpha = Math.Pow(Math.Sin(Math.PI * progress), 1.6) * 0.42 * energy;
+            if (alpha <= 0.002)
             {
                 continue;
             }
 
-            double x = StrandX(capsule, strand);
-            double h = heightRatio * stripHeight;
-            StrandTip(strand, x, baseY, h, t, out double tipX, out _);
-
-            x += (tipX - x) * travel +
-                 (_sparkX[i] - 0.5) * 1.6 +
-                 Math.Sin(t * _sparkDrift[i] + _sparkPhase[i] * 9) * 0.7;
-            double y = baseY - h * travel;
-
-            dc.DrawEllipse(Graded(SparkBrushes, alpha), null, new Point(x, y), 0.8, 0.8);
+            int k = i % Clusters.Length;
+            double px = _clusterX[k] + (_particleX[i] - 0.5) * Clusters[k].HalfWidth * 2.4 +
+                        Math.Sin(t * _particleDrift[i] + _particlePhase[i] * 9) * 3.0;
+            dc.DrawEllipse(Graded(SparkBrushes, alpha), null, new Point(px, y), _particleSize[i], _particleSize[i]);
         }
     }
 
-    // ------------------------------------------------------------------
-    // Frame state
-    // ------------------------------------------------------------------
+    private double Envelope(double x) => Envelope(x, out _);
 
-    private void ComputeFrame(double t, double level)
+    /// <summary>
+    /// Height envelope at <paramref name="x"/>: the tallest cluster bell there, over a low carpet.
+    /// <paramref name="nearest"/> is the distance to the closest cluster in its half-widths.
+    /// </summary>
+    private double Envelope(double x, out double nearest)
     {
-        double lv = Math.Clamp(level, 0, 1);
-
-        // Height scale: a calm idle floor plus the live level. sqrt keeps quiet
-        // material visible while loud passages still open up the strip.
-        double drive = 0.24 + 0.78 * Math.Pow(lv, 0.45);
-        double pan = Math.Clamp(_balance, -1, 1) * 0.02;
-
-        for (int b = 0; b < BundleCount; b++)
+        double best = 0;
+        nearest = double.MaxValue;
+        for (int k = 0; k < Clusters.Length; k++)
         {
-            // Each bundle keeps its own slot across the width and only wanders
-            // a couple of percent, so the seven hot spots stay spread out but
-            // never sit on a perfect grid.
-            double slot = (b + 0.5) / BundleCount + (_bundleSeed[b] - 0.5) * 0.055;
-            double wander = _bundleAmp[b] *
-                (0.62 * Math.Sin(t * _bundleSpeed[b] + _bundlePhase[b]) +
-                 0.38 * Math.Sin(t * (_bundleSpeed[b] * 1.7 + 0.02) + _bundlePhase[b] * 1.73));
-            _bundlePos[b] = Math.Clamp(slot + pan + wander, 0.045, 0.955);
-
-            double pulse = 0.5 + 0.5 * Math.Sin(t * (0.75 + 0.18 * b) + _bundlePhase[b] * 2.1);
-            double breathe = 0.80 + 0.20 * ValueNoise(t * 0.8 + b * 3.7, 0x2B17);
-            _bundleEnergy[b] = (0.55 + 0.45 * pulse) * breathe;
+            double d = (x - _clusterX[k]) / Clusters[k].HalfWidth;
+            nearest = Math.Min(nearest, Math.Abs(d));
+            best = Math.Max(best, _clusterPeak[k] * Math.Exp(-0.5 * d * d));
         }
 
-        for (int i = 0; i < MaxStrands; i++)
-        {
-            double flicker = 0.5 * (ValueNoise(t * _noiseSpeed[i] + _seed[i] * 71.0, 0x51ED27) +
-                                    ValueNoise(t * (_noiseSpeed[i] * 1.7 + 0.11) + _noisePhase[i], 0x3D71B5));
+        return Math.Min(1.12, best + CarpetHeight * (1 - best));
+    }
 
-            int bundle = _strandBundle[i];
-            double target;
-            if (bundle >= 0)
-            {
-                target = _heightScale[i] * drive *
-                         (0.72 + 0.38 * flicker) *
-                         (0.80 + 0.20 * _bundleEnergy[bundle]);
-            }
-            else
-            {
-                target = _heightScale[i] * drive * (0.70 + 0.45 * flicker);
-            }
+    // The outer 3% of the strip fades out so nothing ends in a hard edge.
+    private static double EdgeFade(double xn)
+    {
+        double e = Math.Clamp(Math.Min(xn, 1 - xn) / 0.03, 0, 1);
+        return e * e * (3 - 2 * e);
+    }
 
-            _targets[i] = Math.Clamp(target, 0, 0.94);
-        }
+    private static Brush CreateVeilFill()
+    {
+        var brush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x2C, 0x8F, 0xCD, 0xFF), 0));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x0E, 0x4F, 0x9C, 0xF0), 0.55));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x2A, 0x6F, 0xD6), 1));
+        brush.Freeze();
+        return brush;
+    }
+
+    private static Pen FrozenPen(Color color, double thickness)
+    {
+        var pen = new Pen(new SolidColorBrush(color), thickness) { LineJoin = PenLineJoin.Round };
+        pen.Freeze();
+        return pen;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -797,8 +512,6 @@ public sealed class MistVisualizer : FrameworkElement
             }
         }
 
-        UpdateStrands(dt, _clock.Elapsed.TotalSeconds, _level);
-
         // Below the render threshold OnRender draws nothing, so a repaint would
         // only burn the shared render thread.
         double energy = _fade * (0.30 + 0.70 * Math.Sqrt(Math.Clamp(_level, 0, 1)));
@@ -811,26 +524,12 @@ public sealed class MistVisualizer : FrameworkElement
         InvalidateVisual();
     }
 
-    private void UpdateStrands(double dt, double t, double level)
-    {
-        ComputeFrame(t, level);
-
-        // Fast attack, slow release: loud passages push tall strands at once,
-        // quiet ones let them sink back over a few hundred milliseconds.
-        for (int i = 0; i < MaxStrands; i++)
-        {
-            double target = _targets[i];
-            double tau = target > _heights[i] ? 0.045 : 0.30;
-            _heights[i] += (target - _heights[i]) * (1 - Math.Exp(-dt / tau));
-        }
-    }
-
     private void SampleAudio(double dt)
     {
         _meter ??= new AudioPeakMeter();
 
         // Auto gain: normalise the endpoint meter against a slowly decaying
-        // recent peak so quiet apps still fill the strip.
+        // recent peak so quiet apps still fill the capsule.
         double raw = Math.Clamp(_meter.GetPeak(), 0, 1);
         _gainPeak = Math.Max(raw, _gainPeak * Math.Exp(-dt / GainDecaySeconds));
         double target = raw < SilenceFloor ? 0 : Math.Clamp(raw / Math.Max(_gainPeak, GainFloor), 0, 1);
@@ -856,228 +555,66 @@ public sealed class MistVisualizer : FrameworkElement
         _balance += (balance - _balance) * (1 - Math.Exp(-dt / BalanceSeconds));
     }
 
-    // ------------------------------------------------------------------
-    // Clip / mask, cached per capsule
-    // ------------------------------------------------------------------
-
-    private void PushClipAndMask(DrawingContext dc, Rect capsule)
+    private static BitmapSource[][] CreateSprites((double Thickness, double Alpha)[] layers)
     {
-        if (_clipGeometry is null || _clipRect != capsule)
+        const int scale = 3;
+        int width = (int)(SpriteWidth * scale);
+        const int height = 96;
+        var sprites = new BitmapSource[ColorFamilies][];
+        for (int family = 0; family < ColorFamilies; family++)
         {
-            var geometry = new RectangleGeometry(capsule);
-            geometry.Freeze();
-            _clipGeometry = geometry;
-            _clipRect = capsule;
-        }
-
-        dc.PushClip(_clipGeometry);
-
-        if (_edgeMask is null || _maskRect != capsule)
-        {
-            _edgeMask = CreateEdgeMask(capsule);
-            _maskRect = capsule;
-        }
-
-        dc.PushOpacityMask(_edgeMask);
-    }
-
-    private static Brush CreateEdgeMask(Rect capsule)
-    {
-        // Outer 4% of the strip fades to nothing on both sides.
-        const double inset = 0.04;
-        var mask = new LinearGradientBrush
-        {
-            MappingMode = BrushMappingMode.Absolute,
-            StartPoint = new Point(capsule.Left, capsule.Top),
-            EndPoint = new Point(capsule.Right, capsule.Top)
-        };
-        mask.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0xFF, 0xFF, 0xFF), 0));
-        mask.GradientStops.Add(new GradientStop(Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF), inset));
-        mask.GradientStops.Add(new GradientStop(Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF), 1 - inset));
-        mask.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0xFF, 0xFF, 0xFF), 1));
-        mask.Freeze();
-        return mask;
-    }
-
-    // ------------------------------------------------------------------
-    // Geometry helpers
-    // ------------------------------------------------------------------
-
-    private static Pen[][] BuildPens(Color color, double minWidth, double step, int steps)
-    {
-        var pens = new Pen[steps][];
-        for (int i = 0; i < steps; i++)
-        {
-            pens[i] = PenLadder(color, minWidth + i * step, PenAlphaSteps);
-        }
-
-        return pens;
-    }
-
-    // Builds pens whose brush is the blue root->tip ramp. Each strand is one
-    // line, so RelativeToBoundingBox restarts the ramp over that strand's own
-    // height: pale root, cyan middle, deep-blue shoulder, clear tip.
-    private static Pen[][] BuildGradientPens(double minWidth, double step, int widthSteps, int alphaSteps)
-    {
-        var pens = new Pen[widthSteps][];
-        for (int w = 0; w < widthSteps; w++)
-        {
-            pens[w] = new Pen[alphaSteps + 1];
-            for (int a = 0; a <= alphaSteps; a++)
+            sprites[family] = new BitmapSource[AlphaGrades];
+            var color = FamilyColors[family];
+            for (int grade = 0; grade < AlphaGrades; grade++)
             {
-                double alpha = (double)a / alphaSteps;
-                var brush = new LinearGradientBrush
+                double baseAlpha = AlphaLadder[grade] * FamilyScale[family];
+                var pixels = new byte[width * height * 4];
+                for (int y = 0; y < height; y++)
                 {
-                    MappingMode = BrushMappingMode.RelativeToBoundingBox,
-                    StartPoint = new Point(0.5, 1),
-                    EndPoint = new Point(0.5, 0)
-                };
-                brush.GradientStops.Add(new GradientStop(WithAlpha(RootColor, 0.95 * alpha), 0));
-                brush.GradientStops.Add(new GradientStop(WithAlpha(MidColor, 0.95 * alpha), 0.4));
-                brush.GradientStops.Add(new GradientStop(WithAlpha(DeepColor, 0.90 * alpha), 0.8));
-                brush.GradientStops.Add(new GradientStop(WithAlpha(DeepColor, 0), 1));
-                brush.Freeze();
+                    // 0 at the base (bottom row) to 1 at the tip, the old pen gradient's stops
+                    double v = 1 - ((y + 0.5) / height);
+                    double fade = Ramp(v, (0, 1), (0.30, 0.68), (0.62, 0.28), (0.85, 0.07), (1, 0));
+                    for (int x = 0; x < width; x++)
+                    {
+                        double dx = Math.Abs(((x + 0.5) / scale) - (SpriteWidth / 2));
+                        double clear = 1;
+                        foreach (var (thickness, alpha) in layers)
+                        {
+                            double coverage = Math.Clamp((thickness / 2) - dx + 0.5, 0, 1);
+                            clear *= 1 - (Math.Clamp(baseAlpha * alpha * fade, 0, 1) * coverage);
+                        }
 
-                var pen = new Pen(brush, minWidth + w * step)
-                {
-                    StartLineCap = PenLineCap.Round,
-                    EndLineCap = PenLineCap.Round,
-                    LineJoin = PenLineJoin.Round
-                };
-                pen.Freeze();
-                pens[w][a] = pen;
+                        double a = 1 - clear;
+                        int i = ((y * width) + x) * 4;
+                        pixels[i] = (byte)Math.Round(color.B * a);
+                        pixels[i + 1] = (byte)Math.Round(color.G * a);
+                        pixels[i + 2] = (byte)Math.Round(color.R * a);
+                        pixels[i + 3] = (byte)Math.Round(255 * a);
+                    }
+                }
+
+                var bitmap = BitmapSource.Create(width, height, 96.0 * scale, 96.0 * scale, PixelFormats.Pbgra32, null, pixels, width * 4);
+                bitmap.Freeze();
+                sprites[family][grade] = bitmap;
             }
         }
 
-        return pens;
+        return sprites;
     }
 
-    private static Pen[] PenLadder(Color color, double width, int steps)
+    private static double Ramp(double v, params (double At, double Value)[] stops)
     {
-        var pens = new Pen[steps + 1];
-        for (int i = 0; i <= steps; i++)
+        for (int i = 1; i < stops.Length; i++)
         {
-            var brush = new SolidColorBrush(WithAlpha(color, (double)i / steps));
-            brush.Freeze();
-            var pen = new Pen(brush, width)
+            if (v <= stops[i].At)
             {
-                StartLineCap = PenLineCap.Round,
-                EndLineCap = PenLineCap.Round,
-                LineJoin = PenLineJoin.Round
-            };
-            pen.Freeze();
-            pens[i] = pen;
+                var (a0, v0) = stops[i - 1];
+                var (a1, v1) = stops[i];
+                return v0 + ((v1 - v0) * (v - a0) / Math.Max(1e-6, a1 - a0));
+            }
         }
 
-        return pens;
-    }
-
-    private static Pen CreateWispPen(Color color, double alpha, double width)
-    {
-        var brush = new SolidColorBrush(WithAlpha(color, alpha));
-        brush.Freeze();
-        var pen = new Pen(brush, width)
-        {
-            StartLineCap = PenLineCap.Round,
-            EndLineCap = PenLineCap.Round,
-            LineJoin = PenLineJoin.Round
-        };
-        pen.Freeze();
-        return pen;
-    }
-
-    private static Pen CorePen(double width, double alpha)
-    {
-        int w = (int)Math.Round((width - CoreWidthMin) / CoreWidthStep);
-        w = Math.Clamp(w, 0, CoreWidthSteps - 1);
-        int a = (int)Math.Round(Math.Clamp(alpha, 0, 1) * PenAlphaSteps);
-        return CorePens[w][a];
-    }
-
-    private static Pen HaloPen(double width, double alpha)
-    {
-        int w = (int)Math.Round((width - HaloWidthMin) / HaloWidthStep);
-        w = Math.Clamp(w, 0, HaloWidthSteps - 1);
-        int a = (int)Math.Round(Math.Clamp(alpha, 0, 1) * PenAlphaSteps);
-        return HaloPens[w][a];
-    }
-
-    // ------------------------------------------------------------------
-    // Frozen brushes
-    // ------------------------------------------------------------------
-
-    private static Brush CreateReflectionBrush()
-    {
-        // Top of the reflection is at the base line; the alpha ceiling here is
-        // 0.12 so the mirror never outshines the strands.
-        var brush = new LinearGradientBrush
-        {
-            MappingMode = BrushMappingMode.RelativeToBoundingBox,
-            StartPoint = new Point(0.5, 0),
-            EndPoint = new Point(0.5, 1)
-        };
-        brush.GradientStops.Add(new GradientStop(WithAlpha(DeepColor, 0.12), 0));
-        brush.GradientStops.Add(new GradientStop(WithAlpha(DeepColor, 0.05), 0.55));
-        brush.GradientStops.Add(new GradientStop(WithAlpha(DeepColor, 0), 1));
-        brush.Freeze();
-        return brush;
-    }
-
-    private static Brush CreateBaseBloomBrush()
-    {
-        // Bottom (offset 1) meets the base line.
-        var brush = new LinearGradientBrush
-        {
-            MappingMode = BrushMappingMode.RelativeToBoundingBox,
-            StartPoint = new Point(0.5, 0),
-            EndPoint = new Point(0.5, 1)
-        };
-        brush.GradientStops.Add(new GradientStop(WithAlpha(MidColor, 0), 0));
-        brush.GradientStops.Add(new GradientStop(WithAlpha(MidColor, 0.22), 0.25));
-        brush.GradientStops.Add(new GradientStop(WithAlpha(MidColor, 0.60), 0.60));
-        brush.GradientStops.Add(new GradientStop(WithAlpha(MidColor, 0.85), 0.88));
-        brush.GradientStops.Add(new GradientStop(WithAlpha(MidColor, 0.98), 1));
-        brush.Freeze();
-        return brush;
-    }
-
-    private static Brush CreateBundleGlowBrush()
-    {
-        // An ellipse-sized soft blue body, biased toward the floor so the
-        // bundle looks rooted rather than floating.
-        var brush = new RadialGradientBrush
-        {
-            MappingMode = BrushMappingMode.RelativeToBoundingBox,
-            Center = new Point(0.5, 0.62),
-            GradientOrigin = new Point(0.5, 0.62),
-            RadiusX = 0.5,
-            RadiusY = 0.62
-        };
-        brush.GradientStops.Add(new GradientStop(WithAlpha(GlowColor, 0.90), 0));
-        brush.GradientStops.Add(new GradientStop(WithAlpha(GlowColor, 0.55), 0.38));
-        brush.GradientStops.Add(new GradientStop(WithAlpha(GlowColor, 0.20), 0.68));
-        brush.GradientStops.Add(new GradientStop(WithAlpha(GlowColor, 0.05), 0.88));
-        brush.GradientStops.Add(new GradientStop(WithAlpha(GlowColor, 0), 1));
-        brush.Freeze();
-        return brush;
-    }
-
-    private static Brush CreatePoolBrush()
-    {
-        var brush = new RadialGradientBrush
-        {
-            MappingMode = BrushMappingMode.RelativeToBoundingBox,
-            Center = new Point(0.5, 0.5),
-            GradientOrigin = new Point(0.5, 0.5),
-            RadiusX = 0.5,
-            RadiusY = 0.5
-        };
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF), 0));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xB0, 0xD8, 0xF2, 0xFF), 0.30));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x38, 0x7C, 0xC8, 0xFF), 0.68));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x2E, 0x8B, 0xFF), 1));
-        brush.Freeze();
-        return brush;
+        return stops[^1].Value;
     }
 
     private static Brush[] Ladder(Brush brush)
@@ -1096,6 +633,61 @@ public sealed class MistVisualizer : FrameworkElement
 
     private static Brush Graded(Brush[] ladder, double opacity) =>
         ladder[(int)Math.Round(Math.Clamp(opacity, 0, 1) * OpacitySteps)];
+
+    private static Brush CreateSparkBrush()
+    {
+        var brush = new RadialGradientBrush
+        {
+            MappingMode = BrushMappingMode.RelativeToBoundingBox,
+            Center = new Point(0.5, 0.5),
+            GradientOrigin = new Point(0.5, 0.5),
+            RadiusX = 0.5,
+            RadiusY = 0.5
+        };
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD8, 0xFF, 0xFF, 0xFF), 0));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x78, 0xDA, 0xF2, 0xFF), 0.30));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x24, 0x8F, 0xCD, 0xFF), 0.64));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x6F, 0xB8, 0xFF), 1));
+        brush.Freeze();
+        return brush;
+    }
+
+    private static Brush CreateHazeBrush(Color color)
+    {
+        var brush = new RadialGradientBrush
+        {
+            MappingMode = BrushMappingMode.RelativeToBoundingBox,
+            Center = new Point(0.5, 0.5),
+            GradientOrigin = new Point(0.5, 0.5),
+            RadiusX = 0.5,
+            RadiusY = 0.5
+        };
+        brush.GradientStops.Add(new GradientStop(WithAlpha(color, 0.34), 0));
+        brush.GradientStops.Add(new GradientStop(WithAlpha(color, 0.18), 0.34));
+        brush.GradientStops.Add(new GradientStop(WithAlpha(color, 0.06), 0.68));
+        brush.GradientStops.Add(new GradientStop(WithAlpha(color, 0), 1));
+        brush.Freeze();
+        return brush;
+    }
+
+    private static Brush CreatePoolBrush()
+    {
+        var brush = new RadialGradientBrush
+        {
+            MappingMode = BrushMappingMode.RelativeToBoundingBox,
+            Center = new Point(0.5, 0.5),
+            GradientOrigin = new Point(0.5, 0.5),
+            RadiusX = 0.5,
+            RadiusY = 0.5
+        };
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xF2, 0xF2, 0xFB, 0xFF), 0));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xA8, 0xB8, 0xE4, 0xFF), 0.22));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x50, 0x6F, 0xB8, 0xFF), 0.52));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x10, 0x2A, 0x6F, 0xD6), 0.80));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x2A, 0x6F, 0xD6), 1));
+        brush.Freeze();
+        return brush;
+    }
 
     // Smooth 1-D value noise from a deterministic integer hash.
     private static double ValueNoise(double x, int seed)
