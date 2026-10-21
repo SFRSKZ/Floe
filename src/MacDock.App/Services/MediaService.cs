@@ -179,7 +179,21 @@ public static class MediaService
 
         try
         {
-            return _manager?.GetCurrentSession();
+            if (_manager is null)
+            {
+                return null;
+            }
+
+            // a long-lived manager can keep a paused tab as "current" while another app plays
+            foreach (var session in _manager.GetSessions())
+            {
+                if (session.GetPlaybackInfo()?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                {
+                    return session;
+                }
+            }
+
+            return _manager.GetCurrentSession();
         }
         catch
         {
