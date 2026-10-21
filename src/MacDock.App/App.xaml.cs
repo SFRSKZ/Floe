@@ -50,6 +50,7 @@ public partial class App : Application
         }
 
         if (Effects.ActiveIcon.ClickGlassPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Glass.DropLensPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.MetalRim.MetalRimPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.VisualizerPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.HologramPreview.TryRender(e.Args)) { Shutdown(); return; }

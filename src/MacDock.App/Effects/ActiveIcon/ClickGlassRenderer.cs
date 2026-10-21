@@ -14,9 +14,16 @@ internal sealed class ClickGlassRenderer : IDisposable
     private IntPtr _device, _context, _target, _view, _readback, _vertexShader, _pixelShader, _constants;
 
     internal ClickGlassRenderer(System.Windows.Media.ImageSource icon, int size)
+        : this(CreateInput(icon, size), (BitmapSource)IconField.For(icon, size).ImageSource,
+            "MacDock.ClickGlass.hlsl", "float Progress", "float Dist") { }
+
+    internal ClickGlassRenderer(BitmapSource mask, BitmapSource backdrop)
+        : this(mask, backdrop, "MacDock.DropLens.hlsl", "float2 Box", "float Height") { }
+
+    private ClickGlassRenderer(BitmapSource input, BitmapSource field, string resource, string firstConstant, string firstFunction)
     {
-        _width = size + 2 * (int)ActiveIconEffect.Pad;
-        _height = _width;
+        _width = input.PixelWidth;
+        _height = input.PixelHeight;
         try
         {
             // WARP works without a hardware adapter, including remote/headless sessions.
@@ -32,17 +39,13 @@ internal sealed class ClickGlassRenderer : IDisposable
             texture.Usage = 3; texture.BindFlags = 0; texture.CpuAccessFlags = 0x20000;
             Check(Call<CreateTexture>(_device, 5)(_device, ref texture, IntPtr.Zero, out _readback));
             var vertex = ShaderCompiler.CompilePreview(vertex: true);
-            var pixel = CompilePixel();
+            var pixel = CompilePixel(resource, firstConstant, firstFunction);
             Check(Call<CreateShader>(_device, 12)(_device, vertex, (nuint)vertex.Length, IntPtr.Zero, out _vertexShader));
             Check(Call<CreateShader>(_device, 15)(_device, pixel, (nuint)pixel.Length, IntPtr.Zero, out _pixelShader));
             var buffer = new BufferDescription { ByteWidth = 6 * 16, BindFlags = 4 }; // CONSTANT_BUFFER
             Check(Call<CreateBuffer>(_device, 3)(_device, ref buffer, IntPtr.Zero, out _constants));
-            var visual = new DrawingVisual();
-            using (var dc = visual.RenderOpen()) dc.DrawImage(icon, new Rect(ActiveIconEffect.Pad, ActiveIconEffect.Pad, size, size));
-            var input = new RenderTargetBitmap(_width, _height, 96, 96, PixelFormats.Pbgra32);
-            input.Render(visual);
             Upload(input, 0);
-            Upload((BitmapSource)IconField.For(icon, size).ImageSource, 1);
+            Upload(field, 1);
             var sampler = new SamplerDescription { Filter = 0x15, AddressU = 3, AddressV = 3, AddressW = 3, MaxLod = float.MaxValue };
             Check(Call<CreateSampler>(_device, 23)(_device, ref sampler, out _sampler));
             Call<SetBuffers>(_context, 10)(_context, 0, 1, new[] { _sampler });
@@ -60,11 +63,19 @@ internal sealed class ClickGlassRenderer : IDisposable
     internal BitmapSource Render(double progress, double tone, double palette = 0, Color? a = null, Color? b = null)
     {
         Color first = a ?? Colors.White, second = b ?? Colors.White;
-        Call<Update>(_context, 48)(_context, _constants, 0, IntPtr.Zero, new float[]
+        return Render(new float[]
         {
             (float)progress, 0, 0, 0, (float)tone, 0, 0, 0, _width, 0, 0, 0, (float)palette, 0, 0, 0,
             first.R / 255f, first.G / 255f, first.B / 255f, 1, second.R / 255f, second.G / 255f, second.B / 255f, 1,
-        }, 0, 0);
+        });
+    }
+
+    internal BitmapSource Render(float[] constants)
+    {
+        if (constants.Length > 24) throw new ArgumentException("At most six float4 constants are supported.", nameof(constants));
+        var packed = new float[24];
+        constants.CopyTo(packed, 0);
+        Call<Update>(_context, 48)(_context, _constants, 0, IntPtr.Zero, packed, 0, 0);
         Call<Draw>(_context, 13)(_context, 3, 0); // Full-screen triangle from SV_VertexID.
         Call<Copy>(_context, 47)(_context, _readback, _target);
         Check(Call<Map>(_context, 14)(_context, _readback, 0, 1, 0, out var mapped));
@@ -93,15 +104,25 @@ internal sealed class ClickGlassRenderer : IDisposable
     private readonly List<IntPtr> _resources = new();
     private IntPtr _sampler;
 
-    private static byte[] CompilePixel()
+    private static BitmapSource CreateInput(ImageSource icon, int size)
     {
-        using var stream = typeof(ClickGlassRenderer).Assembly.GetManifestResourceStream("MacDock.ClickGlass.hlsl")!;
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen()) dc.DrawImage(icon, new Rect(ActiveIconEffect.Pad, ActiveIconEffect.Pad, size, size));
+        int side = size + 2 * (int)ActiveIconEffect.Pad;
+        var input = new RenderTargetBitmap(side, side, 96, 96, PixelFormats.Pbgra32);
+        input.Render(visual);
+        return input;
+    }
+
+    private static byte[] CompilePixel(string resource, string firstConstant, string firstFunction)
+    {
+        using var stream = typeof(ClickGlassRenderer).Assembly.GetManifestResourceStream(resource)!;
         using var reader = new StreamReader(stream);
         var source = reader.ReadToEnd();
         source = source.Replace("sampler2D Input : register(s0);", "Texture2D Input : register(t0); SamplerState LinearSampler : register(s0);")
             .Replace("sampler2D Field : register(s1);", "Texture2D Field : register(t1);");
-        int start = source.IndexOf("float Progress", StringComparison.Ordinal);
-        int end = source.IndexOf("float Dist", StringComparison.Ordinal);
+        int start = source.IndexOf(firstConstant, StringComparison.Ordinal);
+        int end = source.IndexOf(firstFunction, StringComparison.Ordinal);
         var constants = System.Text.RegularExpressions.Regex.Replace(source[start..end], @"register\(c(\d+)\)", "packoffset(c$1)");
         source = source[..start] + "cbuffer Parameters : register(b0) {\n" + constants + "};\n" + source[end..];
         source = source.Replace("tex2D(Input,", "Input.Sample(LinearSampler,").Replace("tex2D(Field,", "Field.Sample(LinearSampler,")

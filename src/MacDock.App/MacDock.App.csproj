@@ -16,6 +16,7 @@
     <EmbeddedResource Include="Effects\MetalRim\MetalRim.hlsl" LogicalName="MacDock.MetalRim.hlsl" />
     <EmbeddedResource Include="Effects\ActiveIcon\ActiveIcon.hlsl" LogicalName="MacDock.ActiveIcon.hlsl" />
     <EmbeddedResource Include="Effects\ActiveIcon\ClickGlass.hlsl" LogicalName="MacDock.ClickGlass.hlsl" />
+    <EmbeddedResource Include="Effects\Glass\DropLens.hlsl" LogicalName="MacDock.DropLens.hlsl" />
   </ItemGroup>
 
 </Project>

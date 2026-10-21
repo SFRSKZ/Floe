@@ -1,4 +1,7 @@
 using MacDock.App.Services;
+using MacDock.App.Effects.Glass;
+using MacDock.App.Effects.MetalRim;
+using System.Windows.Media.Imaging;
 using System;
 using System.Collections.Generic;
 using System.Windows;
@@ -46,6 +49,7 @@ internal sealed class LiquidDropWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _visual.ReleaseLens();
         CaptureReveal.Forget(_hwnd);
         base.OnClosed(e);
     }
@@ -66,6 +70,7 @@ internal sealed class LiquidDropWindow : Window
     {
         Left = rim.X - (OverlayWidth / 2);
         Top = rim.Y - RimY;
+        _visual.ReleaseLens();
         _visual.Reset(OverlayWidth / 2);
         if (!IsVisible)
         {
@@ -73,6 +78,23 @@ internal sealed class LiquidDropWindow : Window
         }
 
         WindowStyling.BringToTop(_hwnd);
+        // Native window bounds are physical pixels, including on mixed-DPI monitors.
+        if (DropLensEffect.IsEnabled && ScreenInput.TryGetWindowRect(_hwnd, out var rect))
+        {
+            try
+            {
+                var width = rect.Right - rect.Left;
+                var height = rect.Bottom - rect.Top;
+                var pixels = ScreenCapture.CaptureScaled(rect.Left, rect.Top, width, height, width, height, out var stride);
+                if (pixels is not null)
+                {
+                    var bitmap = BitmapSource.Create(width, height, 96, 96, PixelFormats.Pbgra32, null, pixels, stride);
+                    bitmap.Freeze();
+                    _visual.SetBackdrop(bitmap);
+                }
+            }
+            catch (Exception ex) { ShaderCompiler.Log($"Drop capture failed: {ex.Message}"); }
+        }
     }
 
     /// <summary>Advances the drop; <paramref name="rimX"/> follows the dock as it widens. False once finished.</summary>
@@ -81,6 +103,7 @@ internal sealed class LiquidDropWindow : Window
         var alive = _visual.Advance(dt, rimX - Left);
         if (!alive)
         {
+            _visual.ReleaseLens();
             Hide();
         }
 
@@ -114,7 +137,37 @@ internal sealed class LiquidDropVisual : FrameworkElement
     private static readonly Brush Caustic = Frozen(new SolidColorBrush(Color.FromArgb(0x58, 0xB8, 0xE4, 0xFF)));
 
     private readonly List<Splash> _splashes = new();
-    private readonly Random _random = new();
+    private readonly Random _random;
+    private DrawingVisual? _lensVisual;
+    internal bool MaskOnly { get; set; }
+    internal bool DecorationOnly { get; set; }
+    internal Point LensCenter { get; private set; }
+    internal double LensRadius { get; private set; } = Radius;
+
+    internal LiquidDropVisual(int? seed = null) => _random = seed.HasValue ? new Random(seed.Value) : new Random();
+
+    protected override int VisualChildrenCount => _lensVisual is null ? 0 : 1;
+    protected override Visual GetVisualChild(int index) => index == 0 && _lensVisual is not null
+        ? _lensVisual : throw new ArgumentOutOfRangeException(nameof(index));
+
+    internal void SetBackdrop(BitmapSource bitmap)
+    {
+        ReleaseLens();
+        var brush = new ImageBrush(bitmap) { Stretch = Stretch.Fill };
+        brush.Freeze();
+        _lensVisual = new DrawingVisual { Effect = new DropLensEffect(brush) };
+        AddVisualChild(_lensVisual);
+        InvalidateVisual();
+    }
+
+    internal void ReleaseLens()
+    {
+        if (_lensVisual is null) return;
+        _lensVisual.Effect = null;
+        RemoveVisualChild(_lensVisual);
+        _lensVisual = null;
+        InvalidateVisual();
+    }
     private double _time = -1;
     private double _x;
     private double _impactX;
@@ -184,53 +237,72 @@ internal sealed class LiquidDropVisual : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
+        if (_lensVisual is null)
+        {
+            DrawFrame(dc, MaskOnly, DecorationOnly);
+            return;
+        }
+
+        DrawFrame(dc, false, true);
+        using (var mask = _lensVisual.RenderOpen()) DrawFrame(mask, true, false);
+        if (_lensVisual.Effect is DropLensEffect lens)
+        {
+            lens.Center = LensCenter;
+            lens.Radius = LensRadius;
+        }
+    }
+
+    private void DrawFrame(DrawingContext dc, bool mask, bool decoration)
+    {
+        // Anchor shader UVs to the complete overlay, not the changing shape bounds.
+        if (mask) dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, LiquidDropWindow.OverlayWidth, LiquidDropWindow.OverlayHeight));
         if (_time < 0)
         {
             return;
         }
 
         double rim = LiquidDropWindow.RimY;
-        if (_time >= ImpactTime)
+        if (!mask && _time >= ImpactTime)
         {
             DrawGlow(dc, rim, _time - ImpactTime);
         }
 
         // everything liquid stays above the rim: below it the drop is "inside" the glass
         dc.PushClip(new RectangleGeometry(new Rect(0, 0, ActualWidth, rim + 0.4)));
-        if (_time < FormSeconds)
+        if (!decoration && _time < FormSeconds)
         {
             // condensing: the bead swells with a springy overshoot and a little wobble
             var f = _time / FormSeconds;
             var r = Radius * EaseOutBack(f);
             var wobble = Math.Sin(f * Math.PI * 3) * 0.10 * (1 - f);
-            DrawTear(dc, _x, StartY + r, Math.Max(0.1, r), 1 - wobble, 0.2 * f);
+            DrawTear(dc, _x, StartY + r, Math.Max(0.1, r), 1 - wobble, 0.2 * f, mask);
         }
-        else if (_time < ImpactTime)
+        else if (!decoration && _time < ImpactTime)
         {
             // falling: gravity, stretching into a tear as it picks up speed
             var f = (_time - FormSeconds) / FallSeconds;
             var landY = rim - (Radius * 0.9);
             var cy = StartY + Radius + ((landY - StartY - Radius) * f * f);
-            DrawTear(dc, _x, cy, Radius, 1 - (0.10 * f), 0.2 + (1.3 * f));
+            DrawTear(dc, _x, cy, Radius, 1 - (0.10 * f), 0.2 + (1.3 * f), mask);
         }
-        else if (_time < ImpactTime + MergeSeconds)
+        else if (!decoration && _time < ImpactTime + MergeSeconds)
         {
             var m = (_time - ImpactTime) / MergeSeconds;
-            DrawMerge(dc, _x, rim, EaseInOut(m));
+            DrawMerge(dc, _x, rim, EaseInOut(m), mask);
         }
 
-        DrawRipples(dc, rim, _time - ImpactTime);
-        foreach (var s in _splashes)
+        if (!mask) DrawRipples(dc, rim, _time - ImpactTime);
+        if (!decoration) foreach (var s in _splashes)
         {
             var fade = Math.Clamp(1 - (s.Age / 0.7), 0, 1);
-            dc.DrawEllipse(Alpha(Color.FromRgb(0xD8, 0xEE, 0xFF), 0.85 * fade), null, new Point(s.X, s.Y), s.Size, s.Size * 1.15);
+            dc.DrawEllipse(Alpha(mask ? Colors.White : Color.FromRgb(0xD8, 0xEE, 0xFF), (mask ? 1 : 0.85) * fade), null, new Point(s.X, s.Y), s.Size, s.Size * 1.15);
         }
 
         dc.Pop();
     }
 
     /// <summary>A round body with a pointed tail above it; <paramref name="tail"/> is in radii.</summary>
-    private static void DrawTear(DrawingContext dc, double cx, double cy, double r, double squeeze, double tail)
+    private void DrawTear(DrawingContext dc, double cx, double cy, double r, double squeeze, double tail, bool mask)
     {
         var w = r * squeeze;
         var tipY = cy - r - (r * tail);
@@ -244,12 +316,14 @@ internal sealed class LiquidDropVisual : FrameworkElement
         }
 
         g.Freeze();
-        dc.DrawGeometry(BodyBrush, RimPen, g);
-        DrawHighlights(dc, cx, cy, r);
+        LensCenter = new Point(cx, cy);
+        LensRadius = r;
+        dc.DrawGeometry(mask ? Brushes.White : BodyBrush, mask ? null : RimPen, g);
+        if (!mask) DrawHighlights(dc, cx, cy, r);
     }
 
     /// <summary>The drop necking into the rim and sinking through it, like two blobs of liquid joining.</summary>
-    private static void DrawMerge(DrawingContext dc, double cx, double rim, double m)
+    private void DrawMerge(DrawingContext dc, double cx, double rim, double m, bool mask)
     {
         var r = Radius * (1 - (0.30 * m));
         var cy = rim - (Radius * 0.9) + (m * Radius * 2.6);
@@ -269,8 +343,10 @@ internal sealed class LiquidDropVisual : FrameworkElement
         }
 
         g.Freeze();
-        dc.DrawGeometry(BodyBrush, RimPen, g);
-        if (cy - r < rim)
+        LensCenter = new Point(cx, cy);
+        LensRadius = r;
+        dc.DrawGeometry(mask ? Brushes.White : BodyBrush, mask ? null : RimPen, g);
+        if (!mask && cy - r < rim)
         {
             DrawHighlights(dc, cx, cy, r);
         }
