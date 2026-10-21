@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -38,6 +38,7 @@ public partial class DockWindow
         _targetHoverX = Math.Min(_windowWidth, Math.Max(0, position.X));
         _targetBulge = MaxBulge;
         _targetDockScale = 1;
+        SetIconsDimmed(false);
         EnsureAnimation();
         UpdateHoveredIcon();
     }
@@ -51,6 +52,7 @@ public partial class DockWindow
 
         _targetBulge = 0;
         _targetDockScale = CompactScale;
+        SetIconsDimmed(true);
         _hoveredIndex = -1;
         _tooltipTimer.Stop();
         _tooltip.IsOpen = false;

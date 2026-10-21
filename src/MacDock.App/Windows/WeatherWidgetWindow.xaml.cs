@@ -63,8 +63,7 @@ public partial class WeatherWidgetWindow : Window, IBubbleWidget
         WeatherTemp.Text = $"{Math.Round(weather.Temperature)}°";
         WeatherLocation.Text = weather.Location;
 
-        var icon = DotMatrixIcons.Render(weather.Condition, 44, Colors.White, VisualTreeHelper.GetDpi(this).DpiScaleX)
-            ?? LoadIcon(weather.Condition);
+        var icon = LoadIcon(weather.Condition);
         if (icon is not null)
         {
             WeatherIconImage.Source = icon;
@@ -79,8 +78,28 @@ public partial class WeatherWidgetWindow : Window, IBubbleWidget
         }
     }
 
-    private static BitmapSource? LoadIcon(string condition)
+    /// <summary>Size of the grid that hosts <c>WeatherIconImage</c> in the XAML.</summary>
+    private const double IconSizeDip = 46;
+
+    private BitmapSource? LoadIcon(string condition)
     {
+        // Dot-matrix weather glyph first; PNG files in %AppData% are only a fallback.
+        double dpiScale = 1.0;
+        try
+        {
+            dpiScale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        }
+        catch
+        {
+            // no presentation source yet: 96 DPI is a fine default
+        }
+
+        var dotMatrix = DotMatrixIcons.Render(condition, IconSizeDip, Colors.White, dpiScale);
+        if (dotMatrix is not null)
+        {
+            return dotMatrix;
+        }
+
         if (IconCache.TryGetValue(condition, out var cached))
         {
             return cached;
