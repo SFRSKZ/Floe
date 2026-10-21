@@ -83,6 +83,7 @@ public partial class DockWindow
         var height = RestBarHeight + BottomMargin;
         _visualizerWindow.Place(new Rect(area.Left / scale, (area.Bottom / scale) - height, (area.Right - area.Left) / scale, height), _hwnd);
         _visualizerWindow.SetRunning(_visualizerRunning);
+        SinkBelowVisualizer();
     }
 
     /// <summary>Icons rest a little faded while the pointer is away, so the glass reads through.</summary>

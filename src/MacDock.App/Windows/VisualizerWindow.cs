@@ -50,6 +50,8 @@ internal sealed class VisualizerWindow : Window
 
     public bool IsRunning => _glow.IsActive || _hologram.IsActive;
 
+    public IntPtr Handle => _hwnd;
+
     protected override void OnClosed(EventArgs e)
     {
         _hideTimer?.Stop();
@@ -87,6 +89,12 @@ internal sealed class VisualizerWindow : Window
         }
 
         _placed = true;
+    }
+
+    public void PlaceBelowDock(IntPtr dock)
+    {
+        _dock = dock;
+        WindowStyling.PlaceBelow(_hwnd, dock);
     }
 
     public void SetRunning(bool running)

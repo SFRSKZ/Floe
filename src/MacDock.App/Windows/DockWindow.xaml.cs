@@ -493,6 +493,7 @@ public partial class DockWindow : Window
         ApplyGlassSettings();
         GlassSettings.Changed += OnGlassSettingsChanged;
         InitializeVisualizer();
+        InitializeDoze();
         Closed += (_, _) => DisposeGlass();
         AuraSettings.Changed += OnAuraSettingsChanged;
         DesktopButtonSettings.Load();
