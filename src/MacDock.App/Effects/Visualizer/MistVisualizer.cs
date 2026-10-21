@@ -199,13 +199,13 @@ public sealed class MistVisualizer : FrameworkElement
         (0.93, 24, 0.58),
     };
 
-    private const double CarpetHeight = 0.13;
-    private const int VeilCount = 3;
+    private const double CarpetHeight = 0.05;
+    private const int VeilCount = 5;
     private const double VeilStep = 8;
 
     private static readonly Brush VeilFill = CreateVeilFill();
-    private static readonly Pen VeilHalo = FrozenPen(Color.FromArgb(0x0C, 0x6F, 0xB8, 0xFF), 5);
-    private static readonly Pen VeilCore = FrozenPen(Color.FromArgb(0x24, 0xBF, 0xE4, 0xFF), 1);
+    private static readonly Pen VeilHalo = FrozenPen(Color.FromArgb(0x10, 0x6F, 0xB8, 0xFF), 7);
+    private static readonly Pen VeilCore = FrozenPen(Color.FromArgb(0x30, 0xBF, 0xE4, 0xFF), 0.8);
 
     // Where each cluster sits this frame, refreshed once per paint.
     private readonly double[] _clusterX = new double[Clusters.Length];
@@ -277,8 +277,8 @@ public sealed class MistVisualizer : FrameworkElement
                     double xn = (px - capsule.Left) / width;
                     double wave = (0.5 + 0.5 * Math.Sin(xn * (9 + 4 * v) + t * (0.35 + 0.12 * v) + v * 2.1)) *
                                   (0.5 + 0.5 * Math.Sin(xn * (23 - 5 * v) - t * (0.22 + 0.07 * v) + v));
-                    double lift = 0.05 + 0.14 * wave + 0.18 * Envelope(px) * amplitude;
-                    double y = baseY - Math.Min(0.35, lift * (0.6 + 0.4 * energy)) * maxHeight * EdgeFade(xn);
+                    double lift = 0.06 + (0.20 + 0.05 * v) * wave + 0.22 * Envelope(px) * amplitude;
+                    double y = baseY - Math.Min(0.55, lift * (0.6 + 0.4 * energy)) * maxHeight * EdgeFade(xn);
                     g.LineTo(new Point(px, y), true, true);
                 }
 
@@ -293,7 +293,8 @@ public sealed class MistVisualizer : FrameworkElement
         // ------------------------------------------------------------------
         // Filaments: the hologram's sprites, shaped by the cluster envelope.
         // ------------------------------------------------------------------
-        int count = Math.Clamp((int)Math.Round(width / FilamentSpacing), 8, MaxFilaments);
+        // half the hologram's density: here the fog carries the look and the strands are accents
+        int count = Math.Clamp((int)Math.Round(width / (FilamentSpacing * 2.2)), 8, MaxFilaments);
         double spacing = width / count;
 
         for (int i = 0; i < count; i++)
@@ -410,8 +411,8 @@ public sealed class MistVisualizer : FrameworkElement
     private static Brush CreateVeilFill()
     {
         var brush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x2C, 0x8F, 0xCD, 0xFF), 0));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x0E, 0x4F, 0x9C, 0xF0), 0.55));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x34, 0x8F, 0xCD, 0xFF), 0));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x16, 0x4F, 0x9C, 0xF0), 0.55));
         brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x2A, 0x6F, 0xD6), 1));
         brush.Freeze();
         return brush;
