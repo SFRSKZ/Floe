@@ -28,7 +28,7 @@ internal sealed record MistStyle(
     public static readonly MistStyle[] All =
     {
         new("İnce", 0.45, 0.0, 1.4, 1.35, 5, 1.0, 0.8, 20, IceCore, IceBody, IceEdge),
-        new("Toz", 0.55, 1.0, 1.1, 1.35, 5, 1.0, 0.7, 40, IceCore, IceBody, IceEdge),
+        new("Toz", 0.55, 1.0, 1.7, 1.35, 3, 1.3, 0.8, 40, IceCore, IceBody, IceEdge),
         new("İnce toz", 0.45, 0.5, 1.2, 1.35, 5, 1.0, 0.75, 30, IceCore, IceBody, IceEdge),
         new("Kıvılcım", 0.40, 0.4, 1.8, 1.20, 4, 0.8, 0.6, 120, IceCore, IceBody, IceEdge),
         new("Duman", 0.45, 0.4, 2.4, 1.00, 7, 1.6, 0.9, 20, IceCore, IceBody, IceEdge),

@@ -69,7 +69,7 @@ public sealed class MistVisualizer : FrameworkElement
         (0.95, 70, 0.60),
     };
 
-    private const double CarpetHeight = 0.16;
+    private const double CarpetHeight = 0.48;
     private const double VeilStep = 8;
 
     private static readonly Dictionary<MistStyle, Assets> AssetCache = new();
@@ -246,7 +246,8 @@ public sealed class MistVisualizer : FrameworkElement
 
         var style = _style;
         var assets = _assets;
-        double t = _debugTime >= 0 ? _debugTime : _clock.Elapsed.TotalSeconds;
+        // the mist moves at half the hologram's pace: at 30 fps slow motion reads smooth, fast motion steps
+        double t = (_debugTime >= 0 ? _debugTime : _clock.Elapsed.TotalSeconds) * 0.5;
         double width = capsule.Width;
         double baseY = capsule.Bottom - 4;
         double maxHeight = Math.Max(1, capsule.Height * 0.95);
@@ -273,9 +274,11 @@ public sealed class MistVisualizer : FrameworkElement
             double x = _clusterX[k];
             dc.DrawEllipse(Graded(assets.HazeBody, (0.11 + 0.27 * energy) * (0.5 + 0.5 * peak) * style.Haze), null,
                 new Point(x, baseY - maxHeight * 0.30 * peak), half * 3.2, maxHeight * 0.70 * peak);
-            dc.DrawEllipse(Graded(assets.HazeCore, (0.08 + 0.20 * energy) * peak * style.Haze), null,
-                new Point(x, baseY - maxHeight * 0.36 * peak), half * 1.1, maxHeight * 0.62 * peak);
         }
+
+        double centerX = capsule.Left + width * 0.5 + shift;
+        dc.DrawEllipse(Graded(assets.HazeBody, (0.10 + 0.25 * energy) * style.Haze), null,
+            new Point(centerX, baseY - maxHeight * 0.30), width * 0.30, maxHeight * 0.70);
 
         // ------------------------------------------------------------------
         // Smoky veils just above the floor, behind the strands.
@@ -312,7 +315,7 @@ public sealed class MistVisualizer : FrameworkElement
         // ------------------------------------------------------------------
         int count = Math.Clamp((int)Math.Round(width / (FilamentSpacing * style.Spacing)), 8, MaxFilaments);
         double spacing = width / count;
-        int dustFrame = (int)(t * 7);
+        double dustPhase = t * 2;
 
         for (int i = 0; i < count; i++)
         {
@@ -320,7 +323,14 @@ public sealed class MistVisualizer : FrameworkElement
             double x = capsule.Left + (i + 0.5) * spacing + _jitter[i] * spacing * 0.70;
             x = Math.Clamp(x, capsule.Left + 0.75, capsule.Right - 0.75);
 
-            double envelope = Envelope(x, out double nearest);
+            // the dust gathers in the middle like the hologram's bell and thins out toward the edges
+            double focus = Focus(xn);
+            if (Hash01(i, 0x4E9B) > 0.25 + 0.75 * focus)
+            {
+                continue;
+            }
+
+            double envelope = Math.Max(Envelope(x, out double nearest) * (0.30 + 0.70 * focus), 0.95 * focus);
 
             double seed = _tipSeed[i];
             double noise = 0.62 * ValueNoise(t * _flickerSpeed[i] + seed * 63.0, (int)(seed * 100003)) +
@@ -347,20 +357,22 @@ public sealed class MistVisualizer : FrameworkElement
             double y0 = baseY - Math.Abs(_jitter[(i * 7 + 3) % MaxFilaments]) * 0.8;
             int family = nearest < 0.35 ? 0 : nearest < 1.2 ? 1 : 2;
 
-            BitmapSource sprite;
+            double cx = x + sway * 0.5;
+            var bounds = new Rect(cx - (SpriteWidth / 2), y0 - h - 1, SpriteWidth, h + 1);
             if (Hash01(i, 0x2D55) < style.Dust)
             {
-                // dust glitters: each column steps through its frames out of phase with its neighbours
-                sprite = assets.Dust[(dustFrame + i) % DustFrames][family][grade];
+                // each column swaps its speck layout about once a second, out of phase with its
+                // neighbours, so the field shimmers continuously instead of blinking in step
+                // (a cross-fade drew every column twice and cost a third of the render thread)
+                int frame = (int)Math.Floor(dustPhase + _swayPhase[i]);
+                int dustGrade = Math.Min(AlphaGrades - 1, grade + (int)Math.Round(2 * focus));
+                dc.DrawImage(assets.Dust[frame % DustFrames][family][dustGrade], bounds);
             }
             else
             {
                 bool heavy = Hash01(i, 0x33A7) > 0.86;
-                sprite = (heavy ? assets.Heavy : assets.Strands)[family][grade];
+                dc.DrawImage((heavy ? assets.Heavy : assets.Strands)[family][grade], bounds);
             }
-
-            double cx = x + sway * 0.5;
-            dc.DrawImage(sprite, new Rect(cx - (SpriteWidth / 2), y0 - h - 1, SpriteWidth, h + 1));
 
             double tipAlpha = (0.06 + 0.24 * noise) * energy * (0.35 + 0.65 * heightRatio);
             if (tipAlpha > 0.15)
@@ -382,8 +394,6 @@ public sealed class MistVisualizer : FrameworkElement
             double half = Clusters[k].HalfWidth;
             dc.DrawEllipse(Graded(assets.Pool, poolAlpha * 0.72 * (0.5 + 0.5 * peak)), null,
                 new Point(_clusterX[k], baseY + 0.5), half * 2.4, 4.2 + 3.4 * level);
-            dc.DrawEllipse(Graded(assets.Spark, poolAlpha * 0.36 * peak), null,
-                new Point(_clusterX[k], baseY), half * 1.2, 1.6);
         }
 
         // ------------------------------------------------------------------
@@ -426,6 +436,13 @@ public sealed class MistVisualizer : FrameworkElement
         }
 
         return Math.Min(1.12, best + CarpetHeight * (1 - best));
+    }
+
+    // Bell across the strip, 1 in the middle, ~0.1 at the edges.
+    private static double Focus(double xn)
+    {
+        double d = (xn - 0.5) / 0.18;
+        return Math.Exp(-0.5 * d * d);
     }
 
     // The outer 3% of the strip fades out so nothing ends in a hard edge.
@@ -663,7 +680,7 @@ public sealed class MistVisualizer : FrameworkElement
     private static BitmapSource[][] CreateDustSprites(Color[] colors, double strandWidth, int frame)
     {
         const int scale = 3;
-        const int specks = 26;
+        const int specks = 34;
         int width = (int)(SpriteWidth * scale);
         int height = (int)(SpriteHeight * scale);
 
@@ -678,7 +695,7 @@ public sealed class MistVisualizer : FrameworkElement
             double v = Math.Pow(Hash01(seed, 0x6E11), 1.6);
             sx[i] = (SpriteWidth / 2 + (Hash01(seed, 0x3C07) - 0.5) * 2.6 * strandWidth / 0.45) * scale;
             sy[i] = (1 - v) * height;
-            sr[i] = (0.32 + 0.30 * Hash01(seed, 0x19D3)) * scale;
+            sr[i] = (0.40 + 0.35 * Hash01(seed, 0x19D3)) * scale;
             sa[i] = (0.55 + 0.45 * Hash01(seed, 0x7A21)) * Ramp(v, (0, 1), (0.5, 0.6), (0.85, 0.2), (1, 0));
         }
 
@@ -689,7 +706,7 @@ public sealed class MistVisualizer : FrameworkElement
             var color = colors[family];
             for (int grade = 0; grade < AlphaGrades; grade++)
             {
-                double baseAlpha = Math.Min(1, AlphaLadder[grade] * FamilyScale[family] * 1.8);
+                double baseAlpha = Math.Min(1, AlphaLadder[grade] * FamilyScale[family] * 2.6);
                 var pixels = new byte[width * height * 4];
                 for (int i = 0; i < specks; i++)
                 {
