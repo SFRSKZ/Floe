@@ -30,6 +30,10 @@ public partial class SettingsWindow : Window
         EffectBurst.IsChecked = AuraSettings.Effect == AuraEffect.Burst;
         EffectGlow.Checked += (_, _) => AuraSettings.SetEffect(AuraEffect.Glow);
         EffectBurst.Checked += (_, _) => AuraSettings.SetEffect(AuraEffect.Burst);
+        EffectNeon.IsChecked = AuraSettings.Effect == AuraEffect.Neon;
+        EffectGlass.IsChecked = AuraSettings.Effect == AuraEffect.Glass;
+        EffectNeon.Checked += (_, _) => AuraSettings.SetEffect(AuraEffect.Neon);
+        EffectGlass.Checked += (_, _) => AuraSettings.SetEffect(AuraEffect.Glass);
 
         IntensitySlider.Value = AuraSettings.SpectralIntensity;
         IntensityValue.Text = AuraSettings.SpectralIntensity.ToString("0.0");

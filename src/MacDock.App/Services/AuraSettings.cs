@@ -18,6 +18,8 @@ public enum AuraEffect
 {
     Glow,
     Burst,
+    Neon,
+    Glass,
 }
 
 public sealed class AuraPalette

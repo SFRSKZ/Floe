@@ -14,6 +14,7 @@ using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using MacDock.App.Effects.ActiveIcon;
 using MacDock.App.Services;
 using MacDock.App.ViewModels;
 using MacDock.Core.Interop;
@@ -24,6 +25,40 @@ namespace MacDock.App.Windows;
 
 public partial class DockWindow
 {
+    private ActiveIconEffect? _activeFx;
+    private Image? _fxImage;
+
+    /// <summary>Puts the neon / liquid glass effect on one icon image, or takes it off (null).</summary>
+    private void SetIconEffect(Image? image, DockItemViewModel? item)
+    {
+        if (!ReferenceEquals(image, _fxImage) && _fxImage is not null)
+        {
+            _fxImage.Effect = null;
+            _activeFx?.Stop();
+        }
+
+        if (image is null || item?.Icon is not { } icon)
+        {
+            _fxImage = null;
+            return;
+        }
+
+        _activeFx ??= new ActiveIconEffect(IconBox);
+        var colors = AuraSettings.GetColors(item);
+        _activeFx.Mode = AuraSettings.Effect == AuraEffect.Glass ? (double)ActiveIconMode.Glass : (double)ActiveIconMode.Neon;
+        if (colors.Length > 0)
+        {
+            _activeFx.ColorA = colors[0];
+            _activeFx.ColorB = colors[1 % colors.Length];
+        }
+        _activeFx.Field = IconField.For(icon, IconBox);
+        if (!ReferenceEquals(image, _fxImage))
+        {
+            image.Effect = _activeFx;
+            _fxImage = image;
+            _activeFx.Start();
+        }
+    }
 
     private void UpdateAura()
     {
@@ -58,6 +93,7 @@ public partial class DockWindow
 
         if (_activeIndex < 0 || _slots[_activeIndex].Item.Icon is not { } icon)
         {
+            SetIconEffect(null, null);
             _auraGrid.Visibility = Visibility.Collapsed;
             SetSpectralVisible(false);
             for (var k = 0; k < _auraEffects.Length; k++)
@@ -69,6 +105,21 @@ public partial class DockWindow
         }
 
         var item = _slots[_activeIndex].Item;
+
+        if (AuraSettings.Effect is AuraEffect.Neon or AuraEffect.Glass && ActiveIconEffect.IsAvailable)
+        {
+            _auraGrid.Visibility = Visibility.Collapsed;
+            SetSpectralVisible(false);
+            for (var k = 0; k < _auraEffects.Length; k++)
+            {
+                _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, null);
+            }
+
+            SetIconEffect((Image)((Grid)_slots[_activeIndex].Button.Content).Children[0], item);
+            return;
+        }
+
+        SetIconEffect(null, null);
 
         if (AuraSettings.Effect == AuraEffect.Burst)
         {

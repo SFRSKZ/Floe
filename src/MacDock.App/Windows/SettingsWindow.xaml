@@ -150,6 +150,8 @@
             <StackPanel Orientation="Horizontal">
                 <RadioButton x:Name="EffectGlow" Style="{StaticResource ModeToggle}" Content="Işıltı" />
                 <RadioButton x:Name="EffectBurst" Style="{StaticResource ModeToggle}" Content="Hayalet" />
+                <RadioButton x:Name="EffectNeon" Style="{StaticResource ModeToggle}" Content="Neon" />
+                <RadioButton x:Name="EffectGlass" Style="{StaticResource ModeToggle}" Content="Sıvı cam" />
             </StackPanel>
 
             <StackPanel x:Name="IntensityPanel" Margin="0,14,0,0">

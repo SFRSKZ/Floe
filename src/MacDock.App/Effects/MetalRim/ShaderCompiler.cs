@@ -73,6 +73,28 @@ internal static class ShaderCompiler
         return shader;
     }
 
+    /// <summary>Compiles another embedded ps_3_0 shader; null (logged) when it can't be built.</summary>
+    internal static PixelShader? LoadShader(string logicalName)
+    {
+        try
+        {
+            using var resource = typeof(ShaderCompiler).Assembly.GetManifestResourceStream(logicalName)
+                ?? throw new InvalidOperationException($"Embedded {logicalName} was not found.");
+            using var source = new MemoryStream();
+            resource.CopyTo(source);
+            var shader = new PixelShader();
+            using var stream = new MemoryStream(CompileBytes(source.ToArray(), "ps_3_0"), writable: false);
+            shader.SetStreamSource(stream);
+            shader.Freeze();
+            return shader;
+        }
+        catch (Exception ex)
+        {
+            Log($"{logicalName} disabled: {ex}");
+            return null;
+        }
+    }
+
     private static byte[]? Compile()
     {
         try
