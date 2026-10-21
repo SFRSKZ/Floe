@@ -344,6 +344,7 @@ public sealed class VisualizerGlow : FrameworkElement
         }
 
         _sinceRepaint = 0;
+        VisualizerPacing.MarkRepaint();
         InvalidateVisual();
     }
 

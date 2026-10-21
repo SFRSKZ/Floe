@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using MacDock.App.Effects.MetalRim;
+using MacDock.App.Effects.Visualizer;
 
 namespace MacDock.App.Effects.ActiveIcon;
 
@@ -44,6 +46,12 @@ public sealed class ActiveIconEffect : ShaderEffect
     public static readonly DependencyProperty BoxProperty = Register(nameof(Box), new Point(1, 0), 5);
     public Point Box { get => (Point)GetValue(BoxProperty); set => SetValue(BoxProperty, value); }
 
+    private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private double _lastTick = double.NegativeInfinity;
+    private double _lastVisualizerRepaint = double.NegativeInfinity;
+    private bool _skipRepaint;
+    private bool _running;
+
     public ActiveIconEffect(double iconSize)
     {
         PixelShader = Shader.Value;
@@ -62,18 +70,60 @@ public sealed class ActiveIconEffect : ShaderEffect
     /// <summary>Starts the clock and fades in; call when the effect goes onto an icon.</summary>
     public void Start()
     {
-        // 30 fps is plenty for the colour flow and the glass breathing
-        var clock = new DoubleAnimation(0, 3600, TimeSpan.FromSeconds(3600)) { RepeatBehavior = RepeatBehavior.Forever };
-        Timeline.SetDesiredFrameRate(clock, 30);
-        BeginAnimation(TimeProperty, clock);
+        if (!_running)
+        {
+            CompositionTarget.Rendering += OnRendering;
+            VisualizerPacing.Repainted += OnVisualizerRepainted;
+            _running = true;
+        }
+
         BeginAnimation(StrengthProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(280)) { EasingFunction = new QuadraticEase() });
     }
 
     /// <summary>Stops the clock so a detached effect costs no frames.</summary>
     public void Stop()
     {
-        BeginAnimation(TimeProperty, null);
+        if (_running)
+        {
+            CompositionTarget.Rendering -= OnRendering;
+            VisualizerPacing.Repainted -= OnVisualizerRepainted;
+            _running = false;
+        }
+
         BeginAnimation(StrengthProperty, null);
+    }
+
+    // Every Time change re-presents the whole dock window, and the dock shares its render thread
+    // with the visualizer. Ticking on our own beat would fill the frames between the visualizer's
+    // repaints, so while it plays the icon ticks on every other visualizer frame instead.
+    private void OnRendering(object? sender, EventArgs e)
+    {
+        var now = _clock.Elapsed.TotalSeconds;
+        if (VisualizerPacing.DockAnimating)
+        {
+            // the dock repaints every frame anyway
+            Tick(now);
+        }
+        else if (now - _lastVisualizerRepaint > 0.25 && now - _lastTick >= 1.0 / 30)
+        {
+            Tick(now);
+        }
+    }
+
+    private void OnVisualizerRepainted()
+    {
+        _lastVisualizerRepaint = _clock.Elapsed.TotalSeconds;
+        _skipRepaint = !_skipRepaint;
+        if (!_skipRepaint && !VisualizerPacing.DockAnimating)
+        {
+            Tick(_lastVisualizerRepaint);
+        }
+    }
+
+    private void Tick(double now)
+    {
+        _lastTick = now;
+        Time = now;
     }
 
     private static DependencyProperty Register<T>(string name, T value, int register) =>

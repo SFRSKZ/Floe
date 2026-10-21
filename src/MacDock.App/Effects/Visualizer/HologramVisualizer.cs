@@ -409,6 +409,7 @@ public sealed class HologramVisualizer : FrameworkElement
         }
 
         _sinceRepaint = 0;
+        VisualizerPacing.MarkRepaint();
         InvalidateVisual();
     }
 
