@@ -190,16 +190,19 @@ public sealed class MistVisualizer : FrameworkElement
     // Flame clusters across the strip: centre (0..1 of the width), half-width (DIP), peak height (0..1).
     private static readonly (double Center, double HalfWidth, double Peak)[] Clusters =
     {
-        (0.07, 34, 0.92),
-        (0.21, 58, 0.50),
-        (0.36, 26, 0.70),
-        (0.50, 70, 0.62),
-        (0.64, 30, 0.44),
-        (0.79, 62, 0.88),
-        (0.93, 24, 0.58),
+        (0.05, 70, 0.90),
+        (0.14, 90, 0.55),
+        (0.24, 80, 0.72),
+        (0.34, 70, 0.48),
+        (0.44, 100, 0.66),
+        (0.55, 90, 0.52),
+        (0.65, 80, 0.70),
+        (0.75, 100, 0.50),
+        (0.85, 90, 0.86),
+        (0.95, 70, 0.60),
     };
 
-    private const double CarpetHeight = 0.05;
+    private const double CarpetHeight = 0.16;
     private const int VeilCount = 5;
     private const double VeilStep = 8;
 
@@ -293,8 +296,8 @@ public sealed class MistVisualizer : FrameworkElement
         // ------------------------------------------------------------------
         // Filaments: the hologram's sprites, shaped by the cluster envelope.
         // ------------------------------------------------------------------
-        // half the hologram's density: here the fog carries the look and the strands are accents
-        int count = Math.Clamp((int)Math.Round(width / (FilamentSpacing * 2.2)), 8, MaxFilaments);
+        // a little sparser than the hologram: the fog carries the look, the strands are a continuous field
+        int count = Math.Clamp((int)Math.Round(width / (FilamentSpacing * 1.4)), 8, MaxFilaments);
         double spacing = width / count;
 
         for (int i = 0; i < count; i++)
