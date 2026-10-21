@@ -16,6 +16,7 @@ public enum VisualizerStyle
 {
     Glow,
     Hologram,
+    Mist,
 }
 
 public enum BulgeStyle
@@ -23,6 +24,12 @@ public enum BulgeStyle
     Soft,
     Pedestal,
     Flat,
+}
+
+public enum NowPlayingIntro
+{
+    Drop,
+    Hologram,
 }
 
 /// <summary>Dock glass look: rim style and the music visualizer glow.</summary>
@@ -43,6 +50,8 @@ public static class GlassSettings
 
     public static VisualizerStyle VisualizerLook { get; private set; } = VisualizerStyle.Glow;
 
+    public static NowPlayingIntro Intro { get; private set; } = NowPlayingIntro.Drop;
+
     public static void Load()
     {
         try
@@ -62,6 +71,7 @@ public static class GlassSettings
             Visualizer = model.Visualizer;
             Bulge = Enum.TryParse<BulgeStyle>(model.Bulge, true, out var bulge) ? bulge : BulgeStyle.Soft;
             VisualizerLook = Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
+            Intro = Enum.TryParse<NowPlayingIntro>(model.Intro, true, out var intro) ? intro : NowPlayingIntro.Drop;
         }
         catch
         {
@@ -117,6 +127,18 @@ public static class GlassSettings
         Changed?.Invoke();
     }
 
+    public static void SetIntro(NowPlayingIntro intro)
+    {
+        if (Intro == intro)
+        {
+            return;
+        }
+
+        Intro = intro;
+        Save();
+        Changed?.Invoke();
+    }
+
     private static void Save()
     {
         try
@@ -127,6 +149,7 @@ public static class GlassSettings
                 Visualizer = Visualizer,
                 Bulge = Bulge.ToString(),
                 VisualizerLook = VisualizerLook.ToString(),
+                Intro = Intro.ToString(),
             }));
         }
         catch
@@ -144,5 +167,7 @@ public static class GlassSettings
         public string Bulge { get; set; } = nameof(BulgeStyle.Soft);
 
         public string VisualizerLook { get; set; } = nameof(VisualizerStyle.Glow);
+
+        public string Intro { get; set; } = nameof(NowPlayingIntro.Drop);
     }
 }

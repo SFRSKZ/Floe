@@ -44,6 +44,9 @@ public partial class DockWindow
     private readonly Rectangle _settingsDivider = new();
 
     private LiquidDropWindow? _dropWindow;
+    private HologramIntroWindow? _hologramIntroWindow;
+    private bool _introIsHologram;
+    private double _dropImpact = LiquidDropWindow.ImpactTime;
     private double _dropX;
 
     private readonly DispatcherTimer _mediaTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -92,6 +95,7 @@ public partial class DockWindow
             _mediaTimer.Stop();
             _weatherTimer.Stop();
             _dropWindow?.Close();
+            _hologramIntroWindow?.Close();
         };
 
         _ = RefreshMediaAsync();
@@ -322,8 +326,19 @@ public partial class DockWindow
             return;
         }
 
-        _dropWindow ??= new LiquidDropWindow(!NoFx.Contains("exclude"));
-        _dropWindow.Start(RimOnScreen());
+        _introIsHologram = GlassSettings.Intro == NowPlayingIntro.Hologram;
+        _dropImpact = _introIsHologram ? HologramIntroWindow.ImpactTime : LiquidDropWindow.ImpactTime;
+        if (_introIsHologram)
+        {
+            _hologramIntroWindow ??= new HologramIntroWindow(!NoFx.Contains("exclude"));
+            _hologramIntroWindow.Start(RimOnScreen(), _mediaArt.Source);
+        }
+        else
+        {
+            _dropWindow ??= new LiquidDropWindow(!NoFx.Contains("exclude"));
+            _dropWindow.Start(RimOnScreen());
+        }
+
         _dropTime = 0;
         EnsureAnimation();
     }
@@ -342,13 +357,16 @@ public partial class DockWindow
         if (_dropTime >= 0)
         {
             _dropTime += dt;
-            if (_dropTime >= LiquidDropWindow.ImpactTime && _mediaTarget == 0)
+            if (_dropTime >= _dropImpact && _mediaTarget == 0)
             {
                 // impact: the dock opens up to take the drop in
                 _mediaTarget = 1;
             }
 
-            if (_dropWindow is null || !_dropWindow.Advance(dt, RimOnScreen().X))
+            var advanced = _introIsHologram
+                ? _hologramIntroWindow?.Advance(dt, RimOnScreen().X) ?? false
+                : _dropWindow?.Advance(dt, RimOnScreen().X) ?? false;
+            if (!advanced)
             {
                 _dropTime = -1;
             }
@@ -357,7 +375,7 @@ public partial class DockWindow
         if (_metalEffect is not null)
         {
             // the metal rim lights up where the drop lands and the glints run off along it
-            var age = _dropTime - LiquidDropWindow.ImpactTime;
+            var age = _dropTime - _dropImpact;
             _metalEffect.FlashAge = _dropTime >= 0 && age >= 0 ? age : -1;
             _metalEffect.FlashX = _dropX - _capsuleLeft;
         }

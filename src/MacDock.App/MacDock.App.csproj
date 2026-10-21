@@ -17,6 +17,7 @@
     <EmbeddedResource Include="Effects\ActiveIcon\ActiveIcon.hlsl" LogicalName="MacDock.ActiveIcon.hlsl" />
     <EmbeddedResource Include="Effects\ActiveIcon\ClickGlass.hlsl" LogicalName="MacDock.ClickGlass.hlsl" />
     <EmbeddedResource Include="Effects\Glass\DropLens.hlsl" LogicalName="MacDock.DropLens.hlsl" />
+    <EmbeddedResource Include="Effects\Glass\DozeGhost.hlsl" LogicalName="MacDock.DozeGhost.hlsl" />
   </ItemGroup>
 
 </Project>
