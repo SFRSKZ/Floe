@@ -23,10 +23,7 @@ public partial class DockWindow
     private const double WeatherWidth = 84;
     private const double ArtSize = 40;
     private const double MediaButton = 30;
-    private const double DropSize = 30;
-    private const double DropFallSeconds = 0.42;
-    private const double DropMeltSeconds = 0.38;
-    private static readonly TimeSpan MediaLinger = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan MediaLinger = TimeSpan.FromSeconds(4);
     private static readonly Color GlyphColor = Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF);
 
     private readonly Grid _media = new() { Width = MediaWidth, Height = ArtSize, Opacity = 0 };
@@ -46,10 +43,10 @@ public partial class DockWindow
     private readonly Grid _quickSettings = new() { Width = StartWidth, Height = StartWidth, Background = Brushes.Transparent, Cursor = Cursors.Hand };
     private readonly Rectangle _settingsDivider = new();
 
-    private readonly Ellipse _drop = new() { Width = DropSize, Height = DropSize, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
-    private readonly ScaleTransform _dropScale = new(1, 1);
+    private LiquidDropWindow? _dropWindow;
+    private double _dropX;
 
-    private readonly DispatcherTimer _mediaTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private readonly DispatcherTimer _mediaTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _weatherTimer = new() { Interval = TimeSpan.FromMinutes(15) };
 
     private double _mediaReveal;
@@ -82,11 +79,9 @@ public partial class DockWindow
         BuildMedia();
         BuildWeather();
         BuildSettings();
-        BuildDrop();
         _clockLayer.Children.Add(_media);
         _clockLayer.Children.Add(_weather);
         _clockLayer.Children.Add(_quickSettings);
-        _clockLayer.Children.Add(_drop);
 
         _mediaTimer.Tick += async (_, _) => await RefreshMediaAsync();
         _mediaTimer.Start();
@@ -96,6 +91,7 @@ public partial class DockWindow
         {
             _mediaTimer.Stop();
             _weatherTimer.Stop();
+            _dropWindow?.Close();
         };
 
         _ = RefreshMediaAsync();
@@ -171,21 +167,6 @@ public partial class DockWindow
             var center = _quickSettings.PointToScreen(new Point(StartWidth / 2, StartWidth / 2));
             QuickSettings.OpenAt((int)Math.Round(center.X));
         };
-    }
-
-    private void BuildDrop()
-    {
-        // the same dark glass as the dock body, with its rim and a small specular highlight
-        var fill = new RadialGradientBrush { GradientOrigin = new Point(0.35, 0.3) };
-        fill.GradientStops.Add(new GradientStop(Color.FromArgb(0xC0, 0xB4, 0xC8, 0xDC), 0));
-        fill.GradientStops.Add(new GradientStop(Color.FromArgb(0xA0, 0x46, 0x52, 0x66), 0.5));
-        fill.GradientStops.Add(new GradientStop(Color.FromArgb(0xB0, 0x1C, 0x22, 0x2E), 1));
-        fill.Freeze();
-        _drop.Fill = fill;
-        _drop.Stroke = new SolidColorBrush(Color.FromArgb(0xB0, 0xFF, 0xFF, 0xFF));
-        _drop.StrokeThickness = 1;
-        _drop.RenderTransformOrigin = new Point(0.5, 1);
-        _drop.RenderTransform = _dropScale;
     }
 
     private double DpiScale => VisualTreeHelper.GetDpi(this).DpiScaleX;
@@ -265,9 +246,9 @@ public partial class DockWindow
                     StartDrop();
                 }
             }
-            else if (_mediaTarget > 0 && DateTime.Now - _lastPlaying > MediaLinger)
+            else if (_mediaTarget > 0 && (media is null || DateTime.Now - _lastPlaying > MediaLinger))
             {
-                // a short pause from the dock itself should not make the section vanish
+                // a closed player leaves at once; a short pause from the dock itself should not
                 _mediaTarget = 0;
                 EnsureAnimation();
             }
@@ -304,9 +285,25 @@ public partial class DockWindow
 
     private void StartDrop()
     {
+        if (!IsVisible || !_shown)
+        {
+            _mediaTarget = 1;
+            EnsureAnimation();
+            return;
+        }
+
+        _dropWindow ??= new LiquidDropWindow(!NoFx.Contains("exclude"));
+        _dropWindow.Start(RimOnScreen());
         _dropTime = 0;
-        _drop.Visibility = Visibility.Visible;
         EnsureAnimation();
+    }
+
+    /// <summary>Where the drop lands: the dock's top edge above the now-playing slot, in screen DIP.</summary>
+    private Point RimOnScreen()
+    {
+        // the glass edge the eye reads sits a few DIP inside the capsule bounds
+        var p = _clockLayer.PointToScreen(new Point(_dropX, RestTop + 7));
+        return new Point(p.X / DpiScale, p.Y / DpiScale);
     }
 
     /// <summary>Advances the drop and the now-playing width; called from the dock's frame loop.</summary>
@@ -315,16 +312,15 @@ public partial class DockWindow
         if (_dropTime >= 0)
         {
             _dropTime += dt;
-            if (_dropTime >= DropFallSeconds && _mediaTarget == 0)
+            if (_dropTime >= LiquidDropWindow.ImpactTime && _mediaTarget == 0)
             {
                 // impact: the dock opens up to take the drop in
                 _mediaTarget = 1;
             }
 
-            if (_dropTime >= DropFallSeconds + DropMeltSeconds)
+            if (_dropWindow is null || !_dropWindow.Advance(dt, RimOnScreen().X))
             {
                 _dropTime = -1;
-                _drop.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -362,7 +358,7 @@ public partial class DockWindow
         Canvas.SetTop(_mediaDivider, lineTop);
         _mediaDivider.Opacity = Math.Clamp(reveal, 0, 1);
 
-        PositionDrop(x - (mediaSpan / 2));
+        _dropX = x - (mediaSpan / 2);
 
         Canvas.SetLeft(_weather, x);
         Canvas.SetTop(_weather, RestTop + ((RestBarHeight - _weather.Height) / 2));
@@ -380,39 +376,5 @@ public partial class DockWindow
         x += StartGap;
         Canvas.SetLeft(_quickSettings, x);
         Canvas.SetTop(_quickSettings, RestTop + ((RestBarHeight - StartWidth) / 2));
-    }
-
-    private void PositionDrop(double centerX)
-    {
-        if (_dropTime < 0)
-        {
-            return;
-        }
-
-        var restY = RestTop - DropSize;
-        double y;
-        double opacity = 1;
-        if (_dropTime < DropFallSeconds)
-        {
-            // falling: accelerates like gravity and stretches into a tear
-            var t = _dropTime / DropFallSeconds;
-            y = 2 + ((restY - 2) * t * t);
-            _dropScale.ScaleX = 1 - (0.12 * t);
-            _dropScale.ScaleY = 1 + (0.18 * t);
-        }
-        else
-        {
-            // melting: squashes flat and sinks into the glass while the dock widens under it
-            var m = Math.Clamp((_dropTime - DropFallSeconds) / DropMeltSeconds, 0, 1);
-            var ease = 1 - ((1 - m) * (1 - m));
-            y = restY + ((DropSize * 0.7) * ease);
-            _dropScale.ScaleX = 1 + (2.4 * ease);
-            _dropScale.ScaleY = 1 - (0.6 * ease);
-            opacity = 1 - (m * m);
-        }
-
-        Canvas.SetLeft(_drop, centerX - (DropSize / 2));
-        Canvas.SetTop(_drop, y);
-        _drop.Opacity = opacity;
     }
 }
