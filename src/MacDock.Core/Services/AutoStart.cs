@@ -13,6 +13,12 @@ public static class AutoStart
     // user turned it off from the menu.
     public static void EnsureDefault(string exePath)
     {
+        // test builds run from %TEMP%; letting them register would start a stale build at login
+        if (exePath.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         if (!IsOptedOut())
         {
             Enable(exePath);
