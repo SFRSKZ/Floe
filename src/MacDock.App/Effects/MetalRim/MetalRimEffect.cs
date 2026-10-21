@@ -88,14 +88,23 @@ public sealed class MetalRimEffect : ShaderEffect
     public static readonly DependencyProperty GlowColorProperty = Register(nameof(GlowColor), Colors.White, 20);
     public Color GlowColor { get => (Color)GetValue(GlowColorProperty); set => SetValue(GlowColorProperty, value); }
 
-    // Ordered to match HLSL c0..c20; also used by the native diagnostic renderer.
+    public static readonly DependencyProperty FlashXProperty = Register(nameof(FlashX), 0.0, 21);
+    /// <summary>Where a drop hit the rim, in DIP from the capsule's left edge.</summary>
+    public double FlashX { get => (double)GetValue(FlashXProperty); set => SetValue(FlashXProperty, value); }
+
+    public static readonly DependencyProperty FlashAgeProperty = Register(nameof(FlashAge), -1.0, 22);
+    /// <summary>Seconds since the drop hit; negative when there is no flash.</summary>
+    public double FlashAge { get => (double)GetValue(FlashAgeProperty); set => SetValue(FlashAgeProperty, value); }
+
+    // Ordered to match HLSL c0..c22; also used by the native diagnostic renderer.
     private static readonly DependencyProperty[] Constants =
     [
         TimeProperty, CursorXProperty, CursorYProperty, BendStrengthProperty, StrengthProperty,
         ThicknessProperty, CornerRadiusProperty, PixelSizeProperty, GlowGainProperty,
         TintColorProperty, HighlightColorProperty, ShadowColorProperty, SpeedProperty,
         RepetitionProperty, SoftnessProperty, ShiftRedProperty, ShiftBlueProperty,
-        DistortionProperty, ContourProperty, ShaderOpacityProperty, GlowColorProperty
+        DistortionProperty, ContourProperty, ShaderOpacityProperty, GlowColorProperty,
+        FlashXProperty, FlashAgeProperty
     ];
 
     public MetalRimEffect()

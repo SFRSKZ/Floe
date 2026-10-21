@@ -324,6 +324,14 @@ public partial class DockWindow
             }
         }
 
+        if (_metalEffect is not null)
+        {
+            // the metal rim lights up where the drop lands and the glints run off along it
+            var age = _dropTime - LiquidDropWindow.ImpactTime;
+            _metalEffect.FlashAge = _dropTime >= 0 && age >= 0 ? age : -1;
+            _metalEffect.FlashX = _dropX - _capsuleLeft;
+        }
+
         // a soft spring: the opening overshoots a touch, like liquid settling
         _mediaReveal = Math.Max(0, Spring(_mediaReveal, ref _mediaRevealVel, _mediaTarget, dt, 150, 17));
         if (SectionsSettled)

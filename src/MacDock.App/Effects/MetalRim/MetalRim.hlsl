@@ -22,6 +22,8 @@ float Distortion : register(c17);
 float Contour : register(c18);
 float ShaderOpacity : register(c19);
 float4 GlowColor : register(c20);
+float FlashX : register(c21);
+float FlashAge : register(c22);
 
 float4 main(float2 uv : TEXCOORD0) : COLOR0
 {
@@ -75,6 +77,19 @@ float4 main(float2 uv : TEXCOORD0) : COLOR0
     halo += 0.35 * exp2(-dot(echoDelta, echoDelta) * 1.442695);
     metal = lerp(metal, HighlightColor.rgb, saturate(halo * 0.8 + bend * 0.9));
 
+    // Drop impact: a bloom where it landed, then two glints racing apart along the rim.
+    float flash = 0;
+    if (FlashAge >= 0)
+    {
+        float spread = 10 + 110 * FlashAge;
+        float bloom = exp2(-pow((p.x - FlashX) / spread, 2) * 1.442695) * exp2(-FlashAge * 6.5);
+        float travel = 300 * FlashAge;
+        float fronts = exp2(-pow((p.x - FlashX - travel) / 16, 2) * 1.442695)
+            + exp2(-pow((p.x - FlashX + travel) / 16, 2) * 1.442695);
+        flash = (bloom * 1.6 + fronts * 1.3 * exp2(-FlashAge * 2.6)) * (0.25 + 0.75 * top);
+        metal = lerp(metal, HighlightColor.rgb, saturate(flash));
+    }
+
     // Two analytic lobes approximate the four blurred glow strokes (sigma 8.4/2.1).
     // Explicit support cutoff leaves the distant exterior and centre transparent.
     float exterior = smoothstep(-0.5, 0.6, d);
@@ -86,5 +101,12 @@ float4 main(float2 uv : TEXCOORD0) : COLOR0
     float glowAlpha = saturate(glow) * (1 - ringAlpha);
     float alpha = (ringAlpha + glowAlpha) * saturate(Strength);
     float3 rgb = (saturate(metal) * ringAlpha + GlowColor.rgb * glowAlpha) * saturate(Strength);
+
+    // the rim is already near white, so the impact shows as ice-blue light spilling off it
+    float flashLight = saturate(flash) * (0.85 * exp2(-d * d / (2 * 2.5 * 2.5) * 1.442695)
+        + 0.55 * exp2(-d * d / (2 * 9.0 * 9.0) * 1.442695)) * (1 - smoothstep(18, 24, abs(d)));
+    flashLight = saturate(flashLight) * saturate(Strength);
+    rgb = rgb * (1 - flashLight) + float3(0.78, 0.93, 1.0) * flashLight;
+    alpha = alpha * (1 - flashLight) + flashLight;
     return float4(rgb, alpha); // WPF requires premultiplied alpha.
 }
