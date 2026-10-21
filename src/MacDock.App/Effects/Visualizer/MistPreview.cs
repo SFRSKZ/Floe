@@ -33,6 +33,14 @@ public static class MistPreview
     {
         const string normalOption = "--render-mist=";
         const string lowOption = "--render-mist-low=";
+        const string variantsOption = "--render-mist-variants=";
+
+        var variants = args.FirstOrDefault(a => a.StartsWith(variantsOption, StringComparison.OrdinalIgnoreCase));
+        if (variants is not null)
+        {
+            RenderVariants(Path.GetFullPath(variants[variantsOption.Length..]));
+            return true;
+        }
 
         double level = 0.8;
         string option = normalOption;
@@ -142,6 +150,54 @@ public static class MistPreview
         }
 
         return true;
+    }
+
+    /// <summary>Every <see cref="MistStyle"/> stacked, each the left 1280 DIP of the strip at 2x, labelled.</summary>
+    private static void RenderVariants(string path)
+    {
+        const int cropWidth = 1280;
+        const int label = 26;
+        int rowHeight = label + StripHeight * 2 + RowGap;
+        int height = Padding + rowHeight * MistStyle.All.Length;
+        var typeface = new Typeface("Segoe UI");
+
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            dc.DrawRectangle(new SolidColorBrush(Background), null, new Rect(0, 0, cropWidth * 2, height));
+            for (int i = 0; i < MistStyle.All.Length; i++)
+            {
+                var style = MistStyle.All[i];
+                var stage = new Canvas { Width = StripWidth, Height = StripHeight, Background = new SolidColorBrush(Background) };
+                stage.Children.Add(new MistVisualizer
+                {
+                    Width = StripWidth,
+                    Height = StripHeight,
+                    Capsule = new Rect(0, 0, StripWidth, StripHeight),
+                    Style = style,
+                    DebugLevel = 0.8,
+                    DebugTime = 12.5
+                });
+                stage.Measure(new Size(StripWidth, StripHeight));
+                stage.Arrange(new Rect(0, 0, StripWidth, StripHeight));
+                stage.UpdateLayout();
+
+                var strip = Render(stage, 2.0, StripWidth * 2, StripHeight * 2);
+                double top = Padding + i * rowHeight;
+                var text = new FormattedText($"{i + 1}. {style.Name}", System.Globalization.CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight, typeface, 20, Brushes.White, 1.0);
+                dc.DrawText(text, new Point(Padding, top));
+                dc.DrawImage(new CroppedBitmap(strip, new Int32Rect(0, 0, cropWidth * 2, StripHeight * 2)),
+                    new Rect(0, top + label, cropWidth * 2, StripHeight * 2));
+            }
+        }
+
+        var target = new RenderTargetBitmap(cropWidth * 2, height, 96, 96, PixelFormats.Pbgra32);
+        target.Render(visual);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(target));
+        using var stream = File.Create(path);
+        encoder.Save(stream);
     }
 
     private static RenderTargetBitmap Render(Visual visual, double scale, int pixelWidth, int pixelHeight)

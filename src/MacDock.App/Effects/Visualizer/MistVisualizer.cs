@@ -11,6 +11,8 @@ namespace MacDock.App.Effects.Visualizer;
 /// The hologram's cold-flame filaments spread across the whole strip: flame
 /// clusters of different widths and heights drift and breathe over a low
 /// carpet of short strands, with smoky veils flowing along the floor.
+/// <see cref="Style"/> picks how the strands are drawn (thin lines or dust),
+/// the density, the fog and the colours.
 /// <para>
 /// Sampling follows the same lifecycle as <see cref="VisualizerGlow"/>: the
 /// render callback is hooked only while <see cref="IsActive"/> is set or the
@@ -33,37 +35,44 @@ public sealed class MistVisualizer : FrameworkElement
     private const int MaxFilaments = 640;
     private const double FilamentSpacing = 3.0;
     private const int ColorFamilies = 3;
-    private const int ParticleCount = 20;
+    private const int MaxSparks = 120;
     private const int AlphaGrades = 8;
-
-    private static readonly Color[] FamilyColors =
-    {
-        Color.FromRgb(0xEA, 0xF6, 0xFF), // icy core
-        Color.FromRgb(0x6F, 0xB8, 0xFF), // body blue
-        Color.FromRgb(0x2A, 0x6F, 0xD6)  // faint edge
-    };
+    private const int DustFrames = 4;
 
     private static readonly double[] FamilyScale = { 1.0, 0.90, 0.62 };
 
-    // Pre-frozen alpha ladder: a strand picks one grade per frame, the brush
-    // itself never changes.
+    // Pre-frozen alpha ladder: a strand picks one grade per frame, the sprite never changes.
     private static readonly double[] AlphaLadder = { 0.06, 0.09, 0.13, 0.18, 0.25, 0.33, 0.43, 0.56 };
 
-    // A strand sprite holds the old pen stack (bloom 8.5, glow 4.6, core 1.15 DIP; heavy adds 2.4)
-    // composited once, with the base-to-tip fade baked in.
+    // A strand sprite is the hologram's pen stack (bloom, glow, core), scaled by the style's
+    // strand width, composited once with the base-to-tip fade baked in.
     private const double SpriteWidth = 10;
-    private static readonly (double Thickness, double Alpha)[] StrandLayers = { (8.5, 0.10), (4.6, 0.32), (1.15, 1.0) };
-    private static readonly (double Thickness, double Alpha)[] HeavyLayers = { (8.5, 0.10), (4.6, 0.32), (2.4, 0.55), (1.15, 1.0) };
-    private static readonly BitmapSource[][] StrandSprites = CreateSprites(StrandLayers);
-    private static readonly BitmapSource[][] HeavySprites = CreateSprites(HeavyLayers);
+    private const double SpriteHeight = 72;
+    private static readonly (double Thickness, double Alpha)[] StrandLayers = { (8.5, 0.07), (4.6, 0.24), (1.15, 1.0) };
+    private static readonly (double Thickness, double Alpha)[] HeavyLayers = { (8.5, 0.07), (4.6, 0.24), (2.4, 0.55), (1.15, 1.0) };
 
     // Opacity ladders for the soft shapes, so nothing needs PushOpacity (an offscreen layer each).
     private const int OpacitySteps = 24;
-    private static readonly Brush[] SparkBrushes = Ladder(CreateSparkBrush());
-    private static readonly Brush[] HazeBlueBrushes = Ladder(CreateHazeBrush(FamilyColors[1]));
-    private static readonly Brush[] HazeCoreBrushes = Ladder(CreateHazeBrush(Color.FromRgb(0xD2, 0xEC, 0xFF)));
-    private static readonly Brush[] PoolBrushes = Ladder(CreatePoolBrush());
-    private static readonly Brush[] PoolWideBrushes = Ladder(CreateHazeBrush(FamilyColors[1]));
+
+    // Flame clusters across the strip: centre (0..1 of the width), half-width (DIP), peak height (0..1).
+    private static readonly (double Center, double HalfWidth, double Peak)[] Clusters =
+    {
+        (0.05, 70, 0.90),
+        (0.14, 90, 0.55),
+        (0.24, 80, 0.72),
+        (0.34, 70, 0.48),
+        (0.44, 100, 0.66),
+        (0.55, 90, 0.52),
+        (0.65, 80, 0.70),
+        (0.75, 100, 0.50),
+        (0.85, 90, 0.86),
+        (0.95, 70, 0.60),
+    };
+
+    private const double CarpetHeight = 0.16;
+    private const double VeilStep = 8;
+
+    private static readonly Dictionary<MistStyle, Assets> AssetCache = new();
 
     private readonly Stopwatch _clock = Stopwatch.StartNew();
 
@@ -74,16 +83,22 @@ public sealed class MistVisualizer : FrameworkElement
     private readonly double[] _swayPhase = new double[MaxFilaments];
     private readonly double[] _flickerSpeed = new double[MaxFilaments];
 
-    // Particles are a fixed pool animated from the clock; no state churn.
-    private readonly double[] _particleX = new double[ParticleCount];
-    private readonly double[] _particlePhase = new double[ParticleCount];
-    private readonly double[] _particleSpeed = new double[ParticleCount];
-    private readonly double[] _particleDrift = new double[ParticleCount];
-    private readonly double[] _particleSize = new double[ParticleCount];
+    // Sparks are a fixed pool animated from the clock; no state churn.
+    private readonly double[] _particleX = new double[MaxSparks];
+    private readonly double[] _particlePhase = new double[MaxSparks];
+    private readonly double[] _particleSpeed = new double[MaxSparks];
+    private readonly double[] _particleDrift = new double[MaxSparks];
+    private readonly double[] _particleSize = new double[MaxSparks];
+
+    // Where each cluster sits this frame, refreshed once per paint.
+    private readonly double[] _clusterX = new double[Clusters.Length];
+    private readonly double[] _clusterPeak = new double[Clusters.Length];
 
     private readonly float[] _channelPeaks = new float[2];
 
     private AudioPeakMeter? _meter;
+    private MistStyle _style = MistStyle.All[0];
+    private Assets _assets = AssetsFor(MistStyle.All[0]);
     private Rect _capsule = Rect.Empty;
     private bool _active;
     private bool _hooked;
@@ -94,6 +109,7 @@ public sealed class MistVisualizer : FrameworkElement
     private double _lastFrameSeconds = -1;
     private double _sinceRepaint;
     private double _debugLevel = -1;
+    private double _debugTime = -1;
 
     public MistVisualizer()
     {
@@ -111,13 +127,13 @@ public sealed class MistVisualizer : FrameworkElement
             _flickerSpeed[i] = 0.55 + 1.65 * Hash01(i, 0x4D8C61);
         }
 
-        for (int i = 0; i < ParticleCount; i++)
+        for (int i = 0; i < MaxSparks; i++)
         {
             _particleX[i] = Hash01(i, 0x71B2D9);
             _particlePhase[i] = Hash01(i, 0x38E4A1);
             _particleSpeed[i] = 0.018 + 0.030 * Hash01(i, 0x5FA0C7);
             _particleDrift[i] = 0.12 + 0.38 * Hash01(i, 0x27C6E5);
-            _particleSize[i] = 0.55 + 1.05 * Hash01(i, 0x6A14B3);
+            _particleSize[i] = 0.45 + 0.75 * Hash01(i, 0x6A14B3);
         }
 
         _fade = 0;
@@ -143,7 +159,7 @@ public sealed class MistVisualizer : FrameworkElement
     }
 
     /// <summary>
-    /// Turns sampling on or off. Off fades the hologram out (~400 ms) and then
+    /// Turns sampling on or off. Off fades the mist out (~400 ms) and then
     /// unhooks the render callback entirely.
     /// </summary>
     public bool IsActive
@@ -170,6 +186,17 @@ public sealed class MistVisualizer : FrameworkElement
         }
     }
 
+    internal MistStyle Style
+    {
+        get => _style;
+        set
+        {
+            _style = value;
+            _assets = AssetsFor(value);
+            InvalidateVisual();
+        }
+    }
+
     /// <summary>
     /// Diagnostic override for offscreen renders: 0..1 paints that fixed level
     /// without sampling audio; -1 (default) uses the live meter.
@@ -184,35 +211,19 @@ public sealed class MistVisualizer : FrameworkElement
         }
     }
 
+    /// <summary>Diagnostic override: paint this clock time instead of the live one (-1 = live).</summary>
+    internal double DebugTime
+    {
+        get => _debugTime;
+        set
+        {
+            _debugTime = value;
+            InvalidateVisual();
+        }
+    }
+
     /// <summary>True when a media session is actually playing. Never throws.</summary>
     public static async Task<bool> ShouldRunAsync() => await MediaService.IsPlayingAsync();
-
-    // Flame clusters across the strip: centre (0..1 of the width), half-width (DIP), peak height (0..1).
-    private static readonly (double Center, double HalfWidth, double Peak)[] Clusters =
-    {
-        (0.05, 70, 0.90),
-        (0.14, 90, 0.55),
-        (0.24, 80, 0.72),
-        (0.34, 70, 0.48),
-        (0.44, 100, 0.66),
-        (0.55, 90, 0.52),
-        (0.65, 80, 0.70),
-        (0.75, 100, 0.50),
-        (0.85, 90, 0.86),
-        (0.95, 70, 0.60),
-    };
-
-    private const double CarpetHeight = 0.16;
-    private const int VeilCount = 5;
-    private const double VeilStep = 8;
-
-    private static readonly Brush VeilFill = CreateVeilFill();
-    private static readonly Pen VeilHalo = FrozenPen(Color.FromArgb(0x10, 0x6F, 0xB8, 0xFF), 7);
-    private static readonly Pen VeilCore = FrozenPen(Color.FromArgb(0x30, 0xBF, 0xE4, 0xFF), 0.8);
-
-    // Where each cluster sits this frame, refreshed once per paint.
-    private readonly double[] _clusterX = new double[Clusters.Length];
-    private readonly double[] _clusterPeak = new double[Clusters.Length];
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -233,7 +244,9 @@ public sealed class MistVisualizer : FrameworkElement
             return;
         }
 
-        double t = _clock.Elapsed.TotalSeconds;
+        var style = _style;
+        var assets = _assets;
+        double t = _debugTime >= 0 ? _debugTime : _clock.Elapsed.TotalSeconds;
         double width = capsule.Width;
         double baseY = capsule.Bottom - 4;
         double maxHeight = Math.Max(1, capsule.Height * 0.95);
@@ -258,9 +271,9 @@ public sealed class MistVisualizer : FrameworkElement
             double peak = _clusterPeak[k];
             double half = Clusters[k].HalfWidth;
             double x = _clusterX[k];
-            dc.DrawEllipse(Graded(HazeBlueBrushes, (0.11 + 0.27 * energy) * (0.5 + 0.5 * peak)), null,
+            dc.DrawEllipse(Graded(assets.HazeBody, (0.11 + 0.27 * energy) * (0.5 + 0.5 * peak) * style.Haze), null,
                 new Point(x, baseY - maxHeight * 0.30 * peak), half * 3.2, maxHeight * 0.70 * peak);
-            dc.DrawEllipse(Graded(HazeCoreBrushes, (0.08 + 0.20 * energy) * peak), null,
+            dc.DrawEllipse(Graded(assets.HazeCore, (0.08 + 0.20 * energy) * peak * style.Haze), null,
                 new Point(x, baseY - maxHeight * 0.36 * peak), half * 1.1, maxHeight * 0.62 * peak);
         }
 
@@ -268,7 +281,7 @@ public sealed class MistVisualizer : FrameworkElement
         // Smoky veils just above the floor, behind the strands.
         // ------------------------------------------------------------------
         double amplitude = 0.12 + 1.10 * Math.Pow(level, 0.66);
-        for (int v = 0; v < VeilCount; v++)
+        for (int v = 0; v < style.Veils; v++)
         {
             var veil = new StreamGeometry();
             using (var g = veil.Open())
@@ -280,7 +293,7 @@ public sealed class MistVisualizer : FrameworkElement
                     double xn = (px - capsule.Left) / width;
                     double wave = (0.5 + 0.5 * Math.Sin(xn * (9 + 4 * v) + t * (0.35 + 0.12 * v) + v * 2.1)) *
                                   (0.5 + 0.5 * Math.Sin(xn * (23 - 5 * v) - t * (0.22 + 0.07 * v) + v));
-                    double lift = 0.06 + (0.20 + 0.05 * v) * wave + 0.22 * Envelope(px) * amplitude;
+                    double lift = 0.06 + (0.20 + 0.05 * (v % 5)) * wave + 0.22 * Envelope(px) * amplitude;
                     double y = baseY - Math.Min(0.55, lift * (0.6 + 0.4 * energy)) * maxHeight * EdgeFade(xn);
                     g.LineTo(new Point(px, y), true, true);
                 }
@@ -289,16 +302,17 @@ public sealed class MistVisualizer : FrameworkElement
             }
 
             veil.Freeze();
-            dc.DrawGeometry(VeilFill, VeilHalo, veil);
-            dc.DrawGeometry(null, VeilCore, veil);
+            dc.DrawGeometry(assets.VeilFill, assets.VeilHalo, veil);
+            dc.DrawGeometry(null, assets.VeilCore, veil);
         }
 
         // ------------------------------------------------------------------
-        // Filaments: the hologram's sprites, shaped by the cluster envelope.
+        // Filaments: one sprite per strand (a thin line or a column of dust),
+        // shaped by the cluster envelope.
         // ------------------------------------------------------------------
-        // a little sparser than the hologram: the fog carries the look, the strands are a continuous field
-        int count = Math.Clamp((int)Math.Round(width / (FilamentSpacing * 1.4)), 8, MaxFilaments);
+        int count = Math.Clamp((int)Math.Round(width / (FilamentSpacing * style.Spacing)), 8, MaxFilaments);
         double spacing = width / count;
+        int dustFrame = (int)(t * 7);
 
         for (int i = 0; i < count; i++)
         {
@@ -314,7 +328,7 @@ public sealed class MistVisualizer : FrameworkElement
             noise = Math.Clamp(noise, 0, 1);
 
             // the strip is shallow, so the clusters run taller than the hologram's single bell
-            double h = envelope * maxHeight * amplitude * (0.45 + 0.55 * noise) * 1.35 * EdgeFade(xn);
+            double h = envelope * maxHeight * amplitude * (0.45 + 0.55 * noise) * style.Height * EdgeFade(xn);
 
             double clump = 0.72 + 0.50 * ValueNoise(xn * 60.0 + t * 0.18 + 4.7, 0x1F3D);
             if (Hash01(i, 0x6B12) > 0.90)
@@ -332,16 +346,26 @@ public sealed class MistVisualizer : FrameworkElement
             double sway = Math.Sin(t * _swaySpeed[i] + _swayPhase[i]) * 1.5 * heightRatio * (0.35 + 0.65 * noise);
             double y0 = baseY - Math.Abs(_jitter[(i * 7 + 3) % MaxFilaments]) * 0.8;
             int family = nearest < 0.35 ? 0 : nearest < 1.2 ? 1 : 2;
-            bool heavy = Hash01(i, 0x33A7) > 0.86;
 
-            var sprite = (heavy ? HeavySprites : StrandSprites)[family][grade];
+            BitmapSource sprite;
+            if (Hash01(i, 0x2D55) < style.Dust)
+            {
+                // dust glitters: each column steps through its frames out of phase with its neighbours
+                sprite = assets.Dust[(dustFrame + i) % DustFrames][family][grade];
+            }
+            else
+            {
+                bool heavy = Hash01(i, 0x33A7) > 0.86;
+                sprite = (heavy ? assets.Heavy : assets.Strands)[family][grade];
+            }
+
             double cx = x + sway * 0.5;
             dc.DrawImage(sprite, new Rect(cx - (SpriteWidth / 2), y0 - h - 1, SpriteWidth, h + 1));
 
             double tipAlpha = (0.06 + 0.24 * noise) * energy * (0.35 + 0.65 * heightRatio);
             if (tipAlpha > 0.15)
             {
-                dc.DrawEllipse(Graded(SparkBrushes, tipAlpha), null, new Point(x + sway, y0 - h), 1.05, 1.05);
+                dc.DrawEllipse(Graded(assets.Spark, tipAlpha), null, new Point(x + sway, y0 - h), 0.8, 0.8);
             }
         }
 
@@ -350,22 +374,22 @@ public sealed class MistVisualizer : FrameworkElement
         // ------------------------------------------------------------------
         double poolAlpha = Math.Clamp((0.30 + 0.45 * Math.Sqrt(level)) * fade, 0, 1);
         double mid = capsule.Left + width * 0.5;
-        dc.DrawEllipse(Graded(PoolWideBrushes, poolAlpha * 0.40), null, new Point(mid, baseY + 1.5), width * 0.52, 7);
-        dc.DrawEllipse(Graded(SparkBrushes, poolAlpha * 0.22), null, new Point(mid, baseY), width * 0.50, 1.4);
+        dc.DrawEllipse(Graded(assets.HazeBody, poolAlpha * 0.40), null, new Point(mid, baseY + 1.5), width * 0.52, 7);
+        dc.DrawEllipse(Graded(assets.Spark, poolAlpha * 0.22), null, new Point(mid, baseY), width * 0.50, 1.4);
         for (int k = 0; k < Clusters.Length; k++)
         {
             double peak = _clusterPeak[k];
             double half = Clusters[k].HalfWidth;
-            dc.DrawEllipse(Graded(PoolBrushes, poolAlpha * 0.72 * (0.5 + 0.5 * peak)), null,
+            dc.DrawEllipse(Graded(assets.Pool, poolAlpha * 0.72 * (0.5 + 0.5 * peak)), null,
                 new Point(_clusterX[k], baseY + 0.5), half * 2.4, 4.2 + 3.4 * level);
-            dc.DrawEllipse(Graded(SparkBrushes, poolAlpha * 0.36 * peak), null,
+            dc.DrawEllipse(Graded(assets.Spark, poolAlpha * 0.36 * peak), null,
                 new Point(_clusterX[k], baseY), half * 1.2, 1.6);
         }
 
         // ------------------------------------------------------------------
-        // Faint particles drifting up out of the clusters.
+        // Sparks drifting up out of the clusters.
         // ------------------------------------------------------------------
-        for (int i = 0; i < ParticleCount; i++)
+        for (int i = 0; i < style.Sparks; i++)
         {
             double progress = _particlePhase[i] + t * _particleSpeed[i];
             progress -= Math.Floor(progress);
@@ -380,7 +404,7 @@ public sealed class MistVisualizer : FrameworkElement
             int k = i % Clusters.Length;
             double px = _clusterX[k] + (_particleX[i] - 0.5) * Clusters[k].HalfWidth * 2.4 +
                         Math.Sin(t * _particleDrift[i] + _particlePhase[i] * 9) * 3.0;
-            dc.DrawEllipse(Graded(SparkBrushes, alpha), null, new Point(px, y), _particleSize[i], _particleSize[i]);
+            dc.DrawEllipse(Graded(assets.Spark, alpha), null, new Point(px, y), _particleSize[i], _particleSize[i]);
         }
     }
 
@@ -409,23 +433,6 @@ public sealed class MistVisualizer : FrameworkElement
     {
         double e = Math.Clamp(Math.Min(xn, 1 - xn) / 0.03, 0, 1);
         return e * e * (3 - 2 * e);
-    }
-
-    private static Brush CreateVeilFill()
-    {
-        var brush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x34, 0x8F, 0xCD, 0xFF), 0));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x16, 0x4F, 0x9C, 0xF0), 0.55));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x2A, 0x6F, 0xD6), 1));
-        brush.Freeze();
-        return brush;
-    }
-
-    private static Pen FrozenPen(Color color, double thickness)
-    {
-        var pen = new Pen(new SolidColorBrush(color), thickness) { LineJoin = PenLineJoin.Round };
-        pen.Freeze();
-        return pen;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -559,23 +566,73 @@ public sealed class MistVisualizer : FrameworkElement
         _balance += (balance - _balance) * (1 - Math.Exp(-dt / BalanceSeconds));
     }
 
-    private static BitmapSource[][] CreateSprites((double Thickness, double Alpha)[] layers)
+    /// <summary>Everything a style draws with, built once per style and shared by every instance.</summary>
+    private sealed class Assets
+    {
+        public required BitmapSource[][] Strands { get; init; }
+        public required BitmapSource[][] Heavy { get; init; }
+        public required BitmapSource[][][] Dust { get; init; }
+        public required Brush[] Spark { get; init; }
+        public required Brush[] HazeBody { get; init; }
+        public required Brush[] HazeCore { get; init; }
+        public required Brush[] Pool { get; init; }
+        public required Brush VeilFill { get; init; }
+        public required Pen VeilHalo { get; init; }
+        public required Pen VeilCore { get; init; }
+    }
+
+    private static Assets AssetsFor(MistStyle style)
+    {
+        lock (AssetCache)
+        {
+            if (AssetCache.TryGetValue(style, out var cached))
+            {
+                return cached;
+            }
+
+            var colors = new[] { style.Core, style.Body, style.Edge };
+            var dust = new BitmapSource[DustFrames][][];
+            for (int frame = 0; frame < DustFrames; frame++)
+            {
+                dust[frame] = CreateDustSprites(colors, style.StrandWidth, frame);
+            }
+
+            double veil = style.VeilAlpha;
+            var assets = new Assets
+            {
+                Strands = CreateSprites(StrandLayers, colors, style.StrandWidth),
+                Heavy = CreateSprites(HeavyLayers, colors, style.StrandWidth),
+                Dust = dust,
+                Spark = Ladder(CreateSparkBrush(style.Core, style.Body)),
+                HazeBody = Ladder(CreateHazeBrush(style.Body)),
+                HazeCore = Ladder(CreateHazeBrush(Mix(style.Core, style.Body, 0.3))),
+                Pool = Ladder(CreatePoolBrush(style)),
+                VeilFill = CreateVeilFill(style.Body, style.Edge, veil),
+                VeilHalo = FrozenPen(WithAlpha(style.Body, 0.063 * veil), 7),
+                VeilCore = FrozenPen(WithAlpha(Mix(style.Core, style.Body, 0.4), 0.19 * veil), 0.8),
+            };
+            AssetCache[style] = assets;
+            return assets;
+        }
+    }
+
+    private static BitmapSource[][] CreateSprites((double Thickness, double Alpha)[] layers, Color[] colors, double strandWidth)
     {
         const int scale = 3;
         int width = (int)(SpriteWidth * scale);
-        const int height = 96;
+        int height = (int)(SpriteHeight * scale);
         var sprites = new BitmapSource[ColorFamilies][];
         for (int family = 0; family < ColorFamilies; family++)
         {
             sprites[family] = new BitmapSource[AlphaGrades];
-            var color = FamilyColors[family];
+            var color = colors[family];
             for (int grade = 0; grade < AlphaGrades; grade++)
             {
                 double baseAlpha = AlphaLadder[grade] * FamilyScale[family];
                 var pixels = new byte[width * height * 4];
                 for (int y = 0; y < height; y++)
                 {
-                    // 0 at the base (bottom row) to 1 at the tip, the old pen gradient's stops
+                    // 0 at the base (bottom row) to 1 at the tip
                     double v = 1 - ((y + 0.5) / height);
                     double fade = Ramp(v, (0, 1), (0.30, 0.68), (0.62, 0.28), (0.85, 0.07), (1, 0));
                     for (int x = 0; x < width; x++)
@@ -584,26 +641,99 @@ public sealed class MistVisualizer : FrameworkElement
                         double clear = 1;
                         foreach (var (thickness, alpha) in layers)
                         {
-                            double coverage = Math.Clamp((thickness / 2) - dx + 0.5, 0, 1);
+                            double coverage = Math.Clamp((thickness * strandWidth / 2) - dx + 0.5, 0, 1);
                             clear *= 1 - (Math.Clamp(baseAlpha * alpha * fade, 0, 1) * coverage);
                         }
 
-                        double a = 1 - clear;
-                        int i = ((y * width) + x) * 4;
-                        pixels[i] = (byte)Math.Round(color.B * a);
-                        pixels[i + 1] = (byte)Math.Round(color.G * a);
-                        pixels[i + 2] = (byte)Math.Round(color.R * a);
-                        pixels[i + 3] = (byte)Math.Round(255 * a);
+                        Put(pixels, ((y * width) + x) * 4, color, 1 - clear);
                     }
                 }
 
-                var bitmap = BitmapSource.Create(width, height, 96.0 * scale, 96.0 * scale, PixelFormats.Pbgra32, null, pixels, width * 4);
-                bitmap.Freeze();
-                sprites[family][grade] = bitmap;
+                sprites[family][grade] = Freeze(width, height, scale, pixels);
             }
         }
 
         return sprites;
+    }
+
+    /// <summary>
+    /// A column of fine glowing dust: sharp specks scattered up the strand, denser
+    /// and brighter at the base, each with a faint halo.
+    /// </summary>
+    private static BitmapSource[][] CreateDustSprites(Color[] colors, double strandWidth, int frame)
+    {
+        const int scale = 3;
+        const int specks = 26;
+        int width = (int)(SpriteWidth * scale);
+        int height = (int)(SpriteHeight * scale);
+
+        var sx = new double[specks];
+        var sy = new double[specks];
+        var sr = new double[specks];
+        var sa = new double[specks];
+        for (int i = 0; i < specks; i++)
+        {
+            int seed = frame * 131 + i;
+            // squaring biases the specks toward the base
+            double v = Math.Pow(Hash01(seed, 0x6E11), 1.6);
+            sx[i] = (SpriteWidth / 2 + (Hash01(seed, 0x3C07) - 0.5) * 2.6 * strandWidth / 0.45) * scale;
+            sy[i] = (1 - v) * height;
+            sr[i] = (0.32 + 0.30 * Hash01(seed, 0x19D3)) * scale;
+            sa[i] = (0.55 + 0.45 * Hash01(seed, 0x7A21)) * Ramp(v, (0, 1), (0.5, 0.6), (0.85, 0.2), (1, 0));
+        }
+
+        var sprites = new BitmapSource[ColorFamilies][];
+        for (int family = 0; family < ColorFamilies; family++)
+        {
+            sprites[family] = new BitmapSource[AlphaGrades];
+            var color = colors[family];
+            for (int grade = 0; grade < AlphaGrades; grade++)
+            {
+                double baseAlpha = Math.Min(1, AlphaLadder[grade] * FamilyScale[family] * 1.8);
+                var pixels = new byte[width * height * 4];
+                for (int i = 0; i < specks; i++)
+                {
+                    double halo = sr[i] * 3.2;
+                    int x0 = Math.Max(0, (int)(sx[i] - halo));
+                    int x1 = Math.Min(width - 1, (int)(sx[i] + halo));
+                    int y0 = Math.Max(0, (int)(sy[i] - halo));
+                    int y1 = Math.Min(height - 1, (int)(sy[i] + halo));
+                    for (int y = y0; y <= y1; y++)
+                    {
+                        for (int x = x0; x <= x1; x++)
+                        {
+                            double d = Math.Sqrt(Math.Pow(x + 0.5 - sx[i], 2) + Math.Pow(y + 0.5 - sy[i], 2));
+                            double core = Math.Clamp(sr[i] - d + 0.5, 0, 1);
+                            double glow = Math.Max(0, 1 - d / halo) * 0.22;
+                            double a = Math.Clamp(baseAlpha * sa[i] * Math.Max(core, glow * glow * 4), 0, 1);
+                            int p = ((y * width) + x) * 4;
+                            // screen-blend specks that overlap
+                            double prior = pixels[p + 3] / 255.0;
+                            Put(pixels, p, color, 1 - (1 - prior) * (1 - a));
+                        }
+                    }
+                }
+
+                sprites[family][grade] = Freeze(width, height, scale, pixels);
+            }
+        }
+
+        return sprites;
+    }
+
+    private static void Put(byte[] pixels, int i, Color color, double a)
+    {
+        pixels[i] = (byte)Math.Round(color.B * a);
+        pixels[i + 1] = (byte)Math.Round(color.G * a);
+        pixels[i + 2] = (byte)Math.Round(color.R * a);
+        pixels[i + 3] = (byte)Math.Round(255 * a);
+    }
+
+    private static BitmapSource Freeze(int width, int height, int scale, byte[] pixels)
+    {
+        var bitmap = BitmapSource.Create(width, height, 96.0 * scale, 96.0 * scale, PixelFormats.Pbgra32, null, pixels, width * 4);
+        bitmap.Freeze();
+        return bitmap;
     }
 
     private static double Ramp(double v, params (double At, double Value)[] stops)
@@ -638,9 +768,9 @@ public sealed class MistVisualizer : FrameworkElement
     private static Brush Graded(Brush[] ladder, double opacity) =>
         ladder[(int)Math.Round(Math.Clamp(opacity, 0, 1) * OpacitySteps)];
 
-    private static Brush CreateSparkBrush()
+    private static RadialGradientBrush Radial()
     {
-        var brush = new RadialGradientBrush
+        return new RadialGradientBrush
         {
             MappingMode = BrushMappingMode.RelativeToBoundingBox,
             Center = new Point(0.5, 0.5),
@@ -648,24 +778,22 @@ public sealed class MistVisualizer : FrameworkElement
             RadiusX = 0.5,
             RadiusY = 0.5
         };
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD8, 0xFF, 0xFF, 0xFF), 0));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x78, 0xDA, 0xF2, 0xFF), 0.30));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x24, 0x8F, 0xCD, 0xFF), 0.64));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x6F, 0xB8, 0xFF), 1));
+    }
+
+    private static Brush CreateSparkBrush(Color core, Color body)
+    {
+        var brush = Radial();
+        brush.GradientStops.Add(new GradientStop(WithAlpha(Mix(Colors.White, core, 0.5), 0.85), 0));
+        brush.GradientStops.Add(new GradientStop(WithAlpha(core, 0.47), 0.30));
+        brush.GradientStops.Add(new GradientStop(WithAlpha(body, 0.14), 0.64));
+        brush.GradientStops.Add(new GradientStop(WithAlpha(body, 0), 1));
         brush.Freeze();
         return brush;
     }
 
     private static Brush CreateHazeBrush(Color color)
     {
-        var brush = new RadialGradientBrush
-        {
-            MappingMode = BrushMappingMode.RelativeToBoundingBox,
-            Center = new Point(0.5, 0.5),
-            GradientOrigin = new Point(0.5, 0.5),
-            RadiusX = 0.5,
-            RadiusY = 0.5
-        };
+        var brush = Radial();
         brush.GradientStops.Add(new GradientStop(WithAlpha(color, 0.34), 0));
         brush.GradientStops.Add(new GradientStop(WithAlpha(color, 0.18), 0.34));
         brush.GradientStops.Add(new GradientStop(WithAlpha(color, 0.06), 0.68));
@@ -674,23 +802,33 @@ public sealed class MistVisualizer : FrameworkElement
         return brush;
     }
 
-    private static Brush CreatePoolBrush()
+    private static Brush CreatePoolBrush(MistStyle style)
     {
-        var brush = new RadialGradientBrush
-        {
-            MappingMode = BrushMappingMode.RelativeToBoundingBox,
-            Center = new Point(0.5, 0.5),
-            GradientOrigin = new Point(0.5, 0.5),
-            RadiusX = 0.5,
-            RadiusY = 0.5
-        };
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xF2, 0xF2, 0xFB, 0xFF), 0));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xA8, 0xB8, 0xE4, 0xFF), 0.22));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x50, 0x6F, 0xB8, 0xFF), 0.52));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x10, 0x2A, 0x6F, 0xD6), 0.80));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x2A, 0x6F, 0xD6), 1));
+        var brush = Radial();
+        brush.GradientStops.Add(new GradientStop(WithAlpha(Mix(Colors.White, style.Core, 0.5), 0.95), 0));
+        brush.GradientStops.Add(new GradientStop(WithAlpha(Mix(style.Core, style.Body, 0.5), 0.66), 0.22));
+        brush.GradientStops.Add(new GradientStop(WithAlpha(style.Body, 0.31), 0.52));
+        brush.GradientStops.Add(new GradientStop(WithAlpha(style.Edge, 0.06), 0.80));
+        brush.GradientStops.Add(new GradientStop(WithAlpha(style.Edge, 0), 1));
         brush.Freeze();
         return brush;
+    }
+
+    private static Brush CreateVeilFill(Color body, Color edge, double strength)
+    {
+        var brush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
+        brush.GradientStops.Add(new GradientStop(WithAlpha(Mix(body, Colors.White, 0.2), 0.20 * strength), 0));
+        brush.GradientStops.Add(new GradientStop(WithAlpha(Mix(body, edge, 0.5), 0.086 * strength), 0.55));
+        brush.GradientStops.Add(new GradientStop(WithAlpha(edge, 0), 1));
+        brush.Freeze();
+        return brush;
+    }
+
+    private static Pen FrozenPen(Color color, double thickness)
+    {
+        var pen = new Pen(new SolidColorBrush(color), thickness) { LineJoin = PenLineJoin.Round };
+        pen.Freeze();
+        return pen;
     }
 
     // Smooth 1-D value noise from a deterministic integer hash.
@@ -715,6 +853,12 @@ public sealed class MistVisualizer : FrameworkElement
             return (h & 0x00FFFFFF) / 16777215.0;
         }
     }
+
+    private static Color Mix(Color a, Color b, double t) =>
+        Color.FromRgb(
+            (byte)Math.Round(a.R + (b.R - a.R) * t),
+            (byte)Math.Round(a.G + (b.G - a.G) * t),
+            (byte)Math.Round(a.B + (b.B - a.B) * t));
 
     private static Color WithAlpha(Color color, double alpha) =>
         Color.FromArgb((byte)Math.Clamp((int)Math.Round(Math.Clamp(alpha, 0, 1) * 255), 0, 255),
