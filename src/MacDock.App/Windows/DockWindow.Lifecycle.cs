@@ -34,11 +34,13 @@ public partial class DockWindow
         DesktopController.RegisterHotKey(_hwnd, DesktopController.HotkeyIdVeil, DesktopController.ModControl | DesktopController.ModAlt, DesktopController.VkV);
         if (BlurBackdrop)
         {
-            if (!NoFx.Contains("exclude")) WindowAffinity.ExcludeFromCapture(_hwnd);
+            if (!NoFx.Contains("exclude")) CaptureReveal.Exclude(_hwnd);
         }
 
         _source = HwndSource.FromHwnd(_hwnd);
         _source?.AddHook(WndProc);
+        if (_source is not null) CaptureReveal.Initialize(_source);
+        IsVisibleChanged += (_, _) => UpdateEffectVisibility();
 
         _taskbarCreatedMessage = TrayNotification.TaskbarCreatedMessage;
         DpiChanged += OnDpiChanged;
@@ -176,11 +178,12 @@ public partial class DockWindow
             ("Masaüstünü göster", DesktopController.ShowDesktop),
             (_veil?.IsVisible == true ? "Perde modunu kapat" : "Perde modu (Ctrl+Alt+V)", ToggleVeil),
             (AutoStart.IsEnabled() ? "Açılışta başlatmayı kapat" : "Açılışta başlat", AutoStart.Toggle),
+            ("Kay?t modu", () => CaptureReveal.Recording = !CaptureReveal.Recording),
             ("-", () => { }),
             ("Çıkış", () => Application.Current.Shutdown()),
         };
 
-        var index = TrayNotification.ShowMenu(_hwnd, x, y, actions.Select(action => action.Label).ToList());
+        var index = TrayNotification.ShowMenu(_hwnd, x, y, actions.Select(action => action.Label).ToList(), CaptureReveal.Recording ? 4 : -1);
         if (index >= 0 && index < actions.Count && actions[index].Label != "-")
         {
             actions[index].Run();
@@ -189,6 +192,9 @@ public partial class DockWindow
 
     protected override void OnClosed(EventArgs e)
     {
+        CaptureReveal.Forget(_hwnd);
+        CaptureReveal.Shutdown();
+        _activeFx?.Stop();
         StopAnimation();
         AuraSettings.Changed -= OnAuraSettingsChanged;
         _settings?.Close();

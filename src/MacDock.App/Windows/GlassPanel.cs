@@ -221,7 +221,7 @@ internal sealed class GlassBackdrop : FrameworkElement
 
         if (!NoFx.Contains("exclude"))
         {
-            WindowAffinity.ExcludeFromCapture(_source.Handle);
+            CaptureReveal.Exclude(_source.Handle);
             _capture ??= new BackdropCapture(this, _source.Handle, Present);
         }
         else
@@ -237,6 +237,7 @@ internal sealed class GlassBackdrop : FrameworkElement
     {
         _capture?.Dispose();
         _capture = null;
+        if (_source is not null) CaptureReveal.Forget(_source.Handle);
         _source = null;
     }
 

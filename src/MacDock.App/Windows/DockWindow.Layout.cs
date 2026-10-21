@@ -36,7 +36,7 @@ public partial class DockWindow
         _separatorIndex = -1;
         for (var i = 1; i < count; i++)
         {
-            if (!Items[i].IsPinned)
+            if (Items[i - 1].IsPinned && !Items[i].IsPinned)
             {
                 _separatorIndex = i;
                 break;
@@ -178,12 +178,7 @@ public partial class DockWindow
     private void ApplyLayout(IReadOnlyList<double> scales)
     {
         var count = _slots.Count;
-        if (count == 0)
-        {
-            return;
-        }
-
-        var total = Spacing * (count - 1) + (HasSeparator ? SeparatorExtra : 0);
+        var total = Spacing * Math.Max(0, count - 1) + (HasSeparator ? SeparatorExtra : 0);
         for (var i = 0; i < count; i++)
         {
             total += IconBox * scales[i];
@@ -238,23 +233,13 @@ public partial class DockWindow
             PositionSpectral(_slots[_activeIndex]);
         }
 
-        if (_aurora is { IsVisible: true })
-        {
-            _aurora.Track();
-        }
+        UpdateEffectVisibility();
     }
 
     private void UpdateCapsule(IReadOnlyList<double> scales)
     {
         var count = _slots.Count;
-        if (count == 0)
-        {
-            _capsuleWidth = 1;
-            _capsuleLeft = (_windowWidth - 1) / 2;
-            return;
-        }
-
-        var total = Spacing * (count - 1) + (HasSeparator ? SeparatorExtra : 0);
+        var total = Spacing * Math.Max(0, count - 1) + (HasSeparator ? SeparatorExtra : 0);
         for (var i = 0; i < count; i++)
         {
             total += IconBox * scales[i];

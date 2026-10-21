@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -80,6 +80,7 @@ public partial class DockWindow
         }
 
         _shown = true;
+        UpdateEffectVisibility();
         _outsideTicks = 0;
         AnimateTop(ShownTop);
     }
@@ -92,6 +93,7 @@ public partial class DockWindow
         }
 
         _shown = false;
+        UpdateEffectVisibility();
         AnimateTop(HiddenTop);
     }
 

@@ -41,6 +41,12 @@ internal sealed class VisualizerWindow : Window
 
     public bool IsRunning => _glow.IsActive || _hologram.IsActive;
 
+    protected override void OnClosed(EventArgs e)
+    {
+        CaptureReveal.Forget(_hwnd);
+        base.OnClosed(e);
+    }
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
@@ -48,7 +54,7 @@ internal sealed class VisualizerWindow : Window
         WindowStyling.MakeClickThrough(_hwnd);
 
         // keep the dock's backdrop capture from picking the light up
-        WindowAffinity.ExcludeFromCapture(_hwnd);
+        CaptureReveal.Exclude(_hwnd);
     }
 
     public void Place(Rect bounds, IntPtr dock)

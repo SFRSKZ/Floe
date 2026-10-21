@@ -20,6 +20,14 @@ public enum ClickTone
     Light,
 }
 
+/// <summary>Colours of the click effect's rim; the values are the shader's Palette constant.</summary>
+public enum ClickPalette
+{
+    Rainbow,
+    Clear,
+    Icon,
+}
+
 public enum AuraEffect
 {
     Glow,
@@ -75,6 +83,11 @@ public static class AuraSettings
 
     public static ClickTone ClickTone { get; private set; } = ClickTone.Dark;
 
+    public static ClickPalette ClickPalette { get; private set; } = ClickPalette.Rainbow;
+
+    /// <summary>Playback speed of the click effect, 0.5 .. 2 (1 = 900 ms).</summary>
+    public static double ClickSpeed { get; private set; } = 1.0;
+
     public static int PaletteIndex { get; private set; }
 
     public static void Load()
@@ -94,6 +107,8 @@ public static class AuraSettings
 
             ClickEffect = model.ClickEffect;
             ClickTone = Enum.TryParse<ClickTone>(model.ClickTone, true, out var tone) && Enum.IsDefined(tone) ? tone : ClickTone.Dark;
+            ClickPalette = Enum.TryParse<ClickPalette>(model.ClickPalette, true, out var palette) && Enum.IsDefined(palette) ? palette : ClickPalette.Rainbow;
+            ClickSpeed = model.ClickSpeed <= 0 ? 1.0 : Math.Clamp(model.ClickSpeed, 0.5, 2.0);
             Mode = Enum.TryParse<AuraColorMode>(model.Mode, true, out var mode) ? mode : AuraColorMode.Palette;
             Effect = Enum.TryParse<AuraEffect>(model.Effect, true, out var effect) ? effect : AuraEffect.Glow;
             SpectralIntensity = model.SpectralIntensity <= 0 ? 1.5 : Math.Clamp(model.SpectralIntensity, 0.5, 2.5);
@@ -117,6 +132,23 @@ public static class AuraSettings
     {
         if (ClickTone == tone) return;
         ClickTone = tone;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetClickPalette(ClickPalette palette)
+    {
+        if (ClickPalette == palette) return;
+        ClickPalette = palette;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetClickSpeed(double speed)
+    {
+        speed = Math.Clamp(speed, 0.5, 2.0);
+        if (Math.Abs(ClickSpeed - speed) < 0.001) return;
+        ClickSpeed = speed;
         Save();
         Changed?.Invoke();
     }
@@ -175,10 +207,11 @@ public static class AuraSettings
     {
         if (Mode == AuraColorMode.Icon && item.Icon is not null)
         {
-            if (!IconCache.TryGetValue(item.ProcessName, out var colors))
+            var key = AppLauncher.ResolveTarget(item.App);
+            if (!IconCache.TryGetValue(key, out var colors))
             {
                 colors = IconService.GetIconColors(item.Icon, 3);
-                IconCache[item.ProcessName] = colors;
+                IconCache[key] = colors;
             }
 
             return colors;
@@ -196,6 +229,8 @@ public static class AuraSettings
             {
                 ClickEffect = ClickEffect,
                 ClickTone = ClickTone.ToString(),
+                ClickPalette = ClickPalette.ToString(),
+                ClickSpeed = ClickSpeed,
                 Mode = Mode.ToString(),
                 Effect = Effect.ToString(),
                 SpectralIntensity = SpectralIntensity,
@@ -215,6 +250,10 @@ public static class AuraSettings
         public bool ClickEffect { get; set; } = true;
 
         public string ClickTone { get; set; } = nameof(global::MacDock.App.Services.ClickTone.Dark);
+
+        public string ClickPalette { get; set; } = nameof(global::MacDock.App.Services.ClickPalette.Rainbow);
+
+        public double ClickSpeed { get; set; } = 1.0;
 
         public string Mode { get; set; } = nameof(AuraColorMode.Palette);
 

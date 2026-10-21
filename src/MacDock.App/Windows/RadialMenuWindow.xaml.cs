@@ -39,6 +39,7 @@ public partial class RadialMenuWindow : Window
     {
         _watchdog.Stop();
         Hide();
+        Root.Children.Clear();
         Dismissed?.Invoke();
     }
 

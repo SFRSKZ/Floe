@@ -78,6 +78,12 @@ public sealed class ActiveIconEffect : ShaderEffect
         BeginAnimation(StrengthProperty, null);
     }
 
+    public void SetVisible(bool visible)
+    {
+        if (visible) _clock.Start();
+        else _clock.Stop();
+    }
+
     private static DependencyProperty Register<T>(string name, T value, int register) =>
         DependencyProperty.Register(name, typeof(T), typeof(ActiveIconEffect), new UIPropertyMetadata(value, PixelShaderConstantCallback(register)));
 }

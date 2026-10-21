@@ -33,10 +33,11 @@ internal static class ClickGlassPreview
             source.Render(drawing);
             source.Freeze();
             using var renderer = new ClickGlassRenderer(source, (int)size);
+            foreach (var palette in new[] { 0, 1, 2 })
             foreach (var tone in new[] { 0, 1 })
             foreach (var progress in new[] { 0.0, 0.1, 0.25, 0.4, 0.6, 0.8, 1.0 })
             {
-                var surface = renderer.Render(progress, tone);
+                var surface = renderer.Render(progress, tone, palette, Colors.Coral, Colors.MediumVioletRed);
                 var visual = new DrawingVisual();
                 using (var dc = visual.RenderOpen())
                 {
@@ -48,7 +49,7 @@ internal static class ClickGlassPreview
                 target.Render(visual);
                 var encoder = new PngBitmapEncoder();
                 encoder.Frames.Add(BitmapFrame.Create(target));
-                using var output = File.Create(Path.Combine(folder, $"{(tone == 0 ? "dark" : "light")}-{progress:0.00}.png"));
+                using var output = File.Create(Path.Combine(folder, $"p{palette}-{(tone == 0 ? "dark" : "light")}-{progress:0.00}.png"));
                 encoder.Save(output);
             }
             File.WriteAllText(Path.Combine(folder, "render-info.txt"),

@@ -29,6 +29,14 @@ public partial class DockWindow
     private Image? _fxImage;
     private AuroraWindow? _aurora;
 
+    private void UpdateEffectVisibility()
+    {
+        var visible = IsVisible && _shown && !_fullscreenHidden;
+        _activeFx?.SetVisible(visible && _fxImage is not null);
+        if (visible && AuraSettings.Effect == AuraEffect.Aurora && _activeIndex >= 0) _aurora?.Begin();
+        else _aurora?.End();
+    }
+
     private void SetAurora(bool on)
     {
         if (on)
@@ -95,6 +103,7 @@ public partial class DockWindow
             image.Effect = _activeFx;
             _fxImage = image;
             _activeFx.Start();
+            UpdateEffectVisibility();
         }
     }
 

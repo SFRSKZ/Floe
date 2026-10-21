@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using MacDock.App.Services;
+using MacDock.Core.Interop;
 
 namespace MacDock.App.Windows;
 
@@ -23,7 +25,6 @@ public partial class SettingsWindow : Window
         Opacity = 0;
         Loaded += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Background, () => Opacity = 1);
 
-        AuraSettings.Load();
         BuildPaletteRows();
         ClickEffectToggle.IsChecked = AuraSettings.ClickEffect;
         ClickDark.IsChecked = AuraSettings.ClickTone == ClickTone.Dark;
@@ -32,6 +33,19 @@ public partial class SettingsWindow : Window
         ClickEffectToggle.Unchecked += (_, _) => AuraSettings.SetClickEffect(false);
         ClickDark.Checked += (_, _) => AuraSettings.SetClickTone(ClickTone.Dark);
         ClickLight.Checked += (_, _) => AuraSettings.SetClickTone(ClickTone.Light);
+        ClickRainbow.IsChecked = AuraSettings.ClickPalette == ClickPalette.Rainbow;
+        ClickClear.IsChecked = AuraSettings.ClickPalette == ClickPalette.Clear;
+        ClickIcon.IsChecked = AuraSettings.ClickPalette == ClickPalette.Icon;
+        ClickRainbow.Checked += (_, _) => AuraSettings.SetClickPalette(ClickPalette.Rainbow);
+        ClickClear.Checked += (_, _) => AuraSettings.SetClickPalette(ClickPalette.Clear);
+        ClickIcon.Checked += (_, _) => AuraSettings.SetClickPalette(ClickPalette.Icon);
+        ClickSpeedSlider.Value = AuraSettings.ClickSpeed;
+        ClickSpeedValue.Text = AuraSettings.ClickSpeed.ToString("0.0") + "x";
+        ClickSpeedSlider.ValueChanged += (_, e) =>
+        {
+            AuraSettings.SetClickSpeed(e.NewValue);
+            ClickSpeedValue.Text = AuraSettings.ClickSpeed.ToString("0.0") + "x";
+        };
 
         EffectGlow.IsChecked = AuraSettings.Effect == AuraEffect.Glow;
         EffectBurst.IsChecked = AuraSettings.Effect == AuraEffect.Burst;
@@ -60,7 +74,6 @@ public partial class SettingsWindow : Window
         AuraSettings.Changed += RefreshRows;
         Closed += (_, _) => AuraSettings.Changed -= RefreshRows;
 
-        BuildDesktopButtonControls();
         BuildGlassControls();
         BuildTabs();
         RefreshRows();
@@ -70,17 +83,34 @@ public partial class SettingsWindow : Window
         {
             if (IsLoaded && e.HeightChanged && e.PreviousSize.Height > 0)
             {
-                Top -= e.NewSize.Height - e.PreviousSize.Height;
+                var work = GetWorkArea(this);
+                Top = Math.Clamp(Top - (e.NewSize.Height - e.PreviousSize.Height),
+                    work.Top, Math.Max(work.Top, work.Bottom - ActualHeight));
+                Left = Math.Clamp(Left, work.Left, Math.Max(work.Left, work.Right - ActualWidth));
             }
         };
     }
 
     private static int _lastTab;
 
+    internal static Rect GetWorkArea(Window window)
+    {
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (!ScreenInput.TryGetMonitorInfo(ScreenInput.GetMonitorForWindow(hwnd), out var monitor))
+        {
+            return SystemParameters.WorkArea;
+        }
+
+        var dpi = VisualTreeHelper.GetDpi(window);
+        var work = monitor.Work;
+        return new Rect(work.Left / dpi.DpiScaleX, work.Top / dpi.DpiScaleY,
+            (work.Right - work.Left) / dpi.DpiScaleX, (work.Bottom - work.Top) / dpi.DpiScaleY);
+    }
+
     private void BuildTabs()
     {
-        var tabs = new[] { TabEffect, TabButton, TabGlass };
-        var pages = new FrameworkElement[] { EffectPage, ButtonPage, GlassPage };
+        var tabs = new[] { TabEffect, TabGlass };
+        var pages = new FrameworkElement[] { EffectPage, GlassPage };
         for (var i = 0; i < tabs.Length; i++)
         {
             var index = i;
@@ -97,66 +127,8 @@ public partial class SettingsWindow : Window
         tabs[_lastTab].IsChecked = true;
     }
 
-    private readonly List<Border> _colorSwatches = new();
-
-    private void BuildDesktopButtonControls()
-    {
-        DesktopButtonSettings.Load();
-
-        StyleRing.IsChecked = DesktopButtonSettings.Style == DesktopButtonStyle.Ring;
-        StyleWindows.IsChecked = DesktopButtonSettings.Style == DesktopButtonStyle.Windows;
-        StyleMonitor.IsChecked = DesktopButtonSettings.Style == DesktopButtonStyle.Monitor;
-        StyleOrb.IsChecked = DesktopButtonSettings.Style == DesktopButtonStyle.Orb;
-
-        StyleRing.Checked += (_, _) => DesktopButtonSettings.SetStyle(DesktopButtonStyle.Ring);
-        StyleWindows.Checked += (_, _) => DesktopButtonSettings.SetStyle(DesktopButtonStyle.Windows);
-        StyleMonitor.Checked += (_, _) => DesktopButtonSettings.SetStyle(DesktopButtonStyle.Monitor);
-        StyleOrb.Checked += (_, _) => DesktopButtonSettings.SetStyle(DesktopButtonStyle.Orb);
-
-        SizeSlider.Value = DesktopButtonSettings.Size;
-        SizeValue.Text = DesktopButtonSettings.Size.ToString("0.00");
-        SizeSlider.ValueChanged += (_, e) =>
-        {
-            DesktopButtonSettings.SetSize(e.NewValue);
-            SizeValue.Text = DesktopButtonSettings.Size.ToString("0.00");
-        };
-
-        BrightSlider.Value = DesktopButtonSettings.Brightness;
-        BrightValue.Text = DesktopButtonSettings.Brightness.ToString("0.0");
-        BrightSlider.ValueChanged += (_, e) =>
-        {
-            DesktopButtonSettings.SetBrightness(e.NewValue);
-            BrightValue.Text = DesktopButtonSettings.Brightness.ToString("0.0");
-        };
-
-        for (var i = 0; i < DesktopButtonSettings.Colors.Count; i++)
-        {
-            var color = DesktopButtonSettings.Colors[i].Color;
-            var swatch = new Border
-            {
-                Width = 26,
-                Height = 26,
-                CornerRadius = new CornerRadius(13),
-                Margin = new Thickness(0, 0, 8, 0),
-                BorderThickness = new Thickness(2),
-                Background = new SolidColorBrush(color),
-                Cursor = Cursors.Hand,
-            };
-
-            var index = i;
-            swatch.MouseLeftButtonUp += (_, _) => DesktopButtonSettings.SetColorIndex(index);
-            _colorSwatches.Add(swatch);
-            ButtonColors.Children.Add(swatch);
-        }
-
-        DesktopButtonSettings.Changed += RefreshSwatches;
-        Closed += (_, _) => DesktopButtonSettings.Changed -= RefreshSwatches;
-        RefreshSwatches();
-    }
-
     private void BuildGlassControls()
     {
-        GlassSettings.Load();
 
         RimPlain.IsChecked = GlassSettings.Rim == RimStyle.Plain;
         RimSilver.IsChecked = GlassSettings.Rim == RimStyle.MetalSilver;
@@ -184,17 +156,6 @@ public partial class SettingsWindow : Window
         VisualizerLookHologram.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Hologram;
         VisualizerLookGlow.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Glow);
         VisualizerLookHologram.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Hologram);
-    }
-
-    private void RefreshSwatches()
-    {
-        for (var i = 0; i < _colorSwatches.Count; i++)
-        {
-            var selected = i == DesktopButtonSettings.ColorIndex;
-            _colorSwatches[i].BorderBrush = new SolidColorBrush(selected
-                ? Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF)
-                : Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF));
-        }
     }
 
     private void BuildPaletteRows()

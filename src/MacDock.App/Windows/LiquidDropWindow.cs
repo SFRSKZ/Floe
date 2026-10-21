@@ -1,3 +1,4 @@
+using MacDock.App.Services;
 using System;
 using System.Collections.Generic;
 using System.Windows;
@@ -43,6 +44,12 @@ internal sealed class LiquidDropWindow : Window
 
     public static double ImpactTime => LiquidDropVisual.ImpactTime;
 
+    protected override void OnClosed(EventArgs e)
+    {
+        CaptureReveal.Forget(_hwnd);
+        base.OnClosed(e);
+    }
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
@@ -50,7 +57,7 @@ internal sealed class LiquidDropWindow : Window
         WindowStyling.MakeClickThrough(_hwnd);
         if (_excludeFromCapture)
         {
-            WindowAffinity.ExcludeFromCapture(_hwnd);
+            CaptureReveal.Exclude(_hwnd);
         }
     }
 

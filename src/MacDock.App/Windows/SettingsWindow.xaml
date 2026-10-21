@@ -150,9 +150,8 @@
             </Grid>
 
             <!-- one page at a time; stacked, the sections made a window taller than the screen -->
-            <UniformGrid Columns="3" Margin="0,0,-8,6">
+            <UniformGrid Columns="2" Margin="0,0,-8,6">
                 <RadioButton x:Name="TabEffect" GroupName="Tabs" Style="{StaticResource ModeToggle}" Content="İkon efekti" />
-                <RadioButton x:Name="TabButton" GroupName="Tabs" Style="{StaticResource ModeToggle}" Content="Masaüstü" />
                 <RadioButton x:Name="TabGlass" GroupName="Tabs" Style="{StaticResource ModeToggle}" Content="Cam" />
             </UniformGrid>
 
@@ -205,41 +204,20 @@
                     <RadioButton x:Name="ClickDark" GroupName="ClickTone" Style="{StaticResource ModeToggle}" Content="Koyu" />
                     <RadioButton x:Name="ClickLight" GroupName="ClickTone" Style="{StaticResource ModeToggle}" Content="Açık" />
                 </WrapPanel>
-            </StackPanel>
-
-            <StackPanel x:Name="ButtonPage">
-                <TextBlock Text="Dock'un sağındaki hayalet düğme" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,10" />
-
-                <TextBlock Text="Stil" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
-                <WrapPanel Margin="0,0,0,4">
-                    <RadioButton x:Name="StyleRing" GroupName="ButtonStyle" Style="{StaticResource ModeToggle}" Content="Halka" />
-                    <RadioButton x:Name="StyleWindows" GroupName="ButtonStyle" Style="{StaticResource ModeToggle}" Content="Pencereler" />
-                    <RadioButton x:Name="StyleMonitor" GroupName="ButtonStyle" Style="{StaticResource ModeToggle}" Content="Monitör" />
-                    <RadioButton x:Name="StyleOrb" GroupName="ButtonStyle" Style="{StaticResource ModeToggle}" Content="Küre" />
+                <WrapPanel>
+                    <RadioButton x:Name="ClickRainbow" GroupName="ClickPalette" Style="{StaticResource ModeToggle}" Content="Gökkuşağı" />
+                    <RadioButton x:Name="ClickClear" GroupName="ClickPalette" Style="{StaticResource ModeToggle}" Content="Renksiz" />
+                    <RadioButton x:Name="ClickIcon" GroupName="ClickPalette" Style="{StaticResource ModeToggle}" Content="İkon renkleri" />
                 </WrapPanel>
-
-                <TextBlock Text="Boyut" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
+                <TextBlock Text="Hız" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,2,0,6" />
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Slider x:Name="SizeSlider" Style="{StaticResource GlassSlider}" Minimum="0.4" Maximum="1.6" SmallChange="0.05" LargeChange="0.1" Value="0.72" />
-                    <TextBlock x:Name="SizeValue" Grid.Column="1" Width="36" TextAlignment="Right" VerticalAlignment="Center" Foreground="#F2FFFFFF" FontSize="12" />
+                    <Slider x:Name="ClickSpeedSlider" Style="{StaticResource GlassSlider}" Minimum="0.5" Maximum="2" SmallChange="0.1" LargeChange="0.25" Value="1" />
+                    <TextBlock x:Name="ClickSpeedValue" Grid.Column="1" Width="36" TextAlignment="Right" VerticalAlignment="Center" Foreground="#F2FFFFFF" FontSize="12" />
                 </Grid>
-
-                <TextBlock Text="Parlaklık" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,10,0,6" />
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Slider x:Name="BrightSlider" Style="{StaticResource GlassSlider}" Minimum="0.3" Maximum="2.2" SmallChange="0.1" LargeChange="0.25" Value="1.0" />
-                    <TextBlock x:Name="BrightValue" Grid.Column="1" Width="36" TextAlignment="Right" VerticalAlignment="Center" Foreground="#F2FFFFFF" FontSize="12" />
-                </Grid>
-
-                <TextBlock Text="Renk" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,10,0,6" />
-                <StackPanel x:Name="ButtonColors" Orientation="Horizontal" Margin="0,0,0,6" />
             </StackPanel>
 
             <StackPanel x:Name="GlassPage">

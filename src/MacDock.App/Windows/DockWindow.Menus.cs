@@ -90,8 +90,9 @@ public partial class DockWindow
 
         var radius = RadialMenuWindow.Radius;
         var hit = RadialMenuWindow.HitRadius + 16;
-        var centerX = Math.Clamp(ToScreenX(slot.Center), hit, SystemParameters.PrimaryScreenWidth - hit);
-        var centerY = Math.Clamp(Top + IconBottom - (IconBox / 2), hit, SystemParameters.PrimaryScreenHeight - hit);
+        var work = SettingsWindow.GetWorkArea(this);
+        var centerX = Math.Clamp(ToScreenX(slot.Center), work.Left + hit, Math.Max(work.Left + hit, work.Right - hit));
+        var centerY = Math.Clamp(Top + IconBottom - (IconBox / 2), work.Top + hit, Math.Max(work.Top + hit, work.Bottom - hit));
         _radial.Left = centerX - radius;
         _radial.Top = centerY - radius;
         _radial.ShowFor(item.Icon, actions);
@@ -170,11 +171,12 @@ public partial class DockWindow
             // only hand focus back when we still own it; if the user clicked another
             // app while the menu was open, that app must keep the foreground
             var foreground = ScreenInput.GetForegroundHandle();
+            using var currentProcess = Process.GetCurrentProcess();
             var ownsActivation = foreground == _hwnd
                 || (foreground != IntPtr.Zero
                     && string.Equals(
                         ScreenInput.GetWindowInfo(foreground).ProcessName,
-                        Process.GetCurrentProcess().ProcessName,
+                        currentProcess.ProcessName,
                         StringComparison.OrdinalIgnoreCase));
 
             if (previousForeground != IntPtr.Zero && ownsActivation)
@@ -226,10 +228,12 @@ public partial class DockWindow
 
         window.Show();
         window.UpdateLayout();
-        window.Left = Math.Max(8, Math.Min(
+        var work = SettingsWindow.GetWorkArea(this);
+        window.Left = Math.Clamp(
             ToScreenX(Canvas.GetLeft(_clock) + (ClockWidth / 2)) - (window.ActualWidth / 2),
-            SystemParameters.PrimaryScreenWidth - window.ActualWidth - 8));
-        window.Top = Math.Max(8, Top + RestTop - window.ActualHeight - 12);
+            work.Left + 8, Math.Max(work.Left + 8, work.Right - window.ActualWidth - 8));
+        window.Top = Math.Clamp(Top + RestTop - window.ActualHeight - 12,
+            work.Top + 8, Math.Max(work.Top + 8, work.Bottom - window.ActualHeight - 8));
         window.Activate();
     }
 

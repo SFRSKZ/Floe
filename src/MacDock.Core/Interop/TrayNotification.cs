@@ -130,7 +130,7 @@ public static class TrayNotification
     private const uint TpmRightButton = 0x0002;
 
     /// <summary>Shows a small native menu; returns the selected index or -1. "-" adds a separator.</summary>
-    public static int ShowMenu(IntPtr owner, int x, int y, IReadOnlyList<string> labels)
+    public static int ShowMenu(IntPtr owner, int x, int y, IReadOnlyList<string> labels, int checkedIndex = -1)
     {
         var menu = CreatePopupMenu();
         if (menu == IntPtr.Zero)
@@ -148,7 +148,7 @@ public static class TrayNotification
                 }
                 else
                 {
-                    AppendMenu(menu, MfString, (UIntPtr)(uint)(i + 1), labels[i]);
+                    AppendMenu(menu, MfString | (i == checkedIndex ? 0x8u : 0), (UIntPtr)(uint)(i + 1), labels[i]);
                 }
             }
 

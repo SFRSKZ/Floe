@@ -1,3 +1,4 @@
+using MacDock.App.Services;
 using System;
 using System.Windows;
 using System.Windows.Interop;
@@ -59,6 +60,13 @@ internal sealed class AuroraWindow : Window
         _clock = new PacedClock(Tick, 1, everyFrameWhileDockAnimates: false);
     }
 
+    protected override void OnClosed(EventArgs e)
+    {
+        CaptureReveal.Forget(_hwnd);
+        _clock.Stop();
+        base.OnClosed(e);
+    }
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
@@ -66,7 +74,7 @@ internal sealed class AuroraWindow : Window
         WindowStyling.MakeClickThrough(_hwnd);
         if (_excludeFromCapture)
         {
-            WindowAffinity.ExcludeFromCapture(_hwnd);
+            CaptureReveal.Exclude(_hwnd);
         }
     }
 

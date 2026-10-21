@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -24,9 +24,16 @@ public partial class DockWindow
 
         var effect = new ClickGlassEffect(IconBox)
         {
-            Field = IconField.For(icon.Source, IconBox),
+            Field = IconField.For(icon.Source, IconBox, solid: true),
             Tone = (double)AuraSettings.ClickTone,
+            Palette = (double)AuraSettings.ClickPalette,
         };
+        if (AuraSettings.ClickPalette == ClickPalette.Icon && AuraSettings.GetColors(item) is { Length: > 0 } colors)
+        {
+            effect.ColorA = colors[0];
+            effect.ColorB = colors[1 % colors.Length];
+        }
+
         var overlay = new Image
         {
             Source = icon.Source, Width = icon.Width, Height = icon.Height,
@@ -36,7 +43,7 @@ public partial class DockWindow
             IsHitTestVisible = false, Effect = effect,
         };
         RenderOptions.SetBitmapScalingMode(overlay, BitmapScalingMode.HighQuality);
-        var animation = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(900));
+        var animation = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(900 / AuraSettings.ClickSpeed));
         animation.Completed += (_, _) => grid.Children.Remove(overlay);
         overlay.Unloaded += (_, _) =>
         {

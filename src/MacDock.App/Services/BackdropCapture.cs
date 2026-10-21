@@ -9,6 +9,14 @@ namespace MacDock.App.Services;
 /// <summary>Captures at quarter resolution, publishing only changed frames to the UI.</summary>
 internal sealed class BackdropCapture : IDisposable
 {
+    private static readonly object FreezeGate = new();
+    private static bool _frozen;
+    public static bool Frozen
+    {
+        get { lock (FreezeGate) return _frozen; }
+        set { lock (FreezeGate) _frozen = value; }
+    }
+
     private const int ActiveIntervalMs = 33;
     private const int IdleIntervalMs = 250;
     private const int IdlePausedIntervalMs = 600;
@@ -70,38 +78,41 @@ internal sealed class BackdropCapture : IDisposable
             {
                 try
                 {
-                    if (_visible && ScreenInput.TryGetWindowRect(_hwnd, out var rect))
+                    lock (FreezeGate)
                     {
-                        var sourceWidth = rect.Right - rect.Left;
-                        var sourceHeight = rect.Bottom - rect.Top;
-                        var width = Math.Max(1, (sourceWidth + 3) / 4);
-                        var height = Math.Max(1, (sourceHeight + 3) / 4);
-                        var pixels = capture.CaptureScaled(rect.Left, rect.Top, sourceWidth, sourceHeight, width, height, out var stride, out var changed);
-                        unchangedFrames = changed ? 0 : Math.Min(unchangedFrames + 1, 4);
-                        if (pixels is not null && changed)
+                        if (!_frozen && _visible && ScreenInput.TryGetWindowRect(_hwnd, out var rect))
                         {
-                            lock (_sync)
+                            var sourceWidth = rect.Right - rect.Left;
+                            var sourceHeight = rect.Bottom - rect.Top;
+                            var width = Math.Max(1, (sourceWidth + 3) / 4);
+                            var height = Math.Max(1, (sourceHeight + 3) / 4);
+                            var pixels = capture.CaptureScaled(rect.Left, rect.Top, sourceWidth, sourceHeight, width, height, out var stride, out var changed);
+                            unchangedFrames = changed ? 0 : Math.Min(unchangedFrames + 1, 4);
+                            if (pixels is not null && changed)
                             {
-                                if (_disposed)
+                                lock (_sync)
                                 {
-                                    break;
-                                }
+                                    if (_disposed)
+                                    {
+                                        break;
+                                    }
 
-                                if (_pixels is null || _pixels.Length != pixels.Length)
-                                {
-                                    _pixels = new byte[pixels.Length];
-                                }
+                                    if (_pixels is null || _pixels.Length != pixels.Length)
+                                    {
+                                        _pixels = new byte[pixels.Length];
+                                    }
 
-                                // Separate storage keeps the capture thread from overwriting a frame
-                                // while WritePixels reads it. At most one UI callback is queued.
-                                pixels.CopyTo(_pixels, 0);
-                                _width = width;
-                                _height = height;
-                                _stride = stride;
-                                if (!_pending && !_window.Dispatcher.HasShutdownStarted)
-                                {
-                                    _pending = true;
-                                    _window.Dispatcher.BeginInvoke(DispatcherPriority.Render, _presentLatest);
+                                    // Separate storage keeps the capture thread from overwriting a frame
+                                    // while WritePixels reads it. At most one UI callback is queued.
+                                    pixels.CopyTo(_pixels, 0);
+                                    _width = width;
+                                    _height = height;
+                                    _stride = stride;
+                                    if (!_pending && !_window.Dispatcher.HasShutdownStarted)
+                                    {
+                                        _pending = true;
+                                        _window.Dispatcher.BeginInvoke(DispatcherPriority.Render, _presentLatest);
+                                    }
                                 }
                             }
                         }

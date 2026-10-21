@@ -27,6 +27,16 @@ public sealed class ClickGlassEffect : ShaderEffect
     public static readonly DependencyProperty BoxProperty = Register(nameof(Box), new Point(1, 0), 2);
     public Point Box { get => (Point)GetValue(BoxProperty); set => SetValue(BoxProperty, value); }
 
+    /// <summary>Rim colours: 0 rainbow, 1 colourless, 2 <see cref="ColorA"/>/<see cref="ColorB"/>.</summary>
+    public static readonly DependencyProperty PaletteProperty = Register(nameof(Palette), 0.0, 3);
+    public double Palette { get => (double)GetValue(PaletteProperty); set => SetValue(PaletteProperty, value); }
+
+    public static readonly DependencyProperty ColorAProperty = Register(nameof(ColorA), Colors.White, 4);
+    public Color ColorA { get => (Color)GetValue(ColorAProperty); set => SetValue(ColorAProperty, value); }
+
+    public static readonly DependencyProperty ColorBProperty = Register(nameof(ColorB), Colors.White, 5);
+    public Color ColorB { get => (Color)GetValue(ColorBProperty); set => SetValue(ColorBProperty, value); }
+
     public ClickGlassEffect(double iconSize)
     {
         PixelShader = Shader.Value;
@@ -34,7 +44,7 @@ public sealed class ClickGlassEffect : ShaderEffect
         Box = new Point(iconSize + (2 * Pad), 0);
         UpdateShaderValue(InputProperty);
         UpdateShaderValue(FieldProperty);
-        foreach (var property in new[] { ProgressProperty, ToneProperty, BoxProperty })
+        foreach (var property in new[] { ProgressProperty, ToneProperty, BoxProperty, PaletteProperty, ColorAProperty, ColorBProperty })
         {
             UpdateShaderValue(property);
         }

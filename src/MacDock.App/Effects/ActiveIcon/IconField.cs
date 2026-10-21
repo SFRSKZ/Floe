@@ -13,21 +13,26 @@ public static class IconField
 {
     private const int PixelsPerDip = 2;
     private const double Range = 32;
-    private static readonly ConditionalWeakTable<ImageSource, ImageBrush> Cache = new();
+    private static readonly ConditionalWeakTable<ImageSource, Dictionary<(double Size, bool Solid), ImageBrush>> Cache = new();
 
-    public static ImageBrush For(ImageSource icon, double iconSize)
+    /// <param name="solid">
+    /// Field of the icon's outer outline instead of every stroke: gaps closed and holes filled, so
+    /// line-art icons without a plate (ChatGPT, Codex) read as one shape.
+    /// </param>
+    public static ImageBrush For(ImageSource icon, double iconSize, bool solid = false)
     {
-        if (Cache.TryGetValue(icon, out var cached))
+        var sizes = Cache.GetOrCreateValue(icon);
+        if (sizes.TryGetValue((iconSize, solid), out var cached))
         {
             return cached;
         }
 
-        var brush = Build(icon, iconSize);
-        Cache.AddOrUpdate(icon, brush);
+        var brush = Build(icon, iconSize, solid);
+        sizes[(iconSize, solid)] = brush;
         return brush;
     }
 
-    private static ImageBrush Build(ImageSource icon, double iconSize)
+    private static ImageBrush Build(ImageSource icon, double iconSize, bool solid)
     {
         var total = iconSize + (2 * ActiveIconEffect.Pad);
         int n = (int)Math.Round(total * PixelsPerDip);
@@ -59,6 +64,11 @@ public static class IconField
             toOutside[i] = inside ? far : 0;
         }
 
+        if (solid)
+        {
+            Solidify(toInside, toOutside, n);
+        }
+
         Transform(toInside, n);
         Transform(toOutside, n);
 
@@ -77,6 +87,51 @@ public static class IconField
         var brush = new ImageBrush(bitmap) { Stretch = Stretch.Fill };
         brush.Freeze();
         return brush;
+    }
+
+    /// <summary>Closes gaps narrower than ~12 DIP and fills enclosed holes, rewriting both seed grids.</summary>
+    private static void Solidify(double[] toInside, double[] toOutside, int n)
+    {
+        const double far = 1e20;
+        var radius = 6.0 * PixelsPerDip;
+        var r2 = radius * radius;
+
+        // closing: dilate by the radius, then erode by it
+        var grow = (double[])toInside.Clone();
+        Transform(grow, n);
+        var shrink = new double[n * n];
+        for (int i = 0; i < n * n; i++) shrink[i] = grow[i] <= r2 ? far : 0;
+        Transform(shrink, n);
+        var inside = new bool[n * n];
+        for (int i = 0; i < n * n; i++) inside[i] = shrink[i] > r2 || toInside[i] == 0;
+
+        // anything the outside can't reach from the border is a hole
+        var reached = new bool[n * n];
+        var stack = new Stack<int>();
+        for (int i = 0; i < n; i++)
+        {
+            foreach (var p in new[] { i, ((n - 1) * n) + i, i * n, (i * n) + n - 1 })
+            {
+                if (!inside[p] && !reached[p]) { reached[p] = true; stack.Push(p); }
+            }
+        }
+
+        while (stack.Count > 0)
+        {
+            var p = stack.Pop();
+            int x = p % n, y = p / n;
+            foreach (var q in new[] { x > 0 ? p - 1 : -1, x < n - 1 ? p + 1 : -1, y > 0 ? p - n : -1, y < n - 1 ? p + n : -1 })
+            {
+                if (q >= 0 && !inside[q] && !reached[q]) { reached[q] = true; stack.Push(q); }
+            }
+        }
+
+        for (int i = 0; i < n * n; i++)
+        {
+            var solid = !reached[i];
+            toInside[i] = solid ? 0 : far;
+            toOutside[i] = solid ? far : 0;
+        }
     }
 
     /// <summary>Exact squared Euclidean distance transform (Felzenszwalb and Huttenlocher), in place.</summary>

@@ -3,6 +3,9 @@ sampler2D Field : register(s1);
 float Progress : register(c0);
 float Tone : register(c1);
 float2 Box : register(c2);
+float Palette : register(c3);
+float4 ColorA : register(c4);
+float4 ColorB : register(c5);
 
 float Dist(float2 uv) { return (tex2D(Field, uv).r - 0.5) * 32.0; }
 
@@ -38,7 +41,9 @@ float4 main(float2 uv : TEXCOORD0) : COLOR0
     float2 zoom = -p * 0.12 * inside * lensDepth;
     float bend = (exp(-abs(edge) / 3.0) * 7.5 + inside * 1.2) * lensDepth;
     float2 off = (g * bend + zoom) * px;
-    float dispersion = lerp(0.45, 0.8, Tone);
+    // 0 rainbow, 1 colourless, 2 the icon's own colours
+    float mono = Palette > 0.5 && Palette < 1.5 ? 1.0 : 0.0;
+    float dispersion = lerp(0.45, 0.8, Tone) * (1.0 - mono * 0.75);
     float4 r = tex2D(Input, uv + off * (1.0 + dispersion));
     float4 m = tex2D(Input, uv + off);
     float4 b = tex2D(Input, uv + off * (1.0 - dispersion));
@@ -51,6 +56,8 @@ float4 main(float2 uv : TEXCOORD0) : COLOR0
     float arc = pow(saturate(0.5 + 0.5 * cos(atan2(p.y, p.x) + 2.3 - t * 3.0)), 10.0);
     float3 fringe = 0.5 + 0.5 * cos(angle * 2.0 + edge * 0.9 + float3(0.0, 2.1, 4.2));
     fringe = saturate(fringe * 1.4 - 0.1);
+    float3 iconTint = lerp(ColorA.rgb, ColorB.rgb, 0.5 + 0.5 * cos(angle * 2.0 + edge * 0.9));
+    fringe = Palette > 1.5 ? saturate(iconTint * 1.25 + 0.1) : lerp(fringe, float3(0.92, 0.95, 1.0), mono);
 
     float frost = Tone * 0.55 * inside * lensDepth;
     lens = lerp(lens, float3(0.96, 0.97, 1.0), frost);
