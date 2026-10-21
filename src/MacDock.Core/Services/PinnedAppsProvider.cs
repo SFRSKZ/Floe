@@ -23,6 +23,12 @@ public static class PinnedAppsProvider
             var stored = ReadConfig(configPath, out var locked);
             if (stored is not null)
             {
+                // store apps that updated themselves moved to a new folder: follow them and remember it
+                if (HealStorePaths(stored) && !locked)
+                {
+                    Save(configPath, stored);
+                }
+
                 return stored;
             }
 
@@ -61,6 +67,23 @@ public static class PinnedAppsProvider
         {
             return false;
         }
+    }
+
+    private static bool HealStorePaths(List<DockApp> apps)
+    {
+        var changed = false;
+        foreach (var app in apps)
+        {
+            var target = StorePackages.Heal(app.Target);
+            var icon = app.IconPath is null ? null : StorePackages.Heal(app.IconPath);
+            var folder = app.WorkingDirectory is null ? null : StorePackages.Heal(app.WorkingDirectory);
+            changed |= target != app.Target || icon != app.IconPath || folder != app.WorkingDirectory;
+            app.Target = target;
+            app.IconPath = icon;
+            app.WorkingDirectory = folder;
+        }
+
+        return changed;
     }
 
     private static List<DockApp>? ReadConfig(string configPath, out bool locked)

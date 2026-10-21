@@ -3,6 +3,7 @@ using System.IO;
 using System.Xml.Linq;
 using MacDock.Core.Interop;
 using MacDock.Core.Models;
+using MacDock.Core.Services;
 
 namespace MacDock.App.Services;
 
@@ -135,6 +136,7 @@ public static class AppLauncher
     /// </summary>
     private static string? StoreAppTarget(string exePath)
     {
+        exePath = StorePackages.Heal(exePath);
         var marker = exePath.IndexOf(@"\WindowsApps\", StringComparison.OrdinalIgnoreCase);
         if (marker < 0)
         {
@@ -162,7 +164,7 @@ public static class AppLauncher
         try
         {
             // store apps update themselves into a new versioned folder and drop the pinned one
-            if (!File.Exists(Path.Combine(packageDir, "AppxManifest.xml")) && CurrentPackageDir(parts[0], parts[^1]) is { } current)
+            if (!File.Exists(Path.Combine(packageDir, "AppxManifest.xml")) && StorePackages.CurrentDir(parts[0], parts[^1]) is { } current)
             {
                 packageDir = current;
             }
@@ -185,34 +187,4 @@ public static class AppLauncher
         return $@"shell:AppsFolder\{family}!{appId}";
     }
 
-    /// <summary>Install folder of the currently registered version of a package, from the per-user package repository.</summary>
-    private static string? CurrentPackageDir(string name, string publisherId)
-    {
-        using var packages = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-            @"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages");
-        if (packages is null)
-        {
-            return null;
-        }
-
-        foreach (var fullName in packages.GetSubKeyNames())
-        {
-            if (!fullName.StartsWith(name + "_", StringComparison.OrdinalIgnoreCase)
-                || !fullName.EndsWith("_" + publisherId, StringComparison.OrdinalIgnoreCase)
-                || fullName.Split('_') is not { Length: 5 } fields
-                || fields[3].Length > 0)
-            {
-                // resource packs (a resource id such as split.scale-150) carry no applications
-                continue;
-            }
-
-            using var key = packages.OpenSubKey(fullName);
-            if (key?.GetValue("PackageRootFolder") is string root && File.Exists(Path.Combine(root, "AppxManifest.xml")))
-            {
-                return root;
-            }
-        }
-
-        return null;
-    }
 }
