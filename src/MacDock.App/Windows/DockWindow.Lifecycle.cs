@@ -161,7 +161,6 @@ public partial class DockWindow
             Hide();
             _weatherWidget?.Hide();
             _mediaWidget?.Hide();
-            _desktopButton?.Hide();
         }
         else
         {
@@ -198,7 +197,6 @@ public partial class DockWindow
         StopAnimation();
         StopWidgetRendering();
         AuraSettings.Changed -= OnAuraSettingsChanged;
-        DesktopButtonSettings.Changed -= PositionDesktopButton;
         _settings?.Close();
         for (var k = 0; k < _auraEffects.Length; k++)
         {
@@ -216,7 +214,6 @@ public partial class DockWindow
 
         DesktopController.UnregisterHotKey(_hwnd, DesktopController.HotkeyIdVeil);
         _veil?.HideVeil();
-        _desktopButton?.Close();
         _foregroundHook?.Dispose();
         _fullscreenHook?.Dispose();
         _windowHook?.Dispose();

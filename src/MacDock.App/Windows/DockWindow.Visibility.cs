@@ -59,7 +59,6 @@ public partial class DockWindow
         }
 
         var inside = cursorX >= left - 12 && cursorX <= right + 12 && cursorY >= rect.Top - 12 && cursorY <= rect.Bottom + 12;
-        inside |= CursorOverDesktopButton(cursorX, cursorY);
         if (inside)
         {
             _outsideTicks = 0;
@@ -83,7 +82,6 @@ public partial class DockWindow
         _shown = true;
         _outsideTicks = 0;
         AnimateTop(ShownTop);
-        PositionDesktopButton();
     }
 
     private void HideDock()
@@ -95,7 +93,6 @@ public partial class DockWindow
 
         _shown = false;
         AnimateTop(HiddenTop);
-        PositionDesktopButton();
     }
 
     private void AnimateTop(double target)
@@ -139,28 +136,9 @@ public partial class DockWindow
         var left = rect.Left + ((centerDip - halfDip) * pxPerDip);
         var right = rect.Left + ((centerDip + halfDip) * pxPerDip);
 
-        // include the desktop button (separate window) to the right
-        right += 100 * pxPerDip;
 
         var (x, y) = ScreenInput.GetCursorPosition();
         return x >= left - 6 && x <= right + 6 && y >= rect.Top - 10 && y <= rect.Bottom + 6;
-    }
-
-    private bool CursorOverDesktopButton(int cursorX, int cursorY)
-    {
-        if (_desktopButton is not { IsVisible: true } button)
-        {
-            return false;
-        }
-
-        var buttonHwnd = new WindowInteropHelper(button).Handle;
-        if (buttonHwnd == IntPtr.Zero || !ScreenInput.TryGetWindowRect(buttonHwnd, out var rect))
-        {
-            return false;
-        }
-
-        return cursorX >= rect.Left - 12 && cursorX <= rect.Right + 12
-            && cursorY >= rect.Top - 12 && cursorY <= rect.Bottom + 12;
     }
 
     private void Reposition()
@@ -179,7 +157,6 @@ public partial class DockWindow
 
         EnsureAppBar();
         PositionWidgets();
-        PositionDesktopButton();
     }
 
     private void UpdateMonitor()
@@ -241,56 +218,6 @@ public partial class DockWindow
     }
 
 
-    private void PositionDesktopButton()
-    {
-        _desktopButton ??= CreateDesktopButton();
-
-        // use the rest capsule width so it does not have to follow hover magnification
-        var right = ToScreenX(_restCapsuleLeft + _restCapsuleWidth) + 16;
-        // the resting top, not Top: Top is mid-animation while the dock shows, hides or resizes
-        var centerY = ShownTop + RestTop + (RestBarHeight / 2);
-        var top = centerY - (_desktopButton.Height / 2);
-
-        if (double.IsNaN(_desktopButtonX)
-            || double.IsNaN(_desktopButtonY)
-            || Math.Abs(_desktopButtonX - right) > 0.5
-            || Math.Abs(_desktopButtonY - top) > 0.5)
-        {
-            _desktopButton.Left = right;
-            _desktopButton.Top = top;
-            _desktopButtonX = right;
-            _desktopButtonY = top;
-        }
-
-        if (_shown && !_fullscreenHidden && IsVisible)
-        {
-            if (!_desktopButton.IsVisible)
-            {
-                _desktopButton.Show();
-            }
-        }
-        else if (_desktopButton.IsVisible)
-        {
-            _desktopButton.Hide();
-        }
-    }
-
-    private DesktopButtonWindow CreateDesktopButton()
-    {
-        var button = new DesktopButtonWindow();
-        button.Clicked += DesktopController.ShowDesktop;
-
-        // a new style or size changes the window box; keep it centred on the dock
-        button.SizeChanged += (_, _) =>
-        {
-            _desktopButtonY = double.NaN;
-            PositionDesktopButton();
-        };
-        button.Show();
-        button.Hide();
-        return button;
-    }
-
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
@@ -325,7 +252,6 @@ public partial class DockWindow
 
         _fullscreenHidden = fullscreen;
 
-        PositionDesktopButton();
 
         if (fullscreen)
         {

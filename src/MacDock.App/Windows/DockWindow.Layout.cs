@@ -46,10 +46,10 @@ public partial class DockWindow
         var extra = HasSeparator ? SeparatorExtra : 0;
 
         var restContent = count == 0 ? 0 : (count * IconBox) + ((count - 1) * Spacing) + extra;
-        _capsuleWidth = PadX + restContent + ClockGap + ClockWidth + ClockPad;
+        _capsuleWidth = LeadX + restContent + ClockGap + ClockWidth + ClockPad;
 
         var maxContent = count == 0 ? 0 : (count * IconBox * HoverMaxScale) + ((count - 1) * Spacing) + extra;
-        _windowWidth = PadX + maxContent + ClockGap + ClockWidth + ClockPad + (2 * EdgeMargin);
+        _windowWidth = LeadX + maxContent + ClockGap + ClockWidth + ClockPad + (2 * EdgeMargin);
         _restCapsuleLeft = (_windowWidth - _capsuleWidth) / 2;
         _restCapsuleWidth = _capsuleWidth;
         _capsuleLeft = _restCapsuleLeft;
@@ -63,7 +63,7 @@ public partial class DockWindow
         {
             var item = Items[i];
             var localExtra = HasSeparator && i >= _separatorIndex ? SeparatorExtra : 0;
-            var centerLocal = PadX + (i * (IconBox + Spacing)) + localExtra + (IconBox / 2);
+            var centerLocal = LeadX + (i * (IconBox + Spacing)) + localExtra + (IconBox / 2);
 
             var image = new Image
             {
@@ -130,7 +130,6 @@ public partial class DockWindow
         ApplyLayout(scales);
         UpdateShape();
         UpdateAura();
-        PositionDesktopButton();
     }
 
     private static ControlTemplate CreateButtonTemplate()
@@ -189,7 +188,7 @@ public partial class DockWindow
             total += IconBox * scales[i];
         }
 
-        var startX = _capsuleLeft + PadX;
+        var startX = _capsuleLeft + LeadX;
         var x = startX;
         var separatorX = double.NaN;
         for (var i = 0; i < count; i++)
@@ -225,6 +224,7 @@ public partial class DockWindow
             _separator.Visibility = Visibility.Collapsed;
         }
 
+        PositionStartButton();
         var clockLeft = startX + total + ClockGap;
         Canvas.SetLeft(_clockDivider, clockLeft - (ClockGap / 2));
         Canvas.SetTop(_clockDivider, RestTop + ((RestBarHeight - _clockDivider.Height) / 2));
@@ -258,7 +258,7 @@ public partial class DockWindow
             total += IconBox * scales[i];
         }
 
-        _capsuleWidth = PadX + total + ClockGap + ClockWidth + ClockPad;
+        _capsuleWidth = LeadX + total + ClockGap + ClockWidth + ClockPad;
         _capsuleLeft = (_windowWidth - _capsuleWidth) / 2;
     }
 

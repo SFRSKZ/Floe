@@ -31,7 +31,7 @@ public sealed class HologramVisualizer : FrameworkElement
     private const double FadeInSeconds = 0.22;
 
     // Geometry budget.
-    private const int MaxFilaments = 260;
+    private const int MaxFilaments = 640;
     private const double FilamentSpacing = 3.0;
     private const int HeightBuckets = 12;
     private const int ColorFamilies = 3;

@@ -146,7 +146,6 @@ public partial class DockWindow : Window
     private bool _settingsOpen;
     private SettingsWindow? _settings;
     private VeilWindow? _veil;
-    private DesktopButtonWindow? _desktopButton;
     private readonly DispatcherTimer _tooltipTimer = new() { Interval = TimeSpan.FromMilliseconds(420) };
 
     private readonly Path _glass = new() { IsHitTestVisible = false };
@@ -231,8 +230,6 @@ public partial class DockWindow : Window
     private double _shapeScale = double.NaN;
     private int _shapeCount = -1;
     private RadialMenuWindow? _radial;
-    private double _desktopButtonX = double.NaN;
-    private double _desktopButtonY = double.NaN;
     private bool _widgetsHiddenForFullscreen;
 
     public bool AutoHide { get; set; }
@@ -303,6 +300,7 @@ public partial class DockWindow : Window
 
         _clockLayer.Children.Add(_clock);
         _clockLayer.Children.Add(_clockDivider);
+        InitializeStartButton();
         Root.Children.Add(_clockLayer);
 
         UpdateClock();
@@ -503,9 +501,7 @@ public partial class DockWindow : Window
         Closed += (_, _) => DisposeGlass();
         AuraSettings.Changed += OnAuraSettingsChanged;
         DesktopButtonSettings.Load();
-        DesktopButtonSettings.Changed += PositionDesktopButton;
 
-        LocationChanged += (_, _) => PositionDesktopButton();
         _hideTimer.Tick += HideTimer_Tick;
         _runningTimer.Tick += (_, _) => RefreshRunning();
         _tooltipTimer.Tick += (_, _) => ShowTooltip();
