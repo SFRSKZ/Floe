@@ -54,7 +54,6 @@ public partial class App : Application
         if (Effects.MetalRim.MetalRimPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.VisualizerPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.HologramPreview.TryRender(e.Args)) { Shutdown(); return; }
-        if (Effects.Visualizer.MistPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.DozeDissolvePreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.HologramIntroPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Services.DotMatrixIconsPreview.TryRender(e.Args)) { Shutdown(); return; }

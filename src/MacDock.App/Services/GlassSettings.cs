@@ -16,7 +16,6 @@ public enum VisualizerStyle
 {
     Glow,
     Hologram,
-    Mist,
 }
 
 public enum BulgeStyle

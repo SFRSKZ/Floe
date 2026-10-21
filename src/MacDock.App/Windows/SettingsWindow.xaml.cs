@@ -154,10 +154,8 @@ public partial class SettingsWindow : Window
 
         VisualizerLookGlow.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Glow;
         VisualizerLookHologram.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Hologram;
-        VisualizerLookMist.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Mist;
         VisualizerLookGlow.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Glow);
         VisualizerLookHologram.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Hologram);
-        VisualizerLookMist.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Mist);
 
         IntroDrop.IsChecked = GlassSettings.Intro == NowPlayingIntro.Drop;
         IntroHologram.IsChecked = GlassSettings.Intro == NowPlayingIntro.Hologram;

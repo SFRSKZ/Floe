@@ -80,28 +80,10 @@ public partial class DockWindow
         // the strip covers the space the dock reserves at the bottom of the monitor
         var scale = DockScale;
         var area = _monitorInfo.Monitor;
-        var bar = RestBarHeight + BottomMargin;
-        // the mist drapes a little over the dock's top edge, so its strip reaches higher
-        var height = bar + (GlassSettings.VisualizerLook == VisualizerStyle.Mist ? MistHeadroom : 0);
-        _visualizerWindow.Place(new Rect(area.Left / scale, (area.Bottom / scale) - height, (area.Right - area.Left) / scale, height), _hwnd, bar);
-        _visualizerWindow.SetDockBounds(DockOnScreen());
+        var height = RestBarHeight + BottomMargin;
+        _visualizerWindow.Place(new Rect(area.Left / scale, (area.Bottom / scale) - height, (area.Right - area.Left) / scale, height), _hwnd);
         _visualizerWindow.SetRunning(_visualizerRunning);
         SinkBelowVisualizer();
-    }
-
-    private const double MistHeadroom = 40;
-
-    /// <summary>The resting dock capsule in screen DIP.</summary>
-    private Rect DockOnScreen()
-    {
-        if (PresentationSource.FromVisual(_clockLayer) is null)
-        {
-            return Rect.Empty;
-        }
-
-        var topLeft = _clockLayer.PointToScreen(new Point(_restCapsuleLeft, RestTop));
-        var bottomRight = _clockLayer.PointToScreen(new Point(_restCapsuleLeft + _restCapsuleWidth, RestTop + RestBarHeight));
-        return new Rect(new Point(topLeft.X / DpiScale, topLeft.Y / DpiScale), new Point(bottomRight.X / DpiScale, bottomRight.Y / DpiScale));
     }
 
     /// <summary>Icons rest a little faded while the pointer is away, so the glass reads through.</summary>

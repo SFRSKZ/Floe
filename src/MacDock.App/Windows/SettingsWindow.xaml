@@ -245,7 +245,6 @@
                 <WrapPanel>
                     <RadioButton x:Name="VisualizerLookGlow" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Işıltı" />
                     <RadioButton x:Name="VisualizerLookHologram" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Hologram" />
-                    <RadioButton x:Name="VisualizerLookMist" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Sis" />
                 </WrapPanel>
 
                 <TextBlock Text="Şarkı girişi" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
