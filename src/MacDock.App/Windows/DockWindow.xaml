@@ -88,8 +88,10 @@
         </Style>
     </Window.Resources>
 
-    <Grid x:Name="Root" Background="Transparent">
-        <Canvas x:Name="ShapeLayer" IsHitTestVisible="False" />
-        <Canvas x:Name="IconLayer" />
+    <Grid x:Name="Stage">
+        <Grid x:Name="Root" Background="Transparent">
+            <Canvas x:Name="ShapeLayer" IsHitTestVisible="False" />
+            <Canvas x:Name="IconLayer" />
+        </Grid>
     </Grid>
 </Window>

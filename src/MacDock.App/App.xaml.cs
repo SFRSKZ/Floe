@@ -56,6 +56,7 @@ public partial class App : Application
         if (Effects.Visualizer.HologramPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.DozeDissolvePreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.HologramIntroPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Derezz.DerezzPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Services.DotMatrixIconsPreview.TryRender(e.Args)) { Shutdown(); return; }
 
         if (TryRenderSettings(e.Args))
