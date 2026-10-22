@@ -30,6 +30,8 @@ public partial class DockWindow
     private double _dozeTime;
     private int _dozeDirection;
     private bool _dozeRezz;
+    // A derezz the settings asked for: it rezzes straight back instead of waiting for the cursor.
+    private bool _dozePreview;
 
     private void InitializeDoze()
     {
@@ -38,8 +40,10 @@ public partial class DockWindow
         _dozeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = AwakePoll };
         _dozeTimer.Tick += (_, _) => DozeTick();
         _dozeTimer.Start();
+        AuraSettings.DerezzPreviewRequested += PreviewDoze;
         Closed += (_, _) =>
         {
+            AuraSettings.DerezzPreviewRequested -= PreviewDoze;
             _dozeTimer.Stop();
             StopDerezzLoop();
         };
@@ -72,6 +76,13 @@ public partial class DockWindow
         }
     }
 
+    private void PreviewDoze()
+    {
+        if (_dozing || _dozePreview || _dozeHidden || _dozeField is not null || !IsVisible || !_shown) return;
+        _dozePreview = true;
+        Derezz();
+    }
+
     protected override void OnPreviewMouseMove(MouseEventArgs e)
     {
         base.OnPreviewMouseMove(e);
@@ -102,7 +113,7 @@ public partial class DockWindow
     {
         CaptureReveal.Reveal(TimeSpan.FromMilliseconds(400));
         await Task.Delay(RevealSettle);
-        if (!_dozing) return;
+        if (!_dozing && !_dozePreview) return;
 
         var rect = CapsuleRect();
         var topLeft = Root.PointToScreen(rect.TopLeft);
@@ -112,7 +123,8 @@ public partial class DockWindow
         _dozeSnapshot = ScreenGrab.Capture(area, CornerRadius * area.Width / Math.Max(1, rect.Width));
         if (_dozeSnapshot is null)
         {
-            HideDozedDock();
+            if (_dozePreview) _dozePreview = false;
+            else HideDozedDock();
             return;
         }
 
@@ -173,8 +185,20 @@ public partial class DockWindow
         if (_dozeDirection > 0 && _dozeTime >= field.Duration)
         {
             _dozeField = null;
-            if (rezz) Root.OpacityMask = null;
-            else HideDozedDock();
+            if (rezz)
+            {
+                Root.OpacityMask = null;
+                _dozePreview = false;
+                return false;
+            }
+
+            HideDozedDock();
+            if (_dozePreview)
+            {
+                Rezz();
+                return _dozeField is not null;
+            }
+
             return false;
         }
 

@@ -54,6 +54,11 @@ public static class AuraSettings
 {
     public static event Action? Changed;
 
+    /// <summary>Asks the dock to play its sleep derezz once, so a new speed can be seen.</summary>
+    public static event Action? DerezzPreviewRequested;
+
+    public static void PreviewDerezz() => DerezzPreviewRequested?.Invoke();
+
     public static IReadOnlyList<AuraPalette> Palettes { get; } = new[]
     {
         new AuraPalette("Aurora", Rgb(0x5B, 0xC8, 0xFF), Rgb(0xA8, 0x55, 0xF7), Rgb(0x34, 0xE0, 0x7A)),

@@ -166,10 +166,20 @@ public partial class SettingsWindow : Window
         DerezzSpeedSlider.IsEnabled = AuraSettings.Derezz;
         DerezzSpeedSlider.Value = AuraSettings.DerezzSpeed;
         DerezzSpeedValue.Text = AuraSettings.DerezzSpeed.ToString("0.0") + "x";
+        // Once the slider settles, the dock plays the effect at the new speed.
+        var derezzPreview = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(450) };
+        derezzPreview.Tick += (_, _) =>
+        {
+            derezzPreview.Stop();
+            AuraSettings.PreviewDerezz();
+        };
+        Closed += (_, _) => derezzPreview.Stop();
         DerezzSpeedSlider.ValueChanged += (_, e) =>
         {
             AuraSettings.SetDerezzSpeed(e.NewValue);
             DerezzSpeedValue.Text = AuraSettings.DerezzSpeed.ToString("0.0") + "x";
+            derezzPreview.Stop();
+            derezzPreview.Start();
         };
 
         VisualizerLookGlow.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Glow;
