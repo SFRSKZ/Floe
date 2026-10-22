@@ -10,13 +10,17 @@ namespace Floe.App.Windows;
 /// </summary>
 public partial class DockWindow
 {
-    private const double FrameTime = 1 / 61.0;
+    private const double TargetFrame = 1 / 60.0;
 
     private readonly DerezzLayer _derezzLayer = new();
     private readonly Stopwatch _derezzClock = new();
     private readonly List<(DerezzField, double)> _derezzRuns = new();
     private double _derezzLast;
     private bool _derezzRendering;
+    // Monitor frames, from Rendering's timestamps: the loop draws on every n-th one.
+    private double _derezzStamp;
+    private double _derezzTickTime = TargetFrame;
+    private int _derezzTicks;
 
     private void InitializeDerezz()
     {
@@ -29,8 +33,12 @@ public partial class DockWindow
     {
         if (_derezzRendering) return;
         _derezzRendering = true;
+        // The visualizer shares the render thread; it steps down to its slow pace while the dock animates.
+        Effects.Visualizer.VisualizerPacing.DockAnimating = true;
         _derezzClock.Restart();
-        _derezzLast = 0;
+        _derezzLast = -1;
+        _derezzStamp = -1;
+        _derezzTicks = 0;
         CompositionTarget.Rendering += RenderDerezz;
     }
 
@@ -38,6 +46,7 @@ public partial class DockWindow
     {
         if (_derezzRendering) CompositionTarget.Rendering -= RenderDerezz;
         _derezzRendering = false;
+        Effects.Visualizer.VisualizerPacing.DockAnimating = _renderingHooked;
         _derezzClock.Stop();
         _derezzLayer.Clear();
     }
@@ -45,11 +54,22 @@ public partial class DockWindow
     private void RenderDerezz(object? sender, EventArgs e)
     {
         double now = _derezzClock.Elapsed.TotalSeconds;
-        // Rendering fires at the monitor's rate, 180 Hz on a fast one; the cubes need no more than 60 frames a second,
-        // and a frame that changes nothing costs the layered window nothing.
-        if (_derezzLast > 0 && now - _derezzLast < FrameTime) return;
-        double dt = Math.Min(.05, now - _derezzLast);
-        _derezzLast = now;
+        // Rendering fires once or more per monitor frame, 180 a second on a fast monitor. The cubes draw on every n-th
+        // frame, n picked to land near 60 fps: an even cadence, where a time threshold would judder between 3 and 4
+        // frames. A frame that changes nothing costs the layered window nothing.
+        double stamp = e is RenderingEventArgs args ? args.RenderingTime.TotalSeconds : now;
+        if (stamp <= _derezzStamp) return;
+        if (_derezzStamp >= 0 && stamp - _derezzStamp < .05)
+        {
+            _derezzTickTime += (stamp - _derezzStamp - _derezzTickTime) * .1;
+        }
+
+        _derezzStamp = stamp;
+        int every = Math.Max(1, (int)Math.Round(TargetFrame / _derezzTickTime));
+        if (_derezzLast >= 0 && ++_derezzTicks < every) return;
+        _derezzTicks = 0;
+        double dt = _derezzLast < 0 ? 0 : Math.Min(.05, stamp - _derezzLast);
+        _derezzLast = stamp;
         _derezzRuns.Clear();
         if (!AdvanceDoze(dt, _derezzRuns))
         {

@@ -42,7 +42,7 @@ public partial class DockWindow
         {
             CompositionTarget.Rendering -= OnRendering;
             _renderingHooked = false;
-            Effects.Visualizer.VisualizerPacing.DockAnimating = false;
+            Effects.Visualizer.VisualizerPacing.DockAnimating = _derezzRendering;
         }
     }
 
