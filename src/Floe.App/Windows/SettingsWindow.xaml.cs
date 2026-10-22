@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using Floe.App.Effects.Chromatic;
 using Floe.App.Services;
 using Floe.Core.Interop;
 
@@ -77,6 +78,9 @@ public partial class SettingsWindow : Window
         BuildGlassControls();
         BuildTabs();
         RefreshRows();
+        AttachChromatic();
+        Loaded += (_, _) => _chromatic?.Start();
+        Closed += (_, _) => _chromatic?.Dispose();
 
         // the window sits above the dock: keep its bottom edge put when a page changes its height
         SizeChanged += (_, e) =>
@@ -92,6 +96,53 @@ public partial class SettingsWindow : Window
     }
 
     private static int _lastTab;
+
+    private ChromaticAnimator? _chromatic;
+
+    /// <summary>
+    /// Puts the chromatic material on the selected toggles and the close button only:
+    /// unchecked toggles keep the plain glass face. The animator stops with the window.
+    /// </summary>
+    private void AttachChromatic()
+    {
+        if (!ChromaticEffect.IsAvailable || !RenderCapability.IsPixelShaderVersionSupported(2, 0) || Content is not DependencyObject root)
+        {
+            return;
+        }
+
+        _chromatic = new ChromaticAnimator();
+        foreach (var toggle in FindVisualChildren<RadioButton>(root))
+        {
+            AttachChromaticFace(toggle, () => toggle.IsChecked == true);
+        }
+        AttachChromaticFace(CloseButton, () => true);
+    }
+
+    private void AttachChromaticFace(Control control, Func<bool> active)
+    {
+        control.ApplyTemplate();
+        if (control.Template?.FindName("Chroma", control) is Border face)
+        {
+            _chromatic?.Add(face, control, active);
+        }
+    }
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject parent)
+        where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T match)
+            {
+                yield return match;
+            }
+            foreach (var nested in FindVisualChildren<T>(child))
+            {
+                yield return nested;
+            }
+        }
+    }
 
     internal static Rect GetWorkArea(Window window)
     {
