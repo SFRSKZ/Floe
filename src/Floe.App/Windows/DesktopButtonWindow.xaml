@@ -1,0 +1,18 @@
+<Window x:Class="Floe.App.Windows.DesktopButtonWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Floe"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        ShowActivated="False"
+        WindowStartupLocation="Manual"
+        SnapsToDevicePixels="True"
+        Cursor="Hand"
+        Width="72"
+        Height="72">
+    <Canvas x:Name="Root" Background="#01000000" />
+</Window>

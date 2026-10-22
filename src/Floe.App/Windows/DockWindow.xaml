@@ -1,0 +1,97 @@
+<Window x:Class="Floe.App.Windows.DockWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Floe.App.Windows"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Floe"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        SizeToContent="Manual"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="False">
+
+    <Window.Resources>
+        <Style x:Key="GlassMenu" TargetType="ContextMenu">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <local:GlassPanel CornerRadius="14" SnapsToDevicePixels="True">
+                            <ItemsPresenter Margin="5" />
+                        </local:GlassPanel>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="GlassMenuItem" TargetType="MenuItem">
+            <Setter Property="Foreground" Value="#F2FFFFFF" />
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Grid>
+                            <Border x:Name="Bd"
+                                    Background="Transparent"
+                                    CornerRadius="8"
+                                    Padding="10,6"
+                                    Margin="1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ContentPresenter ContentSource="Header"
+                                                      VerticalAlignment="Center"
+                                                      RecognizesAccessKey="True" />
+                                    <Path x:Name="Arrow"
+                                          Grid.Column="1"
+                                          Data="M0,0 L4,4 L0,8"
+                                          Stroke="#B0FFFFFF"
+                                          StrokeThickness="1.4"
+                                          Margin="16,0,2,0"
+                                          Visibility="Collapsed"
+                                          VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                            <Popup x:Name="PART_Popup"
+                                   Placement="Right"
+                                   HorizontalOffset="-6"
+                                   IsOpen="{TemplateBinding IsSubmenuOpen}"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   PopupAnimation="Fade">
+                                <local:GlassPanel CornerRadius="12" Margin="4,0,0,0">
+                                    <ItemsPresenter Margin="5" />
+                                </local:GlassPanel>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#24FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="Role" Value="SubmenuHeader">
+                                <Setter TargetName="Arrow" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="Stage">
+        <Grid x:Name="Root" Background="Transparent">
+            <Canvas x:Name="ShapeLayer" IsHitTestVisible="False" />
+            <Canvas x:Name="IconLayer" />
+        </Grid>
+    </Grid>
+</Window>

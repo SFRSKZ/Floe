@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace MacDock.Core.Interop;
+namespace Floe.Core.Interop;
 
 public static class ScreenCapture
 {
