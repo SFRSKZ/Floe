@@ -5,7 +5,7 @@ using MacDock.App.Effects.Derezz;
 namespace MacDock.App.Windows;
 
 /// <summary>
-/// One render loop drives every derezz on the dock (the doze and the album art) into one overlay layer.
+/// One render loop drives the dock's derezz into an overlay layer.
 /// The layer shares Root's scale so fields work in Root's own coordinates.
 /// </summary>
 public partial class DockWindow
@@ -51,9 +51,7 @@ public partial class DockWindow
         double dt = Math.Min(.05, now - _derezzLast);
         _derezzLast = now;
         _derezzRuns.Clear();
-        bool doze = AdvanceDoze(dt, _derezzRuns);
-        bool art = AdvanceArt(dt, _derezzRuns);
-        if (!doze && !art)
+        if (!AdvanceDoze(dt, _derezzRuns))
         {
             StopDerezzLoop();
             return;

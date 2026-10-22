@@ -108,7 +108,7 @@ public partial class DockWindow
         _media.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         _media.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(MediaButton * 3) });
 
-        var art = _artFrame = new Border
+        var art = new Border
         {
             Width = ArtSize,
             Height = ArtSize,
@@ -256,7 +256,7 @@ public partial class DockWindow
                 // MediaService hands back the same frozen bitmap for the same track
                 if (!ReferenceEquals(_mediaArt.Source, media.Artwork))
                 {
-                    SwapArtwork(media.Artwork);
+                    _mediaArt.Source = media.Artwork;
                 }
 
                 // sub-pixel progress moves are not worth invalidating the transform

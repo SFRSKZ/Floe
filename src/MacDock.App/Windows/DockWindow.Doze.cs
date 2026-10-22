@@ -179,8 +179,8 @@ public partial class DockWindow
             return false;
         }
 
-        double progress = Math.Clamp(_dozeTime / field.Duration, 0, 1);
-        Root.OpacityMask = RootMask(field, _dozeTime, rezz ? 1 - progress : progress);
+        // The rim and shadow outside the cells go with the cells, not with the cubes still falling.
+        Root.OpacityMask = RootMask(field, _dozeTime, field.ShownShare(_dozeTime));
         runs.Add((field, _dozeTime));
         return true;
     }

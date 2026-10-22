@@ -198,6 +198,21 @@ public sealed class DerezzField
         return geometry;
     }
 
+    /// <summary>Share of the picture's cells in place at <paramref name="time"/>, 0 to 1.</summary>
+    public double ShownShare(double time)
+    {
+        double tau = SimTime(time);
+        int solid = 0, shown = 0;
+        for (int i = 0; i < _solid.Length; i++)
+        {
+            if (!_solid[i]) continue;
+            solid++;
+            if (tau < _trigger[i]) shown++;
+        }
+
+        return solid == 0 ? 0 : (double)shown / solid;
+    }
+
     /// <summary>Everything in <paramref name="outer"/> around the cell grid.</summary>
     public Geometry OutsideRegion(Rect outer)
     {
