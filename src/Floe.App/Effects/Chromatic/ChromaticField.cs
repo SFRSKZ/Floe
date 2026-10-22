@@ -5,22 +5,13 @@ using System.Windows.Media.Imaging;
 namespace Floe.App.Effects.Chromatic;
 
 /// <summary>
-/// Seamless equirectangular light field for the chromatic material, generated once
-/// in code: soft blobs ranked onto the reference's brightness distribution, then
-/// softened because the projection squeezes most of the field into the rim.
-/// The material uses a single fixed tint, so only brightness is kept.
+/// Seamless light field for the chromatic material, generated once in code:
+/// broad, soft blobs normalised to a gentle spread, so the face stays bright
+/// and the reflections stay within a few percent of the fixed tint.
 /// </summary>
 internal static class ChromaticField
 {
     internal const int Size = 128;
-
-    // Brightness quantiles (share of texels, value): mostly dark with a long tail
-    // of bright highlights, which become the material's glints.
-    private static readonly double[][] Quantiles =
-    [
-        [0, 0.024], [0.05, 0.078], [0.25, 0.157], [0.5, 0.243],
-        [0.75, 0.325], [0.9, 0.4], [0.97, 0.459], [0.995, 0.506], [1, 0.533],
-    ];
 
     private static readonly Lazy<BitmapSource> Cached = new(Create);
 
@@ -28,9 +19,9 @@ internal static class ChromaticField
 
     private static BitmapSource Create()
     {
-        var values = Fractal(basePeriod: 4, octaves: 4, seed: 11);
-        var levels = MatchQuantiles(values);
-        levels = Blur(Blur(levels));
+        var values = Fractal(basePeriod: 2, octaves: 3, seed: 11);
+        var levels = Normalise(values);
+        levels = Blur(Blur(Blur(levels)));
 
         var pixels = new byte[Size * Size * 4];
         for (var i = 0; i < levels.Length; i++)
@@ -59,9 +50,10 @@ internal static class ChromaticField
                 for (var octave = 0; octave < octaves; octave++)
                 {
                     var period = basePeriod << octave;
-                    // latitude uses half as many cells: the field is twice as wide as tall
+                    // latitude uses half as many cells, so the tiled field is
+                    // twice as wide as it is tall, like the reference band.
                     sum += amplitude * PeriodicNoise((double)x / Size * period, (double)y / Size * (period / 2.0),
-                        period, seed + (octave * 97));
+                        period, period / 2, seed + (octave * 97));
                     norm += amplitude;
                     amplitude *= 0.5;
                 }
@@ -71,7 +63,7 @@ internal static class ChromaticField
         return values;
     }
 
-    private static double PeriodicNoise(double x, double y, int period, int seed)
+    private static double PeriodicNoise(double x, double y, int periodX, int periodY, int seed)
     {
         var x0 = (int)Math.Floor(x);
         var y0 = (int)Math.Floor(y);
@@ -79,10 +71,14 @@ internal static class ChromaticField
         var fy = y - y0;
         var sx = fx * fx * fx * ((fx * ((fx * 6) - 15)) + 10);
         var sy = fy * fy * fy * ((fy * ((fy * 6) - 15)) + 10);
-        var a = Hash(Wrap(x0, period), y0, seed);
-        var b = Hash(Wrap(x0 + 1, period), y0, seed);
-        var c = Hash(Wrap(x0, period), y0 + 1, seed);
-        var d = Hash(Wrap(x0 + 1, period), y0 + 1, seed);
+        var xa = Wrap(x0, periodX);
+        var xb = Wrap(x0 + 1, periodX);
+        var ya = Wrap(y0, periodY);
+        var yb = Wrap(y0 + 1, periodY);
+        var a = Hash(xa, ya, seed);
+        var b = Hash(xb, ya, seed);
+        var c = Hash(xa, yb, seed);
+        var d = Hash(xb, yb, seed);
         return a + ((b - a) * sx) + ((c - a) * sy) + ((a - b - c + d) * sx * sy);
     }
 
@@ -99,27 +95,24 @@ internal static class ChromaticField
 
     private static int Wrap(int value, int period) => ((value % period) + period) % period;
 
-    /// <summary>Maps values by rank onto the reference's piecewise-linear quantile table.</summary>
-    private static double[] MatchQuantiles(double[] values)
+    /// <summary>
+    /// Centres the noise on 0.5 and stretches it to roughly 0..1: the face keeps
+    /// a bright body, and the bands only vary by a few percent either way.
+    /// </summary>
+    private static double[] Normalise(double[] values)
     {
-        var order = Enumerable.Range(0, values.Length).OrderBy(index => values[index]).ToArray();
+        var mean = values.Average();
+        var deviation = Math.Sqrt(values.Select(value => (value - mean) * (value - mean)).Average());
         var mapped = new double[values.Length];
-        for (var rank = 0; rank < order.Length; rank++)
+        var scale = 1.0 / Math.Max(1e-6, deviation * 3.4);
+        for (var i = 0; i < values.Length; i++)
         {
-            var share = (double)rank / (order.Length - 1);
-            var k = 1;
-            while (k < Quantiles.Length - 1 && Quantiles[k][0] < share)
-            {
-                k++;
-            }
-            var (s0, v0) = (Quantiles[k - 1][0], Quantiles[k - 1][1]);
-            var (s1, v1) = (Quantiles[k][0], Quantiles[k][1]);
-            mapped[order[rank]] = v0 + ((share - s0) / Math.Max(1e-6, s1 - s0) * (v1 - v0));
+            mapped[i] = Math.Clamp(0.5 + ((values[i] - mean) * scale), 0, 1);
         }
         return mapped;
     }
 
-    /// <summary>Separable 1-2-1 blur: the projection magnifies single texels near the rim.</summary>
+    /// <summary>Separable 1-2-1 blur; both axes wrap so the tiled field has no seams.</summary>
     private static double[] Blur(double[] values)
     {
         var horizontal = new double[values.Length];
@@ -139,8 +132,8 @@ internal static class ChromaticField
             for (var x = 0; x < Size; x++)
             {
                 result[(y * Size) + x] =
-                    (horizontal[(Math.Max(0, y - 1) * Size) + x] + (2 * horizontal[(y * Size) + x]) +
-                     horizontal[(Math.Min(Size - 1, y + 1) * Size) + x]) * 0.25;
+                    (horizontal[(Wrap(y - 1, Size) * Size) + x] + (2 * horizontal[(y * Size) + x]) +
+                     horizontal[(Wrap(y + 1, Size) * Size) + x]) * 0.25;
             }
         }
         return result;

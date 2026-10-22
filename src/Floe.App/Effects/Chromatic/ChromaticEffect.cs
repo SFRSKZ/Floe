@@ -53,11 +53,16 @@ public sealed class ChromaticEffect : ShaderEffect
     // sin/cos of the spin angle; the shader has no trig instructions in ps_2_0.
     private static readonly DependencyProperty SpinProperty = Register("Spin", new Point(0, 1), 6);
 
+    // Slow drift of the field lookup, in texture units per second.
+    private static readonly DependencyProperty FlowProperty = Register("Flow", new Point(0, 0), 7);
+
     public static readonly DependencyProperty TimeProperty = DependencyProperty.Register(nameof(Time), typeof(double), typeof(ChromaticEffect),
         new UIPropertyMetadata(0.0, (d, _) =>
         {
-            var angle = ((ChromaticEffect)d).Time * 0.11;
+            var effect = (ChromaticEffect)d;
+            var angle = effect.Time * 0.11;
             d.SetValue(SpinProperty, new Point(Math.Sin(angle), Math.Cos(angle)));
+            d.SetValue(FlowProperty, new Point(effect.Time * 0.018, effect.Time * 0.011));
         }));
     public double Time { get => (double)GetValue(TimeProperty); set => SetValue(TimeProperty, value); }
 
@@ -65,25 +70,27 @@ public sealed class ChromaticEffect : ShaderEffect
     /// <summary>0 = rest, 1 = hovered: the light is raised, matching the reference's brighten.</summary>
     public double Hover { get => (double)GetValue(HoverProperty); set => SetValue(HoverProperty, value); }
 
-    public static readonly DependencyProperty IntensityProperty = Register(nameof(Intensity), 1.4, 2);
+    public static readonly DependencyProperty IntensityProperty = Register(nameof(Intensity), 1.0, 2);
+    /// <summary>Brightness of the face; 1 = the tint's own value over the whole dome.</summary>
     public double Intensity { get => (double)GetValue(IntensityProperty); set => SetValue(IntensityProperty, value); }
 
-    public static readonly DependencyProperty GrainStrengthProperty = Register(nameof(GrainStrength), 0.1, 3);
+    public static readonly DependencyProperty GrainStrengthProperty = Register(nameof(GrainStrength), 0.06, 3);
+    /// <summary>Fine, barely visible grain; never touches the edge coverage.</summary>
     public double GrainStrength { get => (double)GetValue(GrainStrengthProperty); set => SetValue(GrainStrengthProperty, value); }
 
-    public static readonly DependencyProperty FeatherProperty = Register(nameof(Feather), 2.0, 4);
-    /// <summary>Softness of the last few DIP at the contour.</summary>
-    public double Feather { get => (double)GetValue(FeatherProperty); set => SetValue(FeatherProperty, value); }
+    public static readonly DependencyProperty RimDepthProperty = Register(nameof(RimDepth), 5.0, 4);
+    /// <summary>Depth in DIP of the gentle falloff just inside the contour.</summary>
+    public double RimDepth { get => (double)GetValue(RimDepthProperty); set => SetValue(RimDepthProperty, value); }
 
     public static readonly DependencyProperty TintProperty = Register(nameof(Tint), Color.FromRgb(0x5B, 0xC8, 0xFF), 5);
     /// <summary>The one fixed material tint; the reflections only change its brightness.</summary>
     public Color Tint { get => (Color)GetValue(TintProperty); set => SetValue(TintProperty, value); }
 
-    // Ordered to match HLSL c0..c6.
+    // Ordered to match HLSL c0..c7.
     private static readonly DependencyProperty[] Constants =
     [
         PixelSizeProperty, HoverProperty, IntensityProperty, GrainStrengthProperty,
-        FeatherProperty, TintProperty, SpinProperty,
+        RimDepthProperty, TintProperty, SpinProperty, FlowProperty,
     ];
 
     public ChromaticEffect()

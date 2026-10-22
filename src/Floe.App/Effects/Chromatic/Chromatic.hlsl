@@ -1,58 +1,62 @@
-// Chromatic button face: one fixed tint over a slowly rotating light field,
-// projected through a rounded contour. Ported from the ReactDrops chromatic
-// button material (chromatic-shaders.ts, reference only), rewritten for ps_2_0
-// so WPF's software renderer draws it in RenderTargetBitmap too.
+// Chromatic button face: one fixed tint under a slowly drifting light field,
+// shaded as a shallow dome. The Border supplies the rounded silhouette; this
+// shader only colours inside it (its alpha is the border's coverage), so the
+// edge stays crisp and anti-aliased no matter what the field does.
+
 sampler2D Input : register(s0);
 sampler2D Field : register(s1);
 sampler2D Grain : register(s2);
 float2 ElementSize : register(c0);
 float Hover : register(c1);
-float Intensity : register(c2);
+float Brightness : register(c2);
 float GrainStrength : register(c3);
-float Feather : register(c4);
+float RimDepth : register(c4);
 float4 Tint : register(c5);
 float2 Spin : register(c6);
+float2 Flow : register(c7);
 
 float4 main(float2 uv : TEXCOORD0) : COLOR0
 {
-    float2 size = max(ElementSize, float2(4.0, 4.0));
+    float2 size = max(ElementSize, float2(8.0, 8.0));
+    float2 halfSize = size * 0.5;
     float2 p = (uv - 0.5) * size;
-    float2 normalised = p / (size * 0.5);
-    // 0 at the centre, 1 on the inscribed ellipse: the reference's contour ratio.
-    float contour = saturate(length(normalised));
+    float2 n = p / halfSize;
 
-    // Plane-to-sphere projection: the field compresses into the rim, so the
-    // reflections streak along the edge as they do in the reference material.
-    float2 direction = p / max(length(p), 0.0001);
-    float c2 = contour * contour;
-    float2 source = direction * (c2 * contour);
+    // Screen-space field: one texture covers 160 DIP, so the reflections keep
+    // their size on wide toggles and narrow close buttons alike. Rotating and
+    // drifting the lookup moves the light; the tint itself never changes.
+    float2 plane = p * (1.0 / 120.0);
+    float2 rotated = float2(
+        (plane.x * Spin.y) - (plane.y * Spin.x),
+        (plane.x * Spin.x) + (plane.y * Spin.y));
+    float2 fieldUv = frac(float2(0.5, 0.5) + rotated + Flow);
+    float light = tex2D(Field, fieldUv).r;
 
-    // Slow panoramic spin plus drift: only the light moves, the tint never does.
-    source = float2((source.x * Spin.y) - (source.y * Spin.x),
-                    (source.x * Spin.x) + (source.y * Spin.y));
-    float2 uvField = float2(0.5, 0.5) + (source * float2(0.5, 0.4)) + float2(0.10 * Spin.x, 0.08 * Spin.y);
-    // A little shear keeps the rim reflections off perfectly symmetric bands.
-    uvField.y -= 0.045 * source.x;
-    uvField.x = frac(uvField.x);
-    uvField.y = saturate(uvField.y);
+    // The face sits on the tint almost everywhere: the field only lifts or
+    // deepens it by a few percent, so there is no dark hole in the middle.
+    float value = 0.84 + (0.18 * light);
 
-    // The field is pre-blurred on the CPU, where the projection would otherwise
-    // magnify single texels into visible rings at the rim.
-    float light = tex2D(Field, uvField).r;
+    // Shallow dome lit from the top-left: lighter across the upper left, softly
+    // deeper toward the lower-right rim. One smooth gradient plus a short rim
+    // falloff, never a ring.
+    float tilt = -((0.55 * n.x) + (0.83 * n.y));
+    value *= 1.0 + (0.10 * tilt);
 
-    // Fixed colour mode: value only, so hue and saturation stay on one tint.
-    // The face darkens toward the label while the projected rim keeps its glints.
-    float mid = 1.0 - abs((2.0 * uv.y) - 1.0);
-    float value = saturate(light * 1.75 * Intensity * (1.0 + (0.3 * Hover)))
-        * (0.26 + (0.62 * c2)) * (1.0 - (0.24 * mid)) * (1.0 + (0.16 * Hover));
-    float3 color = Tint.rgb * value;
+    float edgeDistance = min(halfSize.x - abs(p.x), halfSize.y - abs(p.y));
+    float rim = saturate(1.0 - (edgeDistance / max(RimDepth, 0.001)));
+    rim = rim * rim * (3.0 - (2.0 * rim));
+    value *= 1.0 - (0.06 * rim);
 
-    // Static per-pixel grain, like the reference's hash grain.
-    color += (tex2D(Grain, uv).r - 0.5) * GrainStrength * 0.4;
+    value *= 1.0 + (0.12 * Hover);
+    value *= Brightness;
 
-    // The border supplies the rounded mask; feather softens the last few DIP.
-    float2 edge = min(uv, 1.0 - uv);
-    float alpha = saturate(min(edge.x * size.x, edge.y * size.y) / max(Feather, 0.001));
-    alpha *= tex2D(Input, uv).a;
-    return float4(color * alpha, alpha);
+    // Clamp the shading, not each channel: the brightest point is exactly the
+    // tint, so bright bands never wash out toward white.
+    float3 color = Tint.rgb * saturate(value);
+    color += (tex2D(Grain, uv).r - 0.5) * GrainStrength * 0.08;
+
+    // WPF already anti-aliased the rounded rectangle into the input's alpha.
+    // Reuse it untouched: grain and shading must never reach the edge alpha.
+    float alpha = tex2D(Input, uv).a;
+    return float4(saturate(color) * alpha, alpha);
 }
