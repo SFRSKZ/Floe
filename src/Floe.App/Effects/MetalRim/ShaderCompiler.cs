@@ -73,8 +73,11 @@ internal static class ShaderCompiler
         return shader;
     }
 
-    /// <summary>Compiles another embedded ps_3_0 shader; null (logged) when it can't be built.</summary>
-    internal static PixelShader? LoadShader(string logicalName)
+    /// <summary>
+    /// Compiles another embedded shader; null (logged) when it can't be built.
+    /// ps_2_0 is the only profile WPF's software renderer (RenderTargetBitmap) runs.
+    /// </summary>
+    internal static PixelShader? LoadShader(string logicalName, string target = "ps_3_0")
     {
         try
         {
@@ -83,7 +86,7 @@ internal static class ShaderCompiler
             using var source = new MemoryStream();
             resource.CopyTo(source);
             var shader = new PixelShader();
-            using var stream = new MemoryStream(CompileBytes(source.ToArray(), "ps_3_0"), writable: false);
+            using var stream = new MemoryStream(CompileBytes(source.ToArray(), target), writable: false);
             shader.SetStreamSource(stream);
             shader.Freeze();
             return shader;
