@@ -88,6 +88,11 @@ public static class AuraSettings
     /// <summary>Playback speed of the click effect, 0.5 .. 2 (1 = 900 ms).</summary>
     public static double ClickSpeed { get; private set; } = 1.0;
 
+    public static bool Derezz { get; private set; } = true;
+
+    /// <summary>Playback speed of the sleep (derezz) effect, 0.5 .. 2.</summary>
+    public static double DerezzSpeed { get; private set; } = 1.0;
+
     public static int PaletteIndex { get; private set; }
 
     public static void Load()
@@ -109,6 +114,8 @@ public static class AuraSettings
             ClickTone = Enum.TryParse<ClickTone>(model.ClickTone, true, out var tone) && Enum.IsDefined(tone) ? tone : ClickTone.Dark;
             ClickPalette = Enum.TryParse<ClickPalette>(model.ClickPalette, true, out var palette) && Enum.IsDefined(palette) ? palette : ClickPalette.Clear;
             ClickSpeed = model.ClickSpeed <= 0 ? 1.0 : Math.Clamp(model.ClickSpeed, 0.5, 2.0);
+            Derezz = model.Derezz;
+            DerezzSpeed = model.DerezzSpeed <= 0 ? 1.0 : Math.Clamp(model.DerezzSpeed, 0.5, 2.0);
             Mode = Enum.TryParse<AuraColorMode>(model.Mode, true, out var mode) ? mode : AuraColorMode.Palette;
             Effect = Enum.TryParse<AuraEffect>(model.Effect, true, out var effect) ? effect : AuraEffect.Glow;
             SpectralIntensity = model.SpectralIntensity <= 0 ? 1.5 : Math.Clamp(model.SpectralIntensity, 0.5, 2.5);
@@ -149,6 +156,23 @@ public static class AuraSettings
         speed = Math.Clamp(speed, 0.5, 2.0);
         if (Math.Abs(ClickSpeed - speed) < 0.001) return;
         ClickSpeed = speed;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetDerezz(bool enabled)
+    {
+        if (Derezz == enabled) return;
+        Derezz = enabled;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetDerezzSpeed(double speed)
+    {
+        speed = Math.Clamp(speed, 0.5, 2.0);
+        if (Math.Abs(DerezzSpeed - speed) < 0.001) return;
+        DerezzSpeed = speed;
         Save();
         Changed?.Invoke();
     }
@@ -231,6 +255,8 @@ public static class AuraSettings
                 ClickTone = ClickTone.ToString(),
                 ClickPalette = ClickPalette.ToString(),
                 ClickSpeed = ClickSpeed,
+                Derezz = Derezz,
+                DerezzSpeed = DerezzSpeed,
                 Mode = Mode.ToString(),
                 Effect = Effect.ToString(),
                 SpectralIntensity = SpectralIntensity,
@@ -254,6 +280,10 @@ public static class AuraSettings
         public string ClickPalette { get; set; } = nameof(global::MacDock.App.Services.ClickPalette.Clear);
 
         public double ClickSpeed { get; set; } = 1.0;
+
+        public bool Derezz { get; set; } = true;
+
+        public double DerezzSpeed { get; set; } = 1.0;
 
         public string Mode { get; set; } = nameof(AuraColorMode.Palette);
 

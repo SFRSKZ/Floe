@@ -252,6 +252,20 @@
                     <RadioButton x:Name="IntroDrop" GroupName="NowPlayingIntro" Style="{StaticResource ModeToggle}" Content="Damla" />
                     <RadioButton x:Name="IntroHologram" GroupName="NowPlayingIntro" Style="{StaticResource ModeToggle}" Content="Hologram" />
                 </WrapPanel>
+
+                <TextBlock Text="Uyku efekti" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
+                <CheckBox x:Name="DerezzToggle"
+                          Style="{StaticResource GlassToggle}"
+                          Content="Küplere ayrılarak uyu" />
+                <TextBlock Text="Hız" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,2,0,6" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Slider x:Name="DerezzSpeedSlider" Style="{StaticResource GlassSlider}" Minimum="0.5" Maximum="2" SmallChange="0.1" LargeChange="0.25" Value="1" />
+                    <TextBlock x:Name="DerezzSpeedValue" Grid.Column="1" Width="36" TextAlignment="Right" VerticalAlignment="Center" Foreground="#F2FFFFFF" FontSize="12" />
+                </Grid>
             </StackPanel>
         </StackPanel>
     </local:GlassPanel>

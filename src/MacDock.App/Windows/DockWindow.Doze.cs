@@ -52,6 +52,11 @@ public partial class DockWindow
             WakeDock();
             return;
         }
+        if (!AuraSettings.Derezz && !_dozing)
+        {
+            _lastActivity = DateTime.UtcNow;
+            return;
+        }
         // An autohidden dock has nothing on screen to derezz; the grab would catch whatever covers it.
         if (!_shown && !_dozing)
         {
@@ -111,7 +116,8 @@ public partial class DockWindow
             return;
         }
 
-        _dozeField = new DerezzField(_dozeSnapshot, rect, DozeCell, new Point(rect.X + (rect.Width / 2), rect.Bottom), WindowHeight, rezz: false)
+        _dozeField = new DerezzField(_dozeSnapshot, rect, DozeCell, new Point(rect.X + (rect.Width / 2), rect.Bottom), WindowHeight, rezz: false,
+            speed: AuraSettings.DerezzSpeed)
         {
             DrawIntact = false,
         };
@@ -143,7 +149,7 @@ public partial class DockWindow
         var (cursorX, _) = ScreenInput.GetCursorPosition();
         double x = Math.Clamp(Root.PointFromScreen(new Point(cursorX, 0)).X, rect.Left, rect.Right);
         _dozeField = new DerezzField(_dozeSnapshot, rect, DozeCell, new Point(x, rect.Bottom), WindowHeight, rezz: true,
-            speed: RezzSpeed, seed: Environment.TickCount & 0xFF);
+            speed: RezzSpeed * AuraSettings.DerezzSpeed, seed: Environment.TickCount & 0xFF);
         _dozeTime = 0;
         _dozeDirection = 1;
         _dozeRezz = true;

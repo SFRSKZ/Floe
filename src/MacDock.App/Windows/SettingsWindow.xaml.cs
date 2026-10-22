@@ -152,6 +152,26 @@ public partial class SettingsWindow : Window
         VisualizerToggle.Checked += (_, _) => GlassSettings.SetVisualizer(true);
         VisualizerToggle.Unchecked += (_, _) => GlassSettings.SetVisualizer(false);
 
+        DerezzToggle.IsChecked = AuraSettings.Derezz;
+        DerezzToggle.Checked += (_, _) =>
+        {
+            AuraSettings.SetDerezz(true);
+            DerezzSpeedSlider.IsEnabled = true;
+        };
+        DerezzToggle.Unchecked += (_, _) =>
+        {
+            AuraSettings.SetDerezz(false);
+            DerezzSpeedSlider.IsEnabled = false;
+        };
+        DerezzSpeedSlider.IsEnabled = AuraSettings.Derezz;
+        DerezzSpeedSlider.Value = AuraSettings.DerezzSpeed;
+        DerezzSpeedValue.Text = AuraSettings.DerezzSpeed.ToString("0.0") + "x";
+        DerezzSpeedSlider.ValueChanged += (_, e) =>
+        {
+            AuraSettings.SetDerezzSpeed(e.NewValue);
+            DerezzSpeedValue.Text = AuraSettings.DerezzSpeed.ToString("0.0") + "x";
+        };
+
         VisualizerLookGlow.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Glow;
         VisualizerLookHologram.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Hologram;
         VisualizerLookGlow.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Glow);
