@@ -1,3 +1,5 @@
+// Adapted from ReactDrops Liquid Glass Logo, copyright (c) 2026 ReactDrops.
+// See ClickGlass.LICENSE.txt for the retained ReactDrops Component License 1.0.
 sampler2D Input : register(s0);
 sampler2D Field : register(s1);
 float Progress : register(c0);
@@ -8,74 +10,98 @@ float4 ColorA : register(c4);
 float4 ColorB : register(c5);
 
 float Dist(float2 uv) { return (tex2D(Field, uv).r - 0.5) * 32.0; }
+float Bell(float x, float width) { x /= width; return exp(-x * x); }
+
+// Three wavelength bands replace the reference's 32-band integration on ps_3_0.
+float2 Bend(float3 normal, float wavelength, float spread, float depth)
+{
+    float ior = 1.38 + (0.04 / (wavelength * wavelength) - 0.12) * spread;
+    float3 ray = refract(float3(0, 0, -1), normal, 1.0 / ior);
+    return ray.xy / max(-ray.z, 0.25) * depth;
+}
 
 float4 main(float2 uv : TEXCOORD0) : COLOR0
 {
-    float t = saturate(Progress);
+    float t = saturate(Progress) * 1.8;
     float total = max(Box.x, 1.0);
-    float px = 1.0 / total;
+    float unit = max(total - 24.0, 1.0);
+    float enter = smoothstep(0.025, 0.16, t);
+    float fade = enter * (1.0 - smoothstep(1.05, 1.8, t));
+    float glass = 1.0 - smoothstep(1.05, 1.65, t);
+    float morph = smoothstep(0.29, 0.48, t);
+    float scale = max(0.02, enter * (0.64 + 0.36 * (1.0 - exp(-max(t - 0.16, 0.0) * 5.8))));
     float2 p = (uv - 0.5) * total;
-    float d = Dist(uv);
-
-    // a round drop settles into the icon's outline, overshoots, then the shell swells outward
-    float morph = smoothstep(0.0, 0.32, t);
-    float settle = sin(saturate(t / 0.4) * 3.141593) * 3.0;
-    float grow = 6.0 * smoothstep(0.4, 0.8, t);
-    float circle = length(p) - (total - 24.0) * 0.36;
-    float edge = lerp(circle, d, morph) - settle - grow;
-
-    float2 g = float2(Dist(uv + float2(2*px, 0)) - Dist(uv - float2(2*px, 0)),
-                      Dist(uv + float2(0, 2*px)) - Dist(uv - float2(0, 2*px)));
-    g = lerp(p / max(length(p), 0.001), g / max(length(g), 0.001), morph);
-    g /= max(length(g), 0.001);
-
-    float fade = smoothstep(0.0, 0.06, t) * (1.0 - smoothstep(0.72, 1.0, t));
-    float inside = 1.0 - smoothstep(-1.0, 1.0, edge);
-    float rim = exp(-edge * edge / 3.0);
-    float band = exp(-pow(edge + 2.2, 2.0) / 4.0);
-    float rings = smoothstep(0.38, 0.5, t) *
-        (exp(-pow(edge + 3.0, 2.0) / 0.5) * 0.9 + exp(-pow(edge + 6.0, 2.0) / 0.5) * 0.55);
-
-    // thick lens: content magnified in the middle, pulled hard toward the rim
-    float lensDepth = fade * (1.0 - 0.5 * smoothstep(0.5, 0.9, t));
-    float2 zoom = -p * 0.12 * inside * lensDepth;
-    float bend = (exp(-abs(edge) / 2.5) * 4.5 + inside * 0.8) * lensDepth;
-    // sample inward: reading past the icon's edge picks up transparent pixels, which the
-    // channel split turns into dark blue / yellow smears
-    float2 off = (-g * bend + zoom) * px;
-    // 0 rainbow, 1 colourless, 2 the icon's own colours
+    float2 radial = p / max(length(p), 0.001);
+    float2 fieldUv = 0.5 + p / (total * scale);
+    float d = Dist(fieldUv) * scale;
+    float sd = lerp(length(p) - unit * scale * 0.5, d, morph);
+    float px = 1.0 / total;
+    float2 gradient = float2(Dist(fieldUv + float2(px, 0)) - Dist(fieldUv - float2(px, 0)),
+                             Dist(fieldUv + float2(0, px)) - Dist(fieldUv - float2(0, px)));
+    float2 outward = lerp(radial, gradient / max(length(gradient), 0.001), morph);
+    outward /= max(length(outward), 0.001);
+    float mask = 1.0 - smoothstep(-0.7, 0.7, sd);
+    float radius = saturate(1.0 + sd / max(unit * scale * 0.5, 0.01));
+    float shoulder = smoothstep(0.60, 1.0, radius);
+    float youth = 1.0 - smoothstep(0.245, 0.42, t);
+    float slope = (0.04 * radius + 1.05 * shoulder * shoulder + youth * radius * 0.32) * glass;
+    float2 optical = lerp(outward, radial, 0.65);
+    float3 normal = normalize(float3(optical * slope * (0.8 + 0.4 * radial.x * radial.y), 1));
     float mono = Palette > 0.5 && Palette < 1.5 ? 1.0 : 0.0;
-    float dispersion = lerp(0.45, 0.8, Tone) * (1.0 - mono * 0.75);
-    float4 r = tex2D(Input, uv + off * (1.0 + dispersion));
-    float4 m = tex2D(Input, uv + off);
-    float4 b = tex2D(Input, uv + off * (1.0 - dispersion));
-    float3 lens = float3(r.r, m.g, b.b);
-    float alpha = max(r.a, max(m.a, b.a));
+    float spread = lerp(0.85, 2.2, morph) * (1.0 - mono);
+    float depth = unit * 1.2 * 0.80 * scale;
+    float focus = 1.0 - smoothstep(0.225, 0.335, t);
+    float opening = 1.0 - smoothstep(0.19, 0.265, t);
+    float profile = lerp(0.7 + 0.6 * radius * radius, 1.0 - 0.9 * radius * radius, opening);
+    float2 samplePoint = p * lerp(1.0, profile, focus) + float2(0.025, 0.10) * unit * opening;
+    float bendScale = lerp(1.0, lerp(0.35, 0.12, opening), focus);
+    float4 red = tex2D(Input, 0.5 + (samplePoint + Bend(normal, 0.65, spread, depth) * bendScale) / total);
+    float4 green = tex2D(Input, 0.5 + (samplePoint + Bend(normal, 0.55, spread, depth) * bendScale) / total);
+    float4 blue = tex2D(Input, 0.5 + (samplePoint + Bend(normal, 0.45, spread, depth) * bendScale) / total);
+    float3 color = float3(red.r, green.g, blue.b) * 0.94;
+    float alpha = max(red.a, max(green.a, blue.a));
 
-    // rotating rainbow fringe on the rim and a white specular arc chasing it
-    float angle = atan2(p.y, p.x) - t * 9.0;
-    float spot = pow(saturate(0.5 + 0.5 * cos(angle)), 4.0);
-    float arc = pow(saturate(0.5 + 0.5 * cos(atan2(p.y, p.x) + 2.3 - t * 3.0)), 10.0);
-    float3 fringe = 0.5 + 0.5 * cos(angle * 2.0 + edge * 0.9 + float3(0.0, 2.1, 4.2));
-    fringe = saturate(fringe * 1.4 - 0.1);
-    float3 iconTint = lerp(ColorA.rgb, ColorB.rgb, 0.5 + 0.5 * cos(angle * 2.0 + edge * 0.9));
-    fringe = Palette > 1.5 ? saturate(iconTint * 1.25 + 0.1) : lerp(fringe, float3(0.92, 0.95, 1.0), mono);
+    // Fixed studio lights and a separate inner wall give the shoulder its thickness.
+    float key = pow(saturate(0.5 + 0.5 * dot(outward, float2(-0.486, -0.874))), 5.0);
+    float fill = pow(saturate(0.5 + 0.5 * dot(outward, float2(0.8, 0.6))), 5.0);
+    float wave = sin(p.x * 0.35 + p.y * 0.22) * sin(t * 6.3 + 1.0) * 0.15 * morph;
+    float rim = Bell(sd + wave + 0.12, 0.40);
+    float wallGap = unit * scale * (0.055 + 0.025 * morph);
+    float centerFade = 1.0 - smoothstep(0.62, 1.22, t);
+    float wall = Bell(sd + wallGap, 0.50) * centerFade;
+    float caustic = (Bell(sd + unit * 0.027, 0.65) + Bell(sd + unit * 0.045, 0.45) * 0.6);
+    caustic *= (0.15 + fill * 0.85) * centerFade * (0.75 + 0.25 * sin(p.x * 0.55 + p.y * 0.3));
+    float3 cool = float3(0.22, 0.62, 1.0);
+    float3 warm = float3(1.0, 0.45, 0.18);
+    if (Palette > 1.5) { cool = ColorA.rgb; warm = ColorB.rgb; }
+    cool = lerp(cool, float3(0.9, 0.94, 1), mono);
+    warm = lerp(warm, float3(0.9, 0.94, 1), mono);
+    float3 spectral = cool * Bell(sd + 0.85, 0.45) + warm * Bell(sd - 0.25, 0.45);
+    float light = rim * (0.10 + key * 0.80 + fill * 0.3) + wall * (key * 0.5 + fill * 0.35 + 0.02);
+    float3 reflection = float3(0.65, 0.80, 0.94) * light + spectral * (0.06 + 0.25 * alpha);
+    reflection += lerp(cool, float3(0.8, 0.97, 1), 0.6) * caustic * 0.7;
+    float2 sphere = p / max(unit * scale * 0.5, 0.01);
+    float3 sphereNormal = normalize(float3(sphere, sqrt(max(0.001, 1.0 - dot(sphere, sphere)))));
+    float3 ray = reflect(float3(0, 0, -1), sphereNormal);
+    float softbox = Bell(ray.x + 0.12, 1.05) * Bell(ray.y + 0.56, 0.52) * youth * 0.7;
+    reflection += float3(0.50, 0.61, 0.72) * softbox;
+    // Local shoulder glow approximates the reference's bloom pass (default 0.55).
+    reflection += cool * Bell(sd + 1.2, 2.0) * (key + fill) * 0.055;
+    reflection *= glass;
+    color *= 1.0 - shoulder * lerp(0.10, 0.22, Tone);
+    color += reflection * lerp(1.0, 0.8, Tone);
+    alpha = max(alpha, max(reflection.r, max(reflection.g, reflection.b)));
+    color *= mask;
+    alpha *= mask;
 
-    float frost = Tone * 0.55 * inside * lensDepth;
-    lens = lerp(lens, float3(0.96, 0.97, 1.0), frost);
-    alpha = max(alpha, frost);
-    lens *= 1.0 - Tone * band * 0.35;
-
-    float3 color = lens;
-    color += fringe * band * (0.55 + spot * 0.9) * lerp(0.8, 1.15, Tone) * (1.0 - mono * 0.5);
-    color += lerp(float3(1, 1, 1), fringe, 0.35) * rings * (0.5 + spot * 0.8);
-    color += float3(1, 1, 1) * rim * (arc * 1.0 + spot * 0.35) * lerp(1.0, 0.7, Tone);
-    float shine = saturate(band * (0.4 + spot * 0.6) + rings * 0.7 + rim * arc);
-
-    float mask = saturate(inside + rim + band + rings) * fade;
-    float a = saturate(alpha + shine) * mask;
-    // fade back to the untouched icon outside the effect window
-    float3 rgb = color * mask;
-    float4 icon = tex2D(Input, uv);
-    return lerp(icon, float4(min(rgb, a), a), fade);
+    float age = smoothstep(0.36, 1.4, t);
+    float rings = (Bell(sd - (1.0 + 1.8 * age), 0.45) * 0.08
+                 + Bell(sd - (2.0 + 1.5 * age), 0.5) * 0.04);
+    rings *= smoothstep(0.34, 0.48, t) * exp(-1.4 * max(t - 0.36, 0.0)) * (1.0 - age);
+    float echo = Bell(sd - 0.8, 0.28) * (0.025 + key * 0.12);
+    float3 ghost = lerp(cool, float3(0.7, 0.82, 0.92), 0.65) * (echo + rings * (0.2 + 0.8 * abs(outward.y))) * glass;
+    color += ghost;
+    alpha = saturate(alpha + max(ghost.r, max(ghost.g, ghost.b)));
+    // This is an overlay: the unchanged icon already lives below it.
+    return float4(min(color, alpha), alpha) * fade;
 }

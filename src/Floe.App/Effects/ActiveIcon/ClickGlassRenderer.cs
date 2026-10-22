@@ -14,7 +14,7 @@ internal sealed class ClickGlassRenderer : IDisposable
     private IntPtr _device, _context, _target, _view, _readback, _vertexShader, _pixelShader, _constants;
 
     internal ClickGlassRenderer(System.Windows.Media.ImageSource icon, int size)
-        : this(CreateInput(icon, size), (BitmapSource)IconField.For(icon, size).ImageSource,
+        : this(CreateInput(icon, size), (BitmapSource)IconField.For(icon, size, solid: true).ImageSource,
             "Floe.ClickGlass.hlsl", "float Progress", "float Dist") { }
 
     internal ClickGlassRenderer(BitmapSource mask, BitmapSource backdrop)

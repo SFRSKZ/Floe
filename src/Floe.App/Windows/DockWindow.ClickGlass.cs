@@ -43,7 +43,7 @@ public partial class DockWindow
             IsHitTestVisible = false, Effect = effect,
         };
         RenderOptions.SetBitmapScalingMode(overlay, BitmapScalingMode.HighQuality);
-        var animation = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(900 / AuraSettings.ClickSpeed));
+        var animation = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(1050 / AuraSettings.ClickSpeed));
         animation.Completed += (_, _) => grid.Children.Remove(overlay);
         overlay.Unloaded += (_, _) =>
         {

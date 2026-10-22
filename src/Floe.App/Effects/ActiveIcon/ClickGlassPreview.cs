@@ -35,9 +35,15 @@ internal static class ClickGlassPreview
             using var renderer = new ClickGlassRenderer(source, (int)size);
             foreach (var palette in new[] { 0, 1, 2 })
             foreach (var tone in new[] { 0, 1 })
-            foreach (var progress in new[] { 0.0, 0.1, 0.25, 0.4, 0.6, 0.8, 1.0 })
+            foreach (var progress in new[] { 0.0, 0.05, 0.1, 0.16, 0.22, 0.3, 0.4, 0.6, 0.8, 0.95, 1.0 })
             {
                 var surface = renderer.Render(progress, tone, palette, Colors.Coral, Colors.MediumVioletRed);
+                if (progress == 0 || progress == 1)
+                {
+                    var pixels = new byte[surface.PixelWidth * surface.PixelHeight * 4];
+                    surface.CopyPixels(pixels, surface.PixelWidth * 4, 0);
+                    if (pixels.Any(value => value != 0)) throw new InvalidOperationException("Click overlay endpoints must be transparent.");
+                }
                 var visual = new DrawingVisual();
                 using (var dc = visual.RenderOpen())
                 {
@@ -49,7 +55,7 @@ internal static class ClickGlassPreview
                 target.Render(visual);
                 var encoder = new PngBitmapEncoder();
                 encoder.Frames.Add(BitmapFrame.Create(target));
-                using var output = File.Create(Path.Combine(folder, $"p{palette}-{(tone == 0 ? "dark" : "light")}-{progress:0.00}.png"));
+                using var output = File.Create(Path.Combine(folder, FormattableString.Invariant($"p{palette}-{(tone == 0 ? "dark" : "light")}-{progress:0.00}.png")));
                 encoder.Save(output);
             }
             File.WriteAllText(Path.Combine(folder, "render-info.txt"),
