@@ -18,6 +18,17 @@ public enum VisualizerStyle
     Hologram,
 }
 
+public enum HologramColor
+{
+    Blue,
+    Cyan,
+    Violet,
+    Pink,
+    Gold,
+    Green,
+    White,
+}
+
 public enum BulgeStyle
 {
     Soft,
@@ -49,6 +60,8 @@ public static class GlassSettings
 
     public static VisualizerStyle VisualizerLook { get; private set; } = VisualizerStyle.Glow;
 
+    public static HologramColor HologramTint { get; private set; } = HologramColor.Blue;
+
     public static NowPlayingIntro Intro { get; private set; } = NowPlayingIntro.Drop;
 
     public static void Load()
@@ -70,6 +83,7 @@ public static class GlassSettings
             Visualizer = model.Visualizer;
             Bulge = Enum.TryParse<BulgeStyle>(model.Bulge, true, out var bulge) ? bulge : BulgeStyle.Soft;
             VisualizerLook = Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
+            HologramTint = Enum.TryParse<HologramColor>(model.HologramTint, true, out var tint) ? tint : HologramColor.Blue;
             Intro = Enum.TryParse<NowPlayingIntro>(model.Intro, true, out var intro) ? intro : NowPlayingIntro.Drop;
         }
         catch
@@ -126,6 +140,21 @@ public static class GlassSettings
         Changed?.Invoke();
     }
 
+    public static void SetHologramTint(HologramColor tint)
+    {
+        if (HologramTint == tint)
+        {
+            return;
+        }
+
+        HologramTint = tint;
+        Save();
+        Changed?.Invoke();
+    }
+
+    // Diagnostic override for offscreen renders; the user's choice is not persisted.
+    internal static void PreviewTint(HologramColor tint) => HologramTint = tint;
+
     public static void SetIntro(NowPlayingIntro intro)
     {
         if (Intro == intro)
@@ -148,6 +177,7 @@ public static class GlassSettings
                 Visualizer = Visualizer,
                 Bulge = Bulge.ToString(),
                 VisualizerLook = VisualizerLook.ToString(),
+                HologramTint = HologramTint.ToString(),
                 Intro = Intro.ToString(),
             }));
         }
@@ -166,6 +196,8 @@ public static class GlassSettings
         public string Bulge { get; set; } = nameof(BulgeStyle.Soft);
 
         public string VisualizerLook { get; set; } = nameof(VisualizerStyle.Glow);
+
+        public string HologramTint { get; set; } = nameof(HologramColor.Blue);
 
         public string Intro { get; set; } = nameof(NowPlayingIntro.Drop);
     }

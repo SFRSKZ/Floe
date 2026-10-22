@@ -38,12 +38,16 @@ public sealed class HologramVisualizer : FrameworkElement
     private const int ParticleCount = 20;
     private const int AlphaGrades = 8;
 
-    private static readonly Color[] FamilyColors =
+    // Untinted reference palette; BuildPalette re-derives the live colours from
+    // these so switching the tint never drifts from the original design.
+    private static readonly Color[] BaseFamilyColors =
     {
         Color.FromRgb(0xEA, 0xF6, 0xFF), // icy core
         Color.FromRgb(0x6F, 0xB8, 0xFF), // body blue
         Color.FromRgb(0x2A, 0x6F, 0xD6)  // faint edge
     };
+
+    private static readonly Color BaseHazeCore = Color.FromRgb(0xD2, 0xEC, 0xFF);
 
     private static readonly double[] FamilyScale = { 1.0, 0.90, 0.62 };
 
@@ -56,16 +60,21 @@ public sealed class HologramVisualizer : FrameworkElement
     private const double SpriteWidth = 10;
     private static readonly (double Thickness, double Alpha)[] StrandLayers = { (8.5, 0.10), (4.6, 0.32), (1.15, 1.0) };
     private static readonly (double Thickness, double Alpha)[] HeavyLayers = { (8.5, 0.10), (4.6, 0.32), (2.4, 0.55), (1.15, 1.0) };
-    private static readonly BitmapSource[][] StrandSprites = CreateSprites(StrandLayers);
-    private static readonly BitmapSource[][] HeavySprites = CreateSprites(HeavyLayers);
+
+    // Everything below is rebuilt by BuildPalette when the tint changes.
+    private static Color[] FamilyColors = Array.Empty<Color>();
+    private static BitmapSource[][] StrandSprites = Array.Empty<BitmapSource[]>();
+    private static BitmapSource[][] HeavySprites = Array.Empty<BitmapSource[]>();
 
     // Opacity ladders for the soft shapes, so nothing needs PushOpacity (an offscreen layer each).
     private const int OpacitySteps = 24;
-    private static readonly Brush[] SparkBrushes = Ladder(CreateSparkBrush());
-    private static readonly Brush[] HazeBlueBrushes = Ladder(CreateHazeBrush(FamilyColors[1]));
-    private static readonly Brush[] HazeCoreBrushes = Ladder(CreateHazeBrush(Color.FromRgb(0xD2, 0xEC, 0xFF)));
-    private static readonly Brush[] PoolBrushes = Ladder(CreatePoolBrush());
-    private static readonly Brush[] PoolWideBrushes = Ladder(CreateHazeBrush(FamilyColors[1]));
+    private static Brush[] SparkBrushes = Array.Empty<Brush>();
+    private static Brush[] HazeBlueBrushes = Array.Empty<Brush>();
+    private static Brush[] HazeCoreBrushes = Array.Empty<Brush>();
+    private static Brush[] PoolBrushes = Array.Empty<Brush>();
+    private static Brush[] PoolWideBrushes = Array.Empty<Brush>();
+
+    private static HologramColor? _paletteTint;
 
     private readonly Stopwatch _clock = Stopwatch.StartNew();
 
@@ -191,6 +200,7 @@ public sealed class HologramVisualizer : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
+        EnsurePalette();
         double debug = _debugLevel;
         double fade = debug >= 0 ? 1 : _fade;
         var capsule = _capsule;
@@ -460,6 +470,119 @@ public sealed class HologramVisualizer : FrameworkElement
         _balance += (balance - _balance) * (1 - Math.Exp(-dt / BalanceSeconds));
     }
 
+    private static void BuildPalette()
+    {
+        _paletteTint = GlassSettings.HologramTint;
+
+        FamilyColors = new Color[BaseFamilyColors.Length];
+        for (int i = 0; i < BaseFamilyColors.Length; i++)
+        {
+            FamilyColors[i] = Tint(BaseFamilyColors[i]);
+        }
+
+        StrandSprites = CreateSprites(StrandLayers);
+        HeavySprites = CreateSprites(HeavyLayers);
+
+        SparkBrushes = Ladder(CreateSparkBrush());
+        HazeBlueBrushes = Ladder(CreateHazeBrush(FamilyColors[1]));
+        HazeCoreBrushes = Ladder(CreateHazeBrush(Tint(BaseHazeCore)));
+        PoolBrushes = Ladder(CreatePoolBrush());
+        PoolWideBrushes = Ladder(CreateHazeBrush(FamilyColors[1]));
+    }
+
+    // Rebuilds only when the configured tint actually changed.
+    private static void EnsurePalette()
+    {
+        if (_paletteTint != GlassSettings.HologramTint)
+        {
+            BuildPalette();
+        }
+    }
+
+    /// <summary>
+    /// Re-tints a colour to the current preset: the hue is replaced and the
+    /// saturation scaled, while lightness and alpha keep the depth relationships.
+    /// </summary>
+    private static Color Tint(Color c)
+    {
+        var tint = GlassSettings.HologramTint;
+        if (tint == HologramColor.Blue)
+        {
+            return c;
+        }
+
+        var (hue, saturation) = Preset(tint);
+        ToHsl(c, out _, out double sourceSaturation, out double lightness);
+        return FromHsl(hue, Math.Clamp(sourceSaturation * saturation, 0, 1), lightness, c.A);
+    }
+
+    private static (double Hue, double Saturation) Preset(HologramColor tint) => tint switch
+    {
+        HologramColor.Cyan => (182, 1.0),
+        HologramColor.Violet => (272, 1.0),
+        HologramColor.Pink => (325, 1.0),
+        HologramColor.Gold => (40, 1.05),
+        HologramColor.Green => (140, 0.9),
+        HologramColor.White => (0, 0),
+        _ => (0, 1.0),
+    };
+
+    private static void ToHsl(Color c, out double hue, out double saturation, out double lightness)
+    {
+        double r = c.R / 255.0;
+        double g = c.G / 255.0;
+        double b = c.B / 255.0;
+        double max = Math.Max(r, Math.Max(g, b));
+        double min = Math.Min(r, Math.Min(g, b));
+        lightness = (max + min) * 0.5;
+
+        double delta = max - min;
+        if (delta <= 0)
+        {
+            hue = 0;
+            saturation = 0;
+            return;
+        }
+
+        saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+        if (max == r)
+        {
+            hue = (g - b) / delta + (g < b ? 6 : 0);
+        }
+        else if (max == g)
+        {
+            hue = (b - r) / delta + 2;
+        }
+        else
+        {
+            hue = (r - g) / delta + 4;
+        }
+
+        hue *= 60;
+    }
+
+    private static Color FromHsl(double hue, double saturation, double lightness, byte alpha)
+    {
+        hue = ((hue % 360) + 360) % 360;
+        double c = (1 - Math.Abs((2 * lightness) - 1)) * saturation;
+        double x = c * (1 - Math.Abs((hue / 60 % 2) - 1));
+        double m = lightness - (c * 0.5);
+        var (r, g, b) = hue switch
+        {
+            < 60 => (c, x, 0d),
+            < 120 => (x, c, 0d),
+            < 180 => (0d, c, x),
+            < 240 => (0d, x, c),
+            < 300 => (x, 0d, c),
+            _ => (c, 0d, x),
+        };
+
+        return Color.FromArgb(alpha, Channel(r + m), Channel(g + m), Channel(b + m));
+    }
+
+    private static byte Channel(double value) =>
+        (byte)Math.Clamp((int)Math.Round(value * 255), 0, 255);
+
     private static BitmapSource[][] CreateSprites((double Thickness, double Alpha)[] layers)
     {
         const int scale = 3;
@@ -549,10 +672,10 @@ public sealed class HologramVisualizer : FrameworkElement
             RadiusX = 0.5,
             RadiusY = 0.5
         };
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD8, 0xFF, 0xFF, 0xFF), 0));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x78, 0xDA, 0xF2, 0xFF), 0.30));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x24, 0x8F, 0xCD, 0xFF), 0.64));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x6F, 0xB8, 0xFF), 1));
+        brush.GradientStops.Add(new GradientStop(Tint(Color.FromArgb(0xD8, 0xFF, 0xFF, 0xFF)), 0));
+        brush.GradientStops.Add(new GradientStop(Tint(Color.FromArgb(0x78, 0xDA, 0xF2, 0xFF)), 0.30));
+        brush.GradientStops.Add(new GradientStop(Tint(Color.FromArgb(0x24, 0x8F, 0xCD, 0xFF)), 0.64));
+        brush.GradientStops.Add(new GradientStop(Tint(Color.FromArgb(0x00, 0x6F, 0xB8, 0xFF)), 1));
         brush.Freeze();
         return brush;
     }
@@ -585,11 +708,11 @@ public sealed class HologramVisualizer : FrameworkElement
             RadiusX = 0.5,
             RadiusY = 0.5
         };
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xF2, 0xF2, 0xFB, 0xFF), 0));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xA8, 0xB8, 0xE4, 0xFF), 0.22));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x50, 0x6F, 0xB8, 0xFF), 0.52));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x10, 0x2A, 0x6F, 0xD6), 0.80));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x2A, 0x6F, 0xD6), 1));
+        brush.GradientStops.Add(new GradientStop(Tint(Color.FromArgb(0xF2, 0xF2, 0xFB, 0xFF)), 0));
+        brush.GradientStops.Add(new GradientStop(Tint(Color.FromArgb(0xA8, 0xB8, 0xE4, 0xFF)), 0.22));
+        brush.GradientStops.Add(new GradientStop(Tint(Color.FromArgb(0x50, 0x6F, 0xB8, 0xFF)), 0.52));
+        brush.GradientStops.Add(new GradientStop(Tint(Color.FromArgb(0x10, 0x2A, 0x6F, 0xD6)), 0.80));
+        brush.GradientStops.Add(new GradientStop(Tint(Color.FromArgb(0x00, 0x2A, 0x6F, 0xD6)), 1));
         brush.Freeze();
         return brush;
     }

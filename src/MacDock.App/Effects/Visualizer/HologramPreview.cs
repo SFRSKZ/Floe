@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using MacDock.App.Services;
 
 namespace MacDock.App.Effects.Visualizer;
 
@@ -42,6 +43,16 @@ public static class HologramPreview
         string? path = null;
         try
         {
+            // Optional palette override, e.g. --hologram-tint=Gold. Preview only:
+            // the user's saved tint is left untouched.
+            const string tintOption = "--hologram-tint=";
+            var tintArgument = args.FirstOrDefault(a => a.StartsWith(tintOption, StringComparison.OrdinalIgnoreCase));
+            if (tintArgument is not null &&
+                Enum.TryParse<HologramColor>(tintArgument[tintOption.Length..], true, out var tint))
+            {
+                GlassSettings.PreviewTint(tint);
+            }
+
             path = Path.GetFullPath(argument[option.Length..]);
             string? folder = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(folder))

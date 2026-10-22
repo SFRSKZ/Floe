@@ -187,6 +187,21 @@ public partial class SettingsWindow : Window
         VisualizerLookGlow.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Glow);
         VisualizerLookHologram.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Hologram);
 
+        HologramTintBlue.IsChecked = GlassSettings.HologramTint == HologramColor.Blue;
+        HologramTintCyan.IsChecked = GlassSettings.HologramTint == HologramColor.Cyan;
+        HologramTintViolet.IsChecked = GlassSettings.HologramTint == HologramColor.Violet;
+        HologramTintPink.IsChecked = GlassSettings.HologramTint == HologramColor.Pink;
+        HologramTintGold.IsChecked = GlassSettings.HologramTint == HologramColor.Gold;
+        HologramTintGreen.IsChecked = GlassSettings.HologramTint == HologramColor.Green;
+        HologramTintWhite.IsChecked = GlassSettings.HologramTint == HologramColor.White;
+        HologramTintBlue.Checked += (_, _) => GlassSettings.SetHologramTint(HologramColor.Blue);
+        HologramTintCyan.Checked += (_, _) => GlassSettings.SetHologramTint(HologramColor.Cyan);
+        HologramTintViolet.Checked += (_, _) => GlassSettings.SetHologramTint(HologramColor.Violet);
+        HologramTintPink.Checked += (_, _) => GlassSettings.SetHologramTint(HologramColor.Pink);
+        HologramTintGold.Checked += (_, _) => GlassSettings.SetHologramTint(HologramColor.Gold);
+        HologramTintGreen.Checked += (_, _) => GlassSettings.SetHologramTint(HologramColor.Green);
+        HologramTintWhite.Checked += (_, _) => GlassSettings.SetHologramTint(HologramColor.White);
+
         IntroDrop.IsChecked = GlassSettings.Intro == NowPlayingIntro.Drop;
         IntroHologram.IsChecked = GlassSettings.Intro == NowPlayingIntro.Hologram;
         IntroDrop.Checked += (_, _) => GlassSettings.SetIntro(NowPlayingIntro.Drop);

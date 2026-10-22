@@ -247,6 +247,17 @@
                     <RadioButton x:Name="VisualizerLookHologram" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Hologram" />
                 </WrapPanel>
 
+                <TextBlock Text="Hologram rengi" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
+                <WrapPanel>
+                    <RadioButton x:Name="HologramTintBlue" GroupName="HologramTint" Style="{StaticResource ModeToggle}" Content="Mavi" />
+                    <RadioButton x:Name="HologramTintCyan" GroupName="HologramTint" Style="{StaticResource ModeToggle}" Content="Turkuaz" />
+                    <RadioButton x:Name="HologramTintViolet" GroupName="HologramTint" Style="{StaticResource ModeToggle}" Content="Mor" />
+                    <RadioButton x:Name="HologramTintPink" GroupName="HologramTint" Style="{StaticResource ModeToggle}" Content="Pembe" />
+                    <RadioButton x:Name="HologramTintGold" GroupName="HologramTint" Style="{StaticResource ModeToggle}" Content="Altın" />
+                    <RadioButton x:Name="HologramTintGreen" GroupName="HologramTint" Style="{StaticResource ModeToggle}" Content="Yeşil" />
+                    <RadioButton x:Name="HologramTintWhite" GroupName="HologramTint" Style="{StaticResource ModeToggle}" Content="Beyaz" />
+                </WrapPanel>
+
                 <TextBlock Text="Şarkı girişi" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
                 <WrapPanel>
                     <RadioButton x:Name="IntroDrop" GroupName="NowPlayingIntro" Style="{StaticResource ModeToggle}" Content="Damla" />
