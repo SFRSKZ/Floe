@@ -98,6 +98,9 @@ public static class AuraSettings
     /// <summary>Playback speed of the sleep (derezz) effect, 0.5 .. 2.</summary>
     public static double DerezzSpeed { get; private set; } = 1.0;
 
+    /// <summary>Edge of one sleep (derezz) cube in dock units, 4 .. 12.</summary>
+    public static double DerezzCell { get; private set; } = 6;
+
     public static int PaletteIndex { get; private set; }
 
     public static void Load()
@@ -121,6 +124,7 @@ public static class AuraSettings
             ClickSpeed = model.ClickSpeed <= 0 ? 1.0 : Math.Clamp(model.ClickSpeed, 0.5, 2.0);
             Derezz = model.Derezz;
             DerezzSpeed = model.DerezzSpeed <= 0 ? 1.0 : Math.Clamp(model.DerezzSpeed, 0.5, 2.0);
+            DerezzCell = model.DerezzCell <= 0 ? 6 : Math.Clamp(Math.Round(model.DerezzCell), 4, 12);
             Mode = Enum.TryParse<AuraColorMode>(model.Mode, true, out var mode) ? mode : AuraColorMode.Palette;
             Effect = Enum.TryParse<AuraEffect>(model.Effect, true, out var effect) ? effect : AuraEffect.Glow;
             SpectralIntensity = model.SpectralIntensity <= 0 ? 1.5 : Math.Clamp(model.SpectralIntensity, 0.5, 2.5);
@@ -169,6 +173,15 @@ public static class AuraSettings
     {
         if (Derezz == enabled) return;
         Derezz = enabled;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetDerezzCell(double cell)
+    {
+        cell = Math.Clamp(Math.Round(cell), 4, 12);
+        if (Math.Abs(DerezzCell - cell) < 0.001) return;
+        DerezzCell = cell;
         Save();
         Changed?.Invoke();
     }
@@ -262,6 +275,7 @@ public static class AuraSettings
                 ClickSpeed = ClickSpeed,
                 Derezz = Derezz,
                 DerezzSpeed = DerezzSpeed,
+                DerezzCell = DerezzCell,
                 Mode = Mode.ToString(),
                 Effect = Effect.ToString(),
                 SpectralIntensity = SpectralIntensity,
@@ -289,6 +303,8 @@ public static class AuraSettings
         public bool Derezz { get; set; } = true;
 
         public double DerezzSpeed { get; set; } = 1.0;
+
+        public double DerezzCell { get; set; } = 6;
 
         public string Mode { get; set; } = nameof(AuraColorMode.Palette);
 

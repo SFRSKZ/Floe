@@ -157,11 +157,13 @@ public partial class SettingsWindow : Window
         {
             AuraSettings.SetDerezz(true);
             DerezzSpeedSlider.IsEnabled = true;
+            DerezzCellSlider.IsEnabled = true;
         };
         DerezzToggle.Unchecked += (_, _) =>
         {
             AuraSettings.SetDerezz(false);
             DerezzSpeedSlider.IsEnabled = false;
+            DerezzCellSlider.IsEnabled = false;
         };
         DerezzSpeedSlider.IsEnabled = AuraSettings.Derezz;
         DerezzSpeedSlider.Value = AuraSettings.DerezzSpeed;
@@ -178,6 +180,16 @@ public partial class SettingsWindow : Window
         {
             AuraSettings.SetDerezzSpeed(e.NewValue);
             DerezzSpeedValue.Text = AuraSettings.DerezzSpeed.ToString("0.0") + "x";
+            derezzPreview.Stop();
+            derezzPreview.Start();
+        };
+        DerezzCellSlider.IsEnabled = AuraSettings.Derezz;
+        DerezzCellSlider.Value = AuraSettings.DerezzCell;
+        DerezzCellValue.Text = AuraSettings.DerezzCell.ToString("0") + " px";
+        DerezzCellSlider.ValueChanged += (_, e) =>
+        {
+            AuraSettings.SetDerezzCell(e.NewValue);
+            DerezzCellValue.Text = AuraSettings.DerezzCell.ToString("0") + " px";
             derezzPreview.Stop();
             derezzPreview.Start();
         };

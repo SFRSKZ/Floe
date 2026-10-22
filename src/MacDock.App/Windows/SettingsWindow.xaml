@@ -277,6 +277,15 @@
                     <Slider x:Name="DerezzSpeedSlider" Style="{StaticResource GlassSlider}" Minimum="0.5" Maximum="2" SmallChange="0.1" LargeChange="0.25" Value="1" />
                     <TextBlock x:Name="DerezzSpeedValue" Grid.Column="1" Width="36" TextAlignment="Right" VerticalAlignment="Center" Foreground="#F2FFFFFF" FontSize="12" />
                 </Grid>
+                <TextBlock Text="Küp boyutu" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,8,0,6" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Slider x:Name="DerezzCellSlider" Style="{StaticResource GlassSlider}" Minimum="4" Maximum="12" SmallChange="1" LargeChange="2" IsSnapToTickEnabled="True" TickFrequency="1" Value="6" />
+                    <TextBlock x:Name="DerezzCellValue" Grid.Column="1" Width="36" TextAlignment="Right" VerticalAlignment="Center" Foreground="#F2FFFFFF" FontSize="12" />
+                </Grid>
             </StackPanel>
         </StackPanel>
     </local:GlassPanel>

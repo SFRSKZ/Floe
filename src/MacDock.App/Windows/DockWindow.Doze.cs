@@ -17,7 +17,6 @@ public partial class DockWindow
     private static readonly TimeSpan DozingPoll = TimeSpan.FromMilliseconds(100);
     // DWM needs a couple of composed frames before a window it excluded from capture shows up in a grab.
     private static readonly TimeSpan RevealSettle = TimeSpan.FromMilliseconds(120);
-    private const double DozeCell = 6;
     private const double RezzSpeed = 1.8;
     private const double RewindSpeed = 2.2;
 
@@ -128,7 +127,7 @@ public partial class DockWindow
             return;
         }
 
-        _dozeField = new DerezzField(_dozeSnapshot, rect, DozeCell, new Point(rect.X + (rect.Width / 2), rect.Bottom), WindowHeight, rezz: false,
+        _dozeField = new DerezzField(_dozeSnapshot, rect, AuraSettings.DerezzCell, new Point(rect.X + (rect.Width / 2), rect.Bottom), WindowHeight, rezz: false,
             speed: AuraSettings.DerezzSpeed)
         {
             DrawIntact = false,
@@ -160,7 +159,7 @@ public partial class DockWindow
         var rect = CapsuleRect();
         var (cursorX, _) = ScreenInput.GetCursorPosition();
         double x = Math.Clamp(Root.PointFromScreen(new Point(cursorX, 0)).X, rect.Left, rect.Right);
-        _dozeField = new DerezzField(_dozeSnapshot, rect, DozeCell, new Point(x, rect.Bottom), WindowHeight, rezz: true,
+        _dozeField = new DerezzField(_dozeSnapshot, rect, AuraSettings.DerezzCell, new Point(x, rect.Bottom), WindowHeight, rezz: true,
             speed: RezzSpeed * AuraSettings.DerezzSpeed, seed: Environment.TickCount & 0xFF);
         _dozeTime = 0;
         _dozeDirection = 1;
