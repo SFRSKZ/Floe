@@ -27,6 +27,7 @@ internal sealed class VisualizerWindow : Window
     private readonly StardustVisualizer _dustWave = new() { Wave = true };
     private readonly SilkContourVisualizer _silkContour = new();
     private GpuLayerWindow? _gpu;
+    private GpuLayerWindow? _wraith;
     private bool _gpuFailed;
     private IntPtr _hwnd;
     private IntPtr _dock;
@@ -65,9 +66,9 @@ internal sealed class VisualizerWindow : Window
     public IntPtr Handle => _hwnd;
 
     /// <summary>The window the light is drawn in right now: the GPU layer when it carries the look.</summary>
-    public IntPtr TopHandle => _gpu is { IsRunning: true } gpu ? gpu.Handle : _hwnd;
+    public IntPtr TopHandle => _wraith is { IsRunning: true } wraith ? wraith.Handle : _gpu is { IsRunning: true } gpu ? gpu.Handle : _hwnd;
 
-    public bool Showing => IsVisible || _gpu is { IsRunning: true };
+    public bool Showing => IsVisible || _gpu is { IsRunning: true } || _wraith is { IsRunning: true };
 
     protected override void OnClosed(EventArgs e)
     {
@@ -75,6 +76,8 @@ internal sealed class VisualizerWindow : Window
         CaptureReveal.Forget(_hwnd);
         _gpu?.Dispose();
         _gpu = null;
+        _wraith?.Dispose();
+        _wraith = null;
         base.OnClosed(e);
     }
 
@@ -117,20 +120,29 @@ internal sealed class VisualizerWindow : Window
         _dock = dock;
         WindowStyling.PlaceBelow(_hwnd, dock);
         _gpu?.PlaceBelowDock(dock);
+        _wraith?.PlaceBelowDock(dock);
     }
 
     public void SetRunning(bool running)
     {
         var look = GlassSettings.VisualizerLook;
-        bool gpu = running && UseGpu(look);
+        // the wraith only exists on the GPU; the dust looks move there when the setting asks for it
+        bool wraith = running && look == VisualizerStyle.WraithWind && Layer(ref _wraith, () => new WraithGpuScene());
+        bool dust = running && GlassSettings.GpuVisualizer && look is VisualizerStyle.Stardust or VisualizerStyle.DustWave
+            && Layer(ref _gpu, () => new StardustGpuScene());
         if (_gpu is not null)
         {
             _gpu.Wave = look == VisualizerStyle.DustWave;
-            _gpu.SetRunning(gpu);
+            _gpu.SetRunning(dust);
         }
 
-        // the GPU layer carries the dust looks by itself; this window only fades out what it drew before
-        running &= !gpu;
+        _wraith?.SetRunning(wraith);
+
+        // without a GPU the wraith falls back to the stardust it grew out of
+        if (look == VisualizerStyle.WraithWind && !wraith) look = VisualizerStyle.Stardust;
+
+        // a GPU layer carries its look by itself; this window only fades out what it drew before
+        running &= !(dust || wraith);
         _running = running;
         _glow.IsActive = running && look == VisualizerStyle.Glow;
         _hologram.IsActive = running && look == VisualizerStyle.Hologram;
@@ -161,15 +173,14 @@ internal sealed class VisualizerWindow : Window
         }
     }
 
-    private bool UseGpu(VisualizerStyle look)
+    private bool Layer(ref GpuLayerWindow? layer, Func<IGpuScene> scene)
     {
-        if (!GlassSettings.GpuVisualizer || _gpuFailed) return false;
-        if (look is not (VisualizerStyle.Stardust or VisualizerStyle.DustWave)) return false;
-        if (_gpu is null)
+        if (_gpuFailed) return false;
+        if (layer is null)
         {
             try
             {
-                _gpu = new GpuLayerWindow(new StardustGpuScene());
+                layer = new GpuLayerWindow(scene());
             }
             catch (Exception ex)
             {
@@ -177,10 +188,10 @@ internal sealed class VisualizerWindow : Window
             }
 
             // no window means no device or no composition: stay on the WPF path for good
-            if (_gpu is null || _gpu.Handle == IntPtr.Zero)
+            if (layer is null || layer.Handle == IntPtr.Zero)
             {
-                _gpu?.Dispose();
-                _gpu = null;
+                layer?.Dispose();
+                layer = null;
                 _gpuFailed = true;
                 return false;
             }
@@ -193,14 +204,15 @@ internal sealed class VisualizerWindow : Window
 
     private void PlaceGpu()
     {
-        if (_gpu is null || _bounds.IsEmpty) return;
-        // the dock hands over DIP bounds; the composition layer works in physical pixels
+        if (_bounds.IsEmpty) return;
+        // the dock hands over DIP bounds; the composition layers work in physical pixels
         var pixels = new Int32Rect(
             (int)Math.Round(_bounds.Left * _scale),
             (int)Math.Round(_bounds.Top * _scale),
             (int)Math.Round(_bounds.Width * _scale),
             (int)Math.Round(_bounds.Height * _scale));
-        _gpu.Place(pixels, _scale, _dock);
+        _gpu?.Place(pixels, _scale, _dock);
+        _wraith?.Place(pixels, _scale, _dock);
     }
 
     private DispatcherTimer CreateHideTimer()

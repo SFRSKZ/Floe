@@ -404,6 +404,7 @@
                     <RadioButton x:Name="VisualizerLookStardust" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Yıldız tozu" />
                     <RadioButton x:Name="VisualizerLookDustWave" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Toz dalgası" />
                     <RadioButton x:Name="VisualizerLookSilkContour" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="İpek kontur" />
+                    <RadioButton x:Name="VisualizerLookWraithWind" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Hayalet rüzgârı" />
                 </WrapPanel>
 
                 <CheckBox x:Name="GpuVisualizerToggle"

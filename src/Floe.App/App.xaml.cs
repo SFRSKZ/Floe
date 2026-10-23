@@ -71,6 +71,7 @@ public partial class App : Application
         if (Effects.Visualizer.CubePreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.StardustPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.StardustGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.WraithGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.SilkContourPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Floe.App.Windows.SettingsPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.DozeDissolvePreview.TryRender(e.Args)) { Shutdown(); return; }

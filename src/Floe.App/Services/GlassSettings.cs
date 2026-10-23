@@ -21,6 +21,7 @@ public enum VisualizerStyle
     Stardust,
     DustWave,
     SilkContour,
+    WraithWind,
 }
 
 public enum HologramColor
