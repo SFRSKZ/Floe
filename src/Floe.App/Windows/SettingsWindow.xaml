@@ -376,6 +376,7 @@
                     <RadioButton x:Name="VisualizerLookHologram" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Hologram" />
                     <RadioButton x:Name="VisualizerLookCubes" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Küpler" />
                     <RadioButton x:Name="VisualizerLookStardust" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Yıldız tozu" />
+                    <RadioButton x:Name="VisualizerLookDustWave" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Toz dalgası" />
                 </WrapPanel>
 
                 <TextBlock Text="Hologram, küp ve toz rengi" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />

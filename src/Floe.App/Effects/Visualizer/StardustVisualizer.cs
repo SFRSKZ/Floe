@@ -58,6 +58,18 @@ public sealed class StardustVisualizer : FrameworkElement
     private readonly byte[] _hue = new byte[MaxParticles];
     private int _count;
 
+    // The wave: grains held by springs on two sine waves across the strip. Two thirds ride the main wave,
+    // a third a fainter one flowing the other way. Four sines each; their amplitudes follow four band groups.
+    private static readonly float[] WaveFrequency = { .22f, .5f, .95f, 1.6f };
+    private static readonly float[] WaveSpeed = { 1.8f, -3.1f, 4.6f, -6.5f };
+    private const float SpringStiffness = 90;
+    private const float SpringDamping = 18;
+    private readonly float[] _waveAmp = new float[4];
+    private float[] _wx = Array.Empty<float>(), _wy = Array.Empty<float>(), _wvx = Array.Empty<float>(), _wvy = Array.Empty<float>();
+    private float[] _wPhase = Array.Empty<float>();
+    private int _waveCount;
+    private double _wavePhase;
+
     // the dust picture, premultiplied rgb, at _scale pixels per DIP; the aurora is added only on present
     private float[] _r = Array.Empty<float>(), _g = Array.Empty<float>(), _b = Array.Empty<float>();
     private float[] _r2 = Array.Empty<float>(), _g2 = Array.Empty<float>(), _b2 = Array.Empty<float>();
@@ -136,6 +148,12 @@ public sealed class StardustVisualizer : FrameworkElement
         }
     }
 
+    /// <summary>
+    /// The dust wave look: most of the dust held on two waves the spectrum shapes, a beat scattering it,
+    /// with less of it drifting free. Off is plain star dust.
+    /// </summary>
+    public bool Wave { get; init; }
+
     /// <summary>Offscreen renders: set to feed this frame instead of the live capture.</summary>
     internal SpectrumFrame? DebugFrame { get; set; }
 
@@ -164,6 +182,7 @@ public sealed class StardustVisualizer : FrameworkElement
         _shimmer *= Math.Exp(-dt / .15);
         if (live && f.Kick > 0)
         {
+            if (Wave) Scatter(.15f + (.35f * (float)Math.Max(_bass, f.Kick)));
             _pulse = Math.Max(_pulse, f.Kick);
             Lift(f.Kick);
         }
@@ -171,9 +190,11 @@ public sealed class StardustVisualizer : FrameworkElement
         if (live && f.Snare > 0) _shimmer = Math.Max(_shimmer, f.Snare);
 
         Blur(dt);
+        if (Wave) MoveWave(dt, live);
         if (live) Emit(dt, f);
         Move(dt);
         Splat();
+        if (Wave) SplatWave();
         Aurora();
         Present();
     }
@@ -213,6 +234,7 @@ public sealed class StardustVisualizer : FrameworkElement
         _auraB = new float[w];
         _auraScratch = new float[w];
         _pixels = new int[n];
+        if (Wave) AllocateWave();
         _bitmap = new WriteableBitmap(w, h, 96, 96, PixelFormats.Pbgra32, null);
 
         _sprites = new float[Sigmas.Length][];
@@ -428,6 +450,106 @@ public sealed class StardustVisualizer : FrameworkElement
     // soft knee, so piled-up light rolls into white instead of clipping flat
     private static float Knee(float v) => v <= 0 ? 0 : v < .7f ? v : Math.Min(1, .7f + (.3f * (1 - MathF.Exp(-(v - .7f) * 3))));
 
+    // ---- the wave ---------------------------------------------------------------------------------
+
+    private void AllocateWave()
+    {
+        // one grain every ~1.2 DIP of width
+        int n = Math.Clamp((int)(_capsule.Width / 1.2 * (Performance.Level == PerformanceLevel.Lite ? .5 : 1)), 60, 2400);
+        _waveCount = n;
+        _wx = new float[n];
+        _wy = new float[n];
+        _wvx = new float[n];
+        _wvy = new float[n];
+        _wPhase = new float[n];
+        for (int i = 0; i < n; i++)
+        {
+            Home(i, out _wx[i], out _wy[i]);
+            _wPhase[i] = (float)(_random.NextDouble() * 100);
+        }
+    }
+
+    // Where grain i belongs on its wave right now.
+    private void Home(int i, out float hx, out float hy)
+    {
+        int n = _waveCount, main = n * 2 / 3;
+        bool second = i >= main;
+        float u = second ? (i - main) / (float)Math.Max(1, n - main - 1) : i / (float)Math.Max(1, main - 1);
+        float width = (float)_capsule.Width, height = (float)_capsule.Height;
+        // about one long swell per 300 DIP, however wide the screen
+        float x = u * width / 12;
+        float phase = (float)_wavePhase, y = 0;
+        for (int k = 0; k < 4; k++)
+        {
+            y += _waveAmp[k] * (second
+                ? MathF.Sin((x * WaveFrequency[k]) - (phase * WaveSpeed[k] * .7f) + (k * 2.1f))
+                : MathF.Sin((x * WaveFrequency[k]) + (phase * WaveSpeed[k]) + k));
+        }
+
+        hx = u * width;
+        hy = Math.Clamp((height * .6f) + (y * height * .38f * (second ? .55f : 1)), 5, height - 3);
+    }
+
+    private void MoveWave(double dt, bool live)
+    {
+        if (_waveCount == 0) return;
+        float Avg(int a, int b)
+        {
+            float sum = 0;
+            for (int k = a; k <= b; k++) sum += _band[k];
+            return sum / (b - a + 1);
+        }
+
+        // the same weights as the bands fall off: lows swing widest
+        float gain = live ? 1 : 0;
+        _waveAmp[0] = Avg(0, 3) * gain;
+        _waveAmp[1] = Avg(4, 7) * .8f * gain;
+        _waveAmp[2] = Avg(8, 16) * .7f * gain;
+        _waveAmp[3] = Avg(17, 23) * .6f * gain;
+        // no sound, no flow
+        _wavePhase += dt * _level * 1.6;
+
+        float d = (float)dt;
+        for (int i = 0; i < _waveCount; i++)
+        {
+            Home(i, out float hx, out float hy);
+            // a stiff spring, nearly critically damped: back home in about a tenth of a second
+            _wvx[i] += ((SpringStiffness * (hx - _wx[i])) - (SpringDamping * _wvx[i])) * d;
+            _wvy[i] += ((SpringStiffness * (hy - _wy[i])) - (SpringDamping * _wvy[i])) * d;
+            _wx[i] += _wvx[i] * d;
+            _wy[i] += _wvy[i] * d;
+        }
+    }
+
+    // A beat throws the grains off their wave; the springs pull them back.
+    private void Scatter(float strength)
+    {
+        for (int i = 0; i < _waveCount; i++)
+        {
+            double angle = _random.NextDouble() * Math.PI * 2, speed = strength * 400 * _random.NextDouble();
+            _wvx[i] += (float)(Math.Cos(angle) * speed);
+            _wvy[i] += (float)(Math.Sin(angle) * speed);
+        }
+    }
+
+    private void SplatWave()
+    {
+        float scale = (float)_scale, t = (float)_time, fade = (float)Math.Min(1, _fade * 1.5);
+        int main = _waveCount * 2 / 3;
+        float energy = .45f + (.55f * (float)_level);
+        for (int i = 0; i < _waveCount; i++)
+        {
+            bool second = i >= main;
+            float twinkle = .7f + (.3f * MathF.Sin(_wPhase[i] + (t * (2.5f + (_wPhase[i] % 3)))));
+            // a grain thrown far from home glows a little brighter
+            float speed = MathF.Min(1, (MathF.Abs(_wvx[i]) + MathF.Abs(_wvy[i])) / 300);
+            float b = (second ? .8f : 1.4f) * energy * twinkle * (1 + speed) * fade;
+            float xn = MathF.Abs((_wx[i] / (float)_capsule.Width) - .5f) * 2;
+            int hue = Math.Clamp((int)((second ? .55f + (.45f * xn) : xn * .6f) * (PaletteSize - 1)), 0, PaletteSize - 1);
+            Sprite(_wx[i] * scale, _wy[i] * scale, second ? 1 : 0, PaletteR[hue] * b, PaletteG[hue] * b, PaletteB[hue] * b);
+        }
+    }
+
     // ---- the dust ---------------------------------------------------------------------------------
 
     private void Emit(double dt, SpectrumFrame f)
@@ -440,7 +562,7 @@ public sealed class StardustVisualizer : FrameworkElement
         for (int b = 0; b < Bands; b++)
         {
             double e = _band[b];
-            _emitCarry += ((e * e * 16) + .4) * density * dt;
+            _emitCarry += (Wave ? (e * e * 7) + .2 : (e * e * 16) + .4) * density * dt;
             while (_emitCarry >= 1)
             {
                 _emitCarry -= 1;
@@ -617,6 +739,8 @@ public sealed class StardustVisualizer : FrameworkElement
             if (_fade <= 0)
             {
                 _count = 0;
+                _wavePhase = 0;
+                Array.Clear(_waveAmp);
                 _bass = _level = _pulse = _shimmer = 0;
                 Array.Clear(_band);
                 Array.Clear(_r);

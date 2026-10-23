@@ -11,7 +11,7 @@ namespace Floe.App.Effects.Visualizer;
 /// <summary>
 /// --render-stardust=&lt;dir&gt; writes 90 PNG frames (30 fps) of the star dust visualizer over a dark stage, fed a
 /// made-up beat; --stardust-live feeds it what the speakers play instead, in real time, and writes what the
-/// analysis heard to spectrum.txt. --hologram-tint=&lt;name&gt; previews another tint.
+/// analysis heard to spectrum.txt. --stardust-wave renders the dust wave look. --hologram-tint=&lt;name&gt; previews another tint.
 /// </summary>
 public static class StardustPreview
 {
@@ -41,7 +41,7 @@ public static class StardustPreview
                 ? new LinearGradientBrush(Color.FromRgb(0x6A, 0x7E, 0x96), Color.FromRgb(0xB8, 0xC4, 0xD0), 0)
                 : new SolidColorBrush(Color.FromRgb(0x0B, 0x0E, 0x14));
             var stage = new Canvas { Width = Width, Height = Height, Background = backdrop };
-            var dust = new StardustVisualizer { Width = Width, Height = Height, Capsule = new Rect(0, Height - 82, Width, 82) };
+            var dust = new StardustVisualizer { Wave = args.Contains("--stardust-wave", StringComparer.OrdinalIgnoreCase), Width = Width, Height = Height, Capsule = new Rect(0, Height - 82, Width, 82) };
             stage.Children.Add(dust);
             stage.Measure(new Size(Width, Height));
             stage.Arrange(new Rect(0, 0, Width, Height));

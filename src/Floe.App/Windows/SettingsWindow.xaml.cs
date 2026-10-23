@@ -345,6 +345,8 @@ public partial class SettingsWindow : Window
         VisualizerLookCubes.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Cubes);
         VisualizerLookStardust.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Stardust;
         VisualizerLookStardust.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Stardust);
+        VisualizerLookDustWave.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.DustWave;
+        VisualizerLookDustWave.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.DustWave);
         CubeSizeSlider.Value = GlassSettings.CubeSize;
         CubeSizeValue.Text = GlassSettings.CubeSize.ToString("0") + " px";
         CubeSizeSlider.ValueChanged += (_, e) =>
