@@ -17,6 +17,7 @@ public enum VisualizerStyle
     Glow,
     Hologram,
     Cubes,
+    Stardust,
 }
 
 public enum HologramColor

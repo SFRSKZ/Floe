@@ -343,6 +343,8 @@ public partial class SettingsWindow : Window
         VisualizerLookHologram.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Hologram);
         VisualizerLookCubes.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Cubes;
         VisualizerLookCubes.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Cubes);
+        VisualizerLookStardust.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Stardust;
+        VisualizerLookStardust.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Stardust);
         CubeSizeSlider.Value = GlassSettings.CubeSize;
         CubeSizeValue.Text = GlassSettings.CubeSize.ToString("0") + " px";
         CubeSizeSlider.ValueChanged += (_, e) =>

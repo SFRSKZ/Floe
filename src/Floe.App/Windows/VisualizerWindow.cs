@@ -22,6 +22,7 @@ internal sealed class VisualizerWindow : Window
     private readonly VisualizerGlow _glow = new();
     private readonly HologramVisualizer _hologram = new();
     private readonly CubeVisualizer _cubes = new();
+    private readonly StardustVisualizer _stardust = new();
     private IntPtr _hwnd;
     private IntPtr _dock;
     private Rect _bounds = Rect.Empty;
@@ -46,11 +47,12 @@ internal sealed class VisualizerWindow : Window
         root.Children.Add(_glow);
         root.Children.Add(_hologram);
         root.Children.Add(_cubes);
+        root.Children.Add(_stardust);
         Content = root;
         SizeChanged += (_, _) => UpdateCapsule();
     }
 
-    public bool IsRunning => _glow.IsActive || _hologram.IsActive || _cubes.IsActive;
+    public bool IsRunning => _glow.IsActive || _hologram.IsActive || _cubes.IsActive || _stardust.IsActive;
 
     public IntPtr Handle => _hwnd;
 
@@ -106,6 +108,7 @@ internal sealed class VisualizerWindow : Window
         _glow.IsActive = running && look == VisualizerStyle.Glow;
         _hologram.IsActive = running && look == VisualizerStyle.Hologram;
         _cubes.IsActive = running && look == VisualizerStyle.Cubes;
+        _stardust.IsActive = running && look == VisualizerStyle.Stardust;
 
         if (running)
         {
@@ -155,5 +158,6 @@ internal sealed class VisualizerWindow : Window
         _hologram.Capsule = strip with { Height = strip.Height + 4 };
         // the cubes stand on the screen's bottom edge
         _cubes.Capsule = strip;
+        _stardust.Capsule = strip;
     }
 }
