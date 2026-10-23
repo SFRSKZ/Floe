@@ -77,6 +77,7 @@ public partial class SettingsWindow : Window
         Closed += (_, _) => AuraSettings.Changed -= RefreshRows;
 
         BuildGlassControls();
+        BuildPerformanceControls();
         BuildTabs();
         RefreshRows();
         AttachChromatic();
@@ -129,6 +130,8 @@ public partial class SettingsWindow : Window
         {
             used |= faces && AttachChromaticFace(toggle, () => toggle.IsChecked == true);
             used |= rims && AttachMetalRim(toggle, () => toggle.IsChecked == true);
+            // a new selection still settles while idle motion is off
+            toggle.Checked += (_, _) => _chromatic?.Wake();
         }
         used |= faces && AttachChromaticFace(CloseButton, () => true);
         used |= rims && AttachMetalRim(CloseButton, () => true);
@@ -352,6 +355,34 @@ public partial class SettingsWindow : Window
         IntroHologram.Checked += (_, _) => GlassSettings.SetIntro(NowPlayingIntro.Hologram);
     }
 
+    /// <summary>
+    /// The dock picks the level itself in Auto; the status line shows what it settled on,
+    /// including when it steps down or back up while the window is open.
+    /// </summary>
+    private void BuildPerformanceControls()
+    {
+        PerformanceAuto.IsChecked = Performance.Mode == PerformanceMode.Auto;
+        PerformanceQuality.IsChecked = Performance.Mode == PerformanceMode.Quality;
+        PerformanceSmooth.IsChecked = Performance.Mode == PerformanceMode.Smooth;
+        PerformanceAuto.Checked += (_, _) => Performance.SetMode(PerformanceMode.Auto);
+        PerformanceQuality.Checked += (_, _) => Performance.SetMode(PerformanceMode.Quality);
+        PerformanceSmooth.Checked += (_, _) => Performance.SetMode(PerformanceMode.Smooth);
+
+        UpdatePerformanceStatus();
+        Performance.Changed += UpdatePerformanceStatus;
+        Closed += (_, _) => Performance.Changed -= UpdatePerformanceStatus;
+    }
+
+    private void UpdatePerformanceStatus()
+    {
+        PerformanceStatus.Text = Performance.Level switch
+        {
+            PerformanceLevel.Full => "Şu an: Tam",
+            PerformanceLevel.Balanced => "Şu an: Dengeli",
+            _ => "Şu an: Hafif",
+        };
+    }
+
     private void BuildPaletteRows()
     {
         for (var i = 0; i < AuraSettings.Palettes.Count; i++)
@@ -398,7 +429,11 @@ public partial class SettingsWindow : Window
             row.Child = content;
 
             var index = i;
-            row.MouseLeftButtonUp += (_, _) => AuraSettings.SetPalette(index);
+            row.MouseLeftButtonUp += (_, _) =>
+            {
+                AuraSettings.SetPalette(index);
+                _chromatic?.Wake();
+            };
 
             _rows.Add((row, rim, shell, index));
             PaletteList.Children.Add(shell);

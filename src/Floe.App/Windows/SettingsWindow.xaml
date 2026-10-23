@@ -330,6 +330,23 @@
                     <Slider x:Name="ClickSpeedSlider" Style="{StaticResource GlassSlider}" Minimum="0.5" Maximum="2" SmallChange="0.1" LargeChange="0.25" Value="1" />
                     <TextBlock x:Name="ClickSpeedValue" Grid.Column="1" Width="36" TextAlignment="Right" VerticalAlignment="Center" Foreground="#F2FFFFFF" FontSize="12" />
                 </Grid>
+
+                <TextBlock Text="Performans" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,10,0,6" />
+                <WrapPanel>
+                    <RadioButton x:Name="PerformanceAuto" GroupName="Performance" Style="{StaticResource ModeToggle}" Content="Otomatik" />
+                    <RadioButton x:Name="PerformanceQuality" GroupName="Performance" Style="{StaticResource ModeToggle}" Content="Kalite" />
+                    <RadioButton x:Name="PerformanceSmooth" GroupName="Performance" Style="{StaticResource ModeToggle}" Content="Akıcılık" />
+                </WrapPanel>
+                <TextBlock x:Name="PerformanceStatus"
+                           Foreground="#8AFFFFFF"
+                           FontSize="11.5"
+                           Margin="2,0,0,0"
+                           Text="Şu an: Tam" />
+                <TextBlock Text="Otomatik: dock takılırsa süs efektlerini kendisi azaltır."
+                           Foreground="#66FFFFFF"
+                           FontSize="11"
+                           Margin="2,2,0,0"
+                           TextWrapping="Wrap" />
             </StackPanel>
 
             <StackPanel x:Name="GlassPage">
