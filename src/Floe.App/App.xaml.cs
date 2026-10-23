@@ -76,6 +76,7 @@ public partial class App : Application
         if (Effects.Visualizer.HologramIntroPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Derezz.DerezzPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Services.DotMatrixIconsPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.GpuOffscreen.TryRenderTest(e.Args)) { Shutdown(); return; }
 
         if (TryRenderSettings(e.Args))
         {
