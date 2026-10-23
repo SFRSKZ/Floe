@@ -292,7 +292,7 @@ public sealed class StardustVisualizer : FrameworkElement
             float twinkle = .75f + (.25f * MathF.Sin(_phase[p] + (t * (2.2f + (_phase[p] % 3)))));
             float depth = _depth[p];
             float flare = _flare[p];
-            float i = _bright[p] * envelope * (twinkle + (shimmer * .8f * (1 - depth))) * (1 + (2.5f * flare));
+            float i = 1.9f * _bright[p] * envelope * (twinkle + (shimmer * .8f * (1 - depth))) * (1 + (2.5f * flare));
             if (i <= .004f) continue;
             int hue = _hue[p];
             // near dust is out of focus: wide and faint, like bokeh
@@ -362,10 +362,10 @@ public sealed class StardustVisualizer : FrameworkElement
             int b0 = Math.Min(Bands - 2, (int)at);
             float band = _band[b0] + ((_band[b0 + 1] - _band[b0]) * (at - b0));
             float centre = MathF.Exp(-(xn * xn) / (2 * .22f * .22f));
-            float reach = (.10f + (.55f * MathF.Pow(band, 1.3f) * (.55f + (.45f * level))) + (.25f * centre * (bass + pulse))) * (float)height;
+            float reach = (.13f + (.80f * MathF.Pow(band, 1.2f) * (.6f + (.4f * level))) + (.25f * (bass + pulse))) * (float)height;
             _auraHeight[x] = Math.Max(1, reach);
             int hue = (int)(xn * (PaletteSize - 1));
-            float glow = .22f + (.30f * band) + (.25f * centre * pulse);
+            float glow = .38f + (.65f * band) + (.45f * pulse);
             _auraR[x] = PaletteR[hue] * glow;
             _auraG[x] = PaletteG[hue] * glow;
             _auraB[x] = PaletteB[hue] * glow;

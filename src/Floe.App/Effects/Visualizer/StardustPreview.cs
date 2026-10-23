@@ -36,7 +36,11 @@ public static class StardustPreview
             bool live = args.Contains("--stardust-live", StringComparer.OrdinalIgnoreCase);
             var dir = Path.GetFullPath(argument[option.Length..]);
             Directory.CreateDirectory(dir);
-            var stage = new Canvas { Width = Width, Height = Height, Background = new SolidColorBrush(Color.FromRgb(0x0B, 0x0E, 0x14)) };
+            // --stage-light: a mid-bright wallpaper-like backdrop instead of the dark stage
+            Brush backdrop = args.Contains("--stage-light", StringComparer.OrdinalIgnoreCase)
+                ? new LinearGradientBrush(Color.FromRgb(0x6A, 0x7E, 0x96), Color.FromRgb(0xB8, 0xC4, 0xD0), 0)
+                : new SolidColorBrush(Color.FromRgb(0x0B, 0x0E, 0x14));
+            var stage = new Canvas { Width = Width, Height = Height, Background = backdrop };
             var dust = new StardustVisualizer { Width = Width, Height = Height, Capsule = new Rect(0, Height - 82, Width, 82) };
             stage.Children.Add(dust);
             stage.Measure(new Size(Width, Height));
