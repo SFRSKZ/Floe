@@ -504,7 +504,7 @@ public sealed class HologramVisualizer : FrameworkElement
     /// Re-tints a colour to the current preset: the hue is replaced and the
     /// saturation scaled, while lightness and alpha keep the depth relationships.
     /// </summary>
-    private static Color Tint(Color c)
+    internal static Color Tint(Color c)
     {
         var tint = GlassSettings.HologramTint;
         if (tint == HologramColor.Blue)
