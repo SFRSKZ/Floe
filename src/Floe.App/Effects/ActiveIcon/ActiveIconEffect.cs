@@ -4,6 +4,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using Floe.App.Effects.MetalRim;
 using Floe.App.Effects.Visualizer;
+using Floe.App.Services;
 
 namespace Floe.App.Effects.ActiveIcon;
 
@@ -53,8 +54,9 @@ public sealed class ActiveIconEffect : ShaderEffect
         // inside the dock window: every other visualizer frame is plenty for a slow colour flow
         _clock = new PacedClock(now =>
         {
-            // the shader only flows its colour slowly: 12 fps is indistinguishable and saves half the constant writes
-            if (!VisualizerPacing.DockAnimating && now - _lastTime < 1.0 / 12)
+            // the shader only flows its colour slowly: the ambient rate is indistinguishable and saves constant writes
+            double fps = Performance.AmbientFps;
+            if (!VisualizerPacing.DockAnimating && (fps <= 0 || now - _lastTime < 1.0 / fps))
             {
                 return;
             }
