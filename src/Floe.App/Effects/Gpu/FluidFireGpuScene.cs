@@ -200,6 +200,7 @@ public sealed class FluidFireGpuScene : IGpuScene
         // real seconds, clamped like the reference, scaled by the approved speed
         float realDt = Math.Clamp(frame.Dt, 0, .033f);
         float dt = realDt * Speed;
+        _sootPhase += dt;
         float k60 = dt * 60;
         bool kick = UpdateAudio(realDt, frame.Audio);
         float aspect = frame.Width / (float)frame.Height;
@@ -271,6 +272,8 @@ public sealed class FluidFireGpuScene : IGpuScene
         lock (_dockLock) _dock = (left, right, bottom, top);
     }
 
+    private float _sootPhase;
+
     private readonly object _dockLock = new();
     private (float Left, float Right, float Bottom, float Top) _dock = (.5f, .5f, .1f, .5f);
 
@@ -313,8 +316,13 @@ public sealed class FluidFireGpuScene : IGpuScene
             float heat = (.12f + (tip * tip * (.35f + _bands[0])) + (band * band * 1.2f)) * k60;
             float force = push * (.3f + band + (tip * tip * (1 + (2 * _beat))));
 
+            // the dark of the eye: bands of soot drift round the ellipse and ride out on the fire as black waves
+            float wave = MathF.Sin((k * .55f) - (_sootPhase * 2.2f)) + (.6f * MathF.Sin((k * 1.3f) + (_sootPhase * 1.4f)));
+            float soot = MathF.Max(0, wave - .5f) * (.6f + band + _beat) * k60;
+
             float u = x / widthDip, v = y / heightDip;
             SplatDye(context, aspect, u, v, heat, .0014f);
+            if (soot > 0) SplatDye(context, aspect, u + (nx * 3 / widthDip), v + (ny * 3 / heightDip), 0, .0012f, soot);
             SplatVelocity(context, aspect, u + (nx * 4 / widthDip), v + (ny * 4 / heightDip), nx * force * stretch, ny * force, .0018f);
         }
 
@@ -337,13 +345,14 @@ public sealed class FluidFireGpuScene : IGpuScene
     private float Band(float position) => _bands[Math.Clamp((int)(position * Bands * .95f), 0, Bands - 1)];
 
 
-    private void SplatDye(ID3D11DeviceContext context, float aspect, float x, float y, float value, float radius)
+    // value is heat (the red channel, it drives the buoyancy); soot (green) only rides along and darkens
+    private void SplatDye(ID3D11DeviceContext context, float aspect, float x, float y, float value, float radius, float soot = 0)
     {
         _cb[0] = 1f / _dyeW; _cb[1] = 1f / _dyeH;
         _cb[2] = _dyeW; _cb[3] = _dyeH;
         _cb[4] = 1f / _simW; _cb[5] = 1f / _simH;
         _cb[6] = aspect;
-        _cb[16] = value; _cb[17] = 0; _cb[18] = 0;
+        _cb[16] = value; _cb[17] = soot; _cb[18] = 0;
         _cb[12] = x; _cb[13] = y;
         _cb[14] = radius;
 
@@ -732,8 +741,10 @@ public sealed class FluidFireGpuScene : IGpuScene
         float4 main(float4 position : SV_Position) : SV_Target
         {
             float2 uv = Uv(position);
-            float h = SAMPLE(DyeField, uv).r;
-            float t = 1 - exp(-h * 1.4);
+            float2 dye = SAMPLE(DyeField, uv).rg;
+            float t = 1 - exp(-dye.r * 1.4);
+            // crisp-edged, so it reads as black waves rather than a grey haze
+            float soot = smoothstep(.12, .5, 1 - exp(-dye.g * 3));
 
             // black, then blood red, orange, the yellow of the hottest gas
             float3 c = lerp(float3(0, 0, 0), float3(.45, .02, 0), saturate(t / .22));
@@ -742,7 +753,10 @@ public sealed class FluidFireGpuScene : IGpuScene
             c = lerp(c, float3(1, .97, .7), saturate((t - .75) / .2));
 
             // nothing behind the fire: the dock shows through, so the alpha carries the shape
-            float a = saturate(t * 6) * smoothstep(1, .6, uv.y) * Fade;
+            // the soot swallows the fire's light and stays black even where the fire has gone
+            // it burns the colour down the way the fire cools, yellow to red to black, never through olive
+            c *= pow(saturate(1 - soot), float3(1.5, 3, 6));
+            float a = max(saturate(t * 6), .95 * soot) * smoothstep(1, .6, uv.y) * Fade;
             return float4(c * a, a);
         }
         """;

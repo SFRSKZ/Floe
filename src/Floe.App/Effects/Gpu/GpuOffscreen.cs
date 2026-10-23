@@ -19,10 +19,13 @@ namespace Floe.App.Effects.Gpu;
 /// </summary>
 public static class GpuOffscreen
 {
-    // The dock's backdrop, so a transparent strip looks like it does on screen.
-    private const byte BackdropR = 0x0B;
-    private const byte BackdropG = 0x0E;
-    private const byte BackdropB = 0x14;
+    // The dock's backdrop, so a transparent strip looks like it does on screen; FLOE_GPU_BACKDROP=RRGGBB
+    // swaps it for a lighter wallpaper, where dark effects show.
+    private static readonly int Backdrop = int.TryParse(Environment.GetEnvironmentVariable("FLOE_GPU_BACKDROP"),
+        System.Globalization.NumberStyles.HexNumber, null, out var backdrop) ? backdrop : 0x0B0E14;
+    private static readonly byte BackdropR = (byte)(Backdrop >> 16);
+    private static readonly byte BackdropG = (byte)(Backdrop >> 8);
+    private static readonly byte BackdropB = (byte)Backdrop;
 
     private static readonly MediaColor BasePrimary = MediaColor.FromRgb(0x5C, 0xA8, 0xFF);
     private static readonly float[] PaletteR = new float[GpuFrame.PaletteSize];
