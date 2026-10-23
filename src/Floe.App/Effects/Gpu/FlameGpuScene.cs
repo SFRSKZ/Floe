@@ -320,7 +320,7 @@ public sealed class FlameGpuScene : IGpuScene
             float2 q = uv * float2(9, 4);
 
             // the fire runs out from under the dock to both sides and licks upward; a beat throws it faster
-            float2 turb = float2(fbm(q + float2(0, -Time * 2.2)) - .5, fbm(q + float2(7, -Time * 1.7)) - .5) * .012;
+            float2 turb = float2(fbm(q + float2(0, -Time * 2.2)) - .5, fbm(q + float2(7, -Time * 1.7)) - .5) * .006;
             float2 push = float2(side * (.003 + (.022 * Beat) + (.006 * Level)), .0035) + turb;
             float heat = Fetch(uv - (push * Dt60)).r * Decay - (.002 * Dt60);
 
@@ -350,22 +350,26 @@ public sealed class FlameGpuScene : IGpuScene
             float aspect = Size.x / Size.y;
 
             // the flame's tongues: the heat field torn by fast rising noise
-            float heat = (Fetch(uv).r * .7) + (Fetch(uv + float2(0, -.02)).r * .3);
+            float heat = Fetch(uv).r;
             // the tongues drift outward with the fire, so the waves read as running along the dock
             float ax = abs(uv.x - .5) * aspect;
-            float tongue = fbm(float2((ax * 2.6) - (Time * 1.6), (uv.y * 5) - (Time * 2.8)));
-            tongue = saturate((tongue - .28) * 2.4);
-            heat *= .15 + (1.5 * tongue * tongue);
+            // stretched tall, so the noise reads as tongues of fire, each one thinning to a point as it climbs
+            float tongue = fbm(float2((ax * 7) - (Time * 2.2), (uv.y * 2.6) - (Time * 4.5)));
+            // a fine flicker on top, so the edges are crisp licks and not a soft glow
+            float detail = n(float2((ax * 22) - (Time * 3), (uv.y * 6) - (Time * 9)));
+            tongue = ((tongue * .8) + (detail * .2)) - (uv.y * .55);
+            tongue = saturate((tongue - .12) * 3.6);
+            heat *= .05 + (1.8 * tongue);
             float t = 1 - exp(-heat * 1.7);
 
             // black, then blood red, orange, the yellow of the eye, and a white-hot core
-            float3 c = lerp(float3(0, 0, 0), float3(.38, .02, 0), saturate(t / .3));
-            c = lerp(c, float3(1, .22, 0), saturate((t - .3) / .25));
-            c = lerp(c, float3(1, .72, .08), saturate((t - .55) / .25));
-            c = lerp(c, float3(1, .97, .7), saturate((t - .82) / .18));
+            float3 c = lerp(float3(0, 0, 0), float3(.45, .02, 0), saturate(t / .22));
+            c = lerp(c, float3(1, .2, 0), saturate((t - .22) / .16));
+            c = lerp(c, float3(1, .72, .06), saturate((t - .42) / .16));
+            c = lerp(c, float3(1, .97, .7), saturate((t - .75) / .15));
 
             // the cold rim stays as soot: dark but not see-through, so the fire reads black-edged on any wallpaper
-            float alpha = saturate(t * 4.5) * (.8 + (.2 * saturate(t * 3)));
+            float alpha = saturate(t * 7) * (.8 + (.2 * saturate(t * 3)));
             alpha *= (1 - smoothstep(.5, 1.05, uv.y)) * Fade;
             return float4(c * alpha, alpha);
         }
