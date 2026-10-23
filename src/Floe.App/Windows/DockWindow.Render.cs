@@ -27,13 +27,31 @@ public partial class DockWindow
 
     private void EnsureAnimation()
     {
+        if (!_perfEvents)
+        {
+            _perfEvents = true;
+            Performance.Changed += OnPerformanceChanged;
+            Closed += (_, _) => Performance.Changed -= OnPerformanceChanged;
+        }
         if (!_renderingHooked)
         {
             CompositionTarget.Rendering += OnRendering;
             _renderingHooked = true;
             Effects.Visualizer.VisualizerPacing.DockAnimating = true;
             _lastTick = Stopwatch.GetTimestamp();
+            // the gap up to this first frame is idle time, not a late frame
+            _renderDrawn = false;
+            _renderStamp = double.NaN;
+            _renderTicks = 0;
         }
+    }
+
+    private void OnPerformanceChanged()
+    {
+        // the cap may have come or gone: restart the frame counter and skip the gap across the change
+        _renderDrawn = false;
+        _renderStamp = double.NaN;
+        _renderTicks = 0;
     }
 
     private void StopAnimation()
@@ -59,11 +77,16 @@ public partial class DockWindow
     private double _perfBusy;
     private long _perfOpStart;
     private bool _perfHooked;
+    // Cap: Rendering can fire twice per monitor frame, so frames are counted by distinct timestamps.
+    private double _renderStamp = double.NaN;
+    private int _renderTicks;
+    private bool _renderDrawn;
+    private bool _perfEvents;
 
     private void OnRendering(object? sender, EventArgs e)
     {
         var started = Stopwatch.GetTimestamp();
-        OnRenderingCore();
+        OnRenderingCore(e is RenderingEventArgs args ? args.RenderingTime.TotalSeconds : -1);
         if (PerfLog)
         {
             if (!_perfHooked)
@@ -100,12 +123,31 @@ public partial class DockWindow
         }
     }
 
-    private void OnRenderingCore()
+    private void OnRenderingCore(double stamp)
     {
+        var cap = Performance.DockFrameCap;
+        if (cap > 0 && cap < Performance.RefreshRate && stamp >= 0)
+        {
+            // draw on every n-th distinct monitor frame: an even cadence, where a time threshold would judder.
+            if (stamp <= _renderStamp) return;
+            _renderStamp = stamp;
+            var every = Math.Max(1, (int)Math.Round(Performance.RefreshRate / cap));
+            if (_renderDrawn && ++_renderTicks < every) return;
+            _renderTicks = 0;
+        }
+
+        // the gap is real time since the last frame drawn, so the springs stay dt-robust under the cap
         var now = Stopwatch.GetTimestamp();
-        var dt = (now - _lastTick) / (double)Stopwatch.Frequency;
+        var gap = (now - _lastTick) / (double)Stopwatch.Frequency;
         _lastTick = now;
-        _perfMaxGap = Math.Max(_perfMaxGap, dt * 1000);
+        _perfMaxGap = Math.Max(_perfMaxGap, gap * 1000);
+        if (_renderDrawn)
+        {
+            Performance.ReportFrame(gap, 1 / (cap > 0 ? Math.Min(cap, Performance.RefreshRate) : Performance.RefreshRate));
+        }
+        _renderDrawn = true;
+
+        var dt = gap;
         if (dt <= 0 || dt > 0.1)
         {
             dt = 1.0 / 60.0;
@@ -113,7 +155,8 @@ public partial class DockWindow
 
         if (_metalEffect is not null && !_glassPreview)
         {
-            _metalTime += dt;
+            // Lite holds the rim still; the drop flash lives on FlashAge, so it still plays.
+            if (Performance.AmbientMotion) _metalTime += dt;
             // the folded reflection drifts at time * 0.025, so 10 Hz is enough while the rim rests;
             // a drop flash or a shape change (UpdateGlassShape) already re-renders, so keep time current then
             if (_dropTime >= 0 || _metalTime - _metalTimeApplied >= 0.1)
@@ -161,7 +204,8 @@ public partial class DockWindow
             UpdateShape();
             // UpdateShape may skip its rebuild here, but the warp has to go once the bulge is gone
             UpdateRimWarp();
-            if (_metalEffect is null || !IsMouseOver) StopAnimation();
+            // a held-still rim must not keep the loop alive by itself
+            if (_metalEffect is null || !IsMouseOver || !Performance.AmbientMotion) StopAnimation();
         }
     }
 

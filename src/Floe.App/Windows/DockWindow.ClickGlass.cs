@@ -12,7 +12,7 @@ public partial class DockWindow
 {
     private void PlayClickGlass(DockItemViewModel item)
     {
-        if (!AuraSettings.ClickEffect || NoFx.Contains("click", StringComparison.OrdinalIgnoreCase)
+        if (!Performance.RichClick || !AuraSettings.ClickEffect || NoFx.Contains("click", StringComparison.OrdinalIgnoreCase)
             || !ClickGlassEffect.IsAvailable
             || _slots.FirstOrDefault(s => ReferenceEquals(s.Item, item)) is not { } slot
             || slot.Button.Content is not Grid grid || grid.Children[0] is not Image icon
