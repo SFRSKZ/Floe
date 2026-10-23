@@ -28,6 +28,8 @@ internal sealed class VisualizerWindow : Window
     private readonly SilkContourVisualizer _silkContour = new();
     private GpuLayerWindow? _gpu;
     private GpuLayerWindow? _flame;
+    private FluidFireGpuScene? _fire;
+    private double _dockWidth;
     private bool _gpuFailed;
     private IntPtr _hwnd;
     private IntPtr _dock;
@@ -91,9 +93,11 @@ internal sealed class VisualizerWindow : Window
         CaptureReveal.Exclude(_hwnd);
     }
 
-    public void Place(Rect bounds, double scale, IntPtr dock)
+    public void Place(Rect bounds, double scale, IntPtr dock, double dockWidth)
     {
         _scale = scale;
+        _dockWidth = dockWidth;
+        if (_fire is not null) _fire.DockShare = (float)(dockWidth / Math.Max(1, bounds.Width));
         // The dock re-places the strip on every poll; touching the window (and
         // the z-order) only when something changed keeps that poll cheap.
         if (!_placed || bounds != _bounds)
@@ -127,7 +131,7 @@ internal sealed class VisualizerWindow : Window
     {
         var look = GlassSettings.VisualizerLook;
         // the eye flame only exists on the GPU; the dust looks move there when the setting asks for it
-        bool flame = running && look == VisualizerStyle.EyeFlame && Layer(ref _flame, () => new FlameGpuScene());
+        bool flame = running && look == VisualizerStyle.EyeFlame && Layer(ref _flame, () => _fire = new FluidFireGpuScene { DockShare = (float)(_dockWidth / Math.Max(1, _bounds.Width)) });
         bool dust = running && GlassSettings.GpuVisualizer && look is VisualizerStyle.Stardust or VisualizerStyle.DustWave
             && Layer(ref _gpu, () => new StardustGpuScene());
         if (_gpu is not null)
@@ -161,7 +165,7 @@ internal sealed class VisualizerWindow : Window
                 {
                     // Show() restores the window's own placement; re-apply the strip at once.
                     _placed = false;
-                    Place(_bounds, _scale, _dock);
+                    Place(_bounds, _scale, _dock, _dockWidth);
                 }
             }
         }

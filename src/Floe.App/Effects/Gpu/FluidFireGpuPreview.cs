@@ -4,36 +4,43 @@ using Floe.Core.Interop;
 namespace Floe.App.Effects.Gpu;
 
 /// <summary>
-/// --render-gpu-flame=&lt;dir&gt; writes 120 PNG frames (30 fps, 1800x240 at 2 px/DIP) of
-/// <see cref="FlameGpuScene"/> over the dock's backdrop, fed the same made-up beat as the other previews;
-/// --stardust-live feeds it what the speakers play instead, in real time.
+/// --render-gpu-fluid=&lt;dir&gt; writes 150 PNG frames (30 fps) of <see cref="FluidFireGpuScene"/> over the dock's
+/// backdrop, fed the same made-up beat as the other previews; --stardust-live feeds it what the speakers play
+/// instead, in real time. 1360x300 (680x150 DIP) is the demo's strip, --gpu-fluid-wide renders 3840x180
+/// (1920x90 DIP), the real dock strip.
 /// <para>
 /// The frames go through <see cref="GpuOffscreen.RenderFrames"/>, which owns the device and the readback:
-/// 120 frames because a feedback field needs a couple of seconds before it has built its fog.
+/// 150 frames because the solver needs a couple of seconds before the dye has spread along the strip.
 /// </para>
 /// </summary>
-public static class FlameGpuPreview
+public static class FluidFireGpuPreview
 {
-    private const int Width = 1800;
-    private const int Height = 240;
-    private const int Frames = 120;
+    private const int Frames = 150;
 
     public static bool TryRender(string[] args)
     {
-        const string option = "--render-gpu-flame=";
+        const string option = "--render-gpu-fluid=";
         var argument = args.FirstOrDefault(a => a.StartsWith(option, StringComparison.OrdinalIgnoreCase));
         if (argument is null) return false;
 
         string folder = Path.GetFullPath(argument[option.Length..]);
+        bool wide = args.Contains("--gpu-fluid-wide", StringComparer.OrdinalIgnoreCase);
         bool live = args.Contains("--stardust-live", StringComparer.OrdinalIgnoreCase);
+        int width = wide ? 3840 : 1360;
+        int height = wide ? 180 : 300;
+        // the dock's share of the strip: on the real strip a 900 DIP dock covers about half of it
+        const string dock = "--gpu-fluid-dock=";
+        string? share = args.FirstOrDefault(x => x.StartsWith(dock, StringComparison.OrdinalIgnoreCase))?[dock.Length..];
+        float dockShare = share is null ? (wide ? .47f : 0) : float.Parse(share, System.Globalization.CultureInfo.InvariantCulture);
+
         try
         {
-            using var scene = new FlameGpuScene();
+            using var scene = new FluidFireGpuScene { DockShare = dockShare };
             using var spectrum = live ? new AudioSpectrum() : null;
             if (live) Thread.Sleep(400);
             var started = DateTime.UtcNow;
 
-            GpuOffscreen.RenderFrames(scene, Width, Height, 2, Frames, (frame, index) =>
+            GpuOffscreen.RenderFrames(scene, width, height, 2, Frames, (frame, index) =>
             {
                 if (spectrum is null)
                 {
@@ -51,12 +58,13 @@ public static class FlameGpuPreview
 
             File.WriteAllText(
                 Path.Combine(folder, "render-info.txt"),
-                "FlameGpuScene: two feedback passes (R16G16B16A16_FLOAT ping-pong), 1800x240 at 2 px/dip, "
-                + $"{Frames} frames at 30 fps, {(live ? "live AudioSpectrum" : "Fake() beat")}, composited over #0B0E14.\n");
+                $"FluidFireGpuScene: stable-fluids solver (advect, vorticity, buoyancy, 20x Jacobi pressure), "
+                + $"{width}x{height} at 2 px/dip ({width / 2}x{height / 2} DIP), {Frames} frames at 30 fps, "
+                + $"{(live ? "live AudioSpectrum" : "Fake() beat")}, composited over #0B0E14.\n");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Floe.Gpu] flame preview failed: {ex}");
+            System.Diagnostics.Debug.WriteLine($"[Floe.Gpu] fluid preview failed: {ex}");
             try { File.WriteAllText(Path.Combine(folder, "render-error.txt"), ex.ToString()); } catch { }
             Environment.ExitCode = 1;
         }
