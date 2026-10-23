@@ -391,10 +391,11 @@ public sealed class StardustVisualizer : FrameworkElement
             int b0 = Math.Min(Bands - 2, (int)at);
             float band = _band[b0] + ((_band[b0 + 1] - _band[b0]) * (at - b0));
             float centre = MathF.Exp(-(xn * xn) / (2 * .22f * .22f));
-            float reach = (.13f + (.80f * MathF.Pow(band, 1.2f) * (.6f + (.4f * level))) + (.25f * (bass + pulse))) * (float)height;
+            // kept low enough that its soft top fades out under the dock's top line
+            float reach = Math.Min(.40f, .08f + (.30f * MathF.Pow(band, 1.2f) * (.6f + (.4f * level))) + (.10f * (bass + pulse))) * (float)height;
             _auraHeight[x] = Math.Max(1, reach);
             int hue = (int)(xn * (PaletteSize - 1));
-            float glow = .38f + (.65f * band) + (.45f * pulse);
+            float glow = .24f + (.40f * band) + (.28f * pulse);
             _auraR[x] = PaletteR[hue] * glow;
             _auraG[x] = PaletteG[hue] * glow;
             _auraB[x] = PaletteB[hue] * glow;
@@ -442,7 +443,7 @@ public sealed class StardustVisualizer : FrameworkElement
             {
                 // a soft column of light, brightest on the edge and fading smoothly upwards
                 float u = above / height[x];
-                float aura = u < 3 ? MathF.Exp(-u * u * 1.6f) : 0;
+                float aura = u < 2.2f ? MathF.Exp(-u * u * 2.2f) : 0;
                 float vr = Knee(r[i] + (ar[x] * aura)) * top;
                 float vg = Knee(g[i] + (ag[x] * aura)) * top;
                 float vb = Knee(b[i] + (ab[x] * aura)) * top;
