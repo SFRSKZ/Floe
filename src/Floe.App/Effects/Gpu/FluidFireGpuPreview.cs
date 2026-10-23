@@ -36,7 +36,7 @@ public static class FluidFireGpuPreview
         try
         {
             using var scene = new FluidFireGpuScene();
-            scene.SetDock(.5f - (dockShare / 2), .5f + (dockShare / 2));
+            scene.SetDock(.5f - (dockShare / 2), .5f + (dockShare / 2), .1f, wide ? .57f : .4f);
             using var spectrum = live ? new AudioSpectrum() : null;
             if (live) Thread.Sleep(400);
             var started = DateTime.UtcNow;

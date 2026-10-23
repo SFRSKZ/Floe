@@ -1,4 +1,4 @@
-using Floe.Core.Interop;
+﻿using Floe.Core.Interop;
 using Vortice.D3DCompiler;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
@@ -254,62 +254,70 @@ public sealed class FluidFireGpuScene : IGpuScene
 
     // ---- the reference's splats -------------------------------------------------------------------
 
-    /// <summary>The dock's two ends across the strip, 0..1 from its left edge; the fire is born there. Any thread.</summary>
-    public void SetDock(float left, float right)
+    /// <summary>
+    /// The dock inside the strip, as uv (0..1, y up from the strip's bottom); the fire is born on its two side edges.
+    /// Any thread.
+    /// </summary>
+    public void SetDock(float left, float right, float bottom, float top)
     {
         left = Math.Clamp(left, .02f, .5f);
         right = Math.Clamp(right, .5f, .98f);
-        lock (_dockLock) _dockEdges = (left, right);
+        bottom = Math.Clamp(bottom, 0, .9f);
+        top = Math.Clamp(top, bottom + .05f, 1);
+        lock (_dockLock) _dock = (left, right, bottom, top);
     }
 
     private readonly object _dockLock = new();
-    private (float Left, float Right) _dockEdges = (.5f, .5f);
+    private (float Left, float Right, float Bottom, float Top) _dock = (.5f, .5f, .1f, .5f);
 
     private void Splat(ID3D11DeviceContext context, float aspect, float k60, bool kick)
     {
         float bass = _bands[0];
         float widthDip = _pixelW / _pixelsPerDip;
-        // the middle is behind the dock: the demo's sources move out to the dock's two ends
-        (float Left, float Right) dock;
-        lock (_dockLock) dock = _dockEdges;
+        (float Left, float Right, float Bottom, float Top) dock;
+        lock (_dockLock) dock = _dock;
         float dip = 1 / Math.Max(1, widthDip);
+        float mid = (dock.Bottom + dock.Top) * .5f;
 
         // The demo's sideways push crosses its 680 DIP strip in a fifth of a second; on a wider strip the
         // same texel speed would barely show, so the sideways components keep that pace across the width.
         float stretch = _columns / 8f;
 
-        // the bass at each end of the dock, and the jets that push the fire out to the sides
+        // everything is born on the dock's two side edges: the bass at the middle of each edge, with a jet that
+        // throws the fire out to the screen's sides
         float jet = Side * (1 + (2 * _beat)) * k60 * .1f * stretch;
-        float lift = Side * .3f * k60 * .1f;
+        float lift = Side * .15f * k60 * .1f;
         for (int s = -1; s <= 1; s += 2)
         {
             float x0 = s < 0 ? dock.Left : dock.Right;
-            SplatDye(context, aspect, x0, .02f, (0.35f + bass) * k60, .004f);
-            SplatVelocity(context, aspect, x0 + (s * 20 * dip), .05f, s * jet, lift, .003f);
+            SplatDye(context, aspect, x0, mid, (0.35f + bass) * k60, .003f);
+            SplatVelocity(context, aspect, x0 + (s * 12 * dip), mid, s * jet, lift, .003f);
         }
 
-        // every band along the bottom edge, from the dock's ends out to the screen's: 8 per half on the demo's strip
-        for (int k = 0; k < _columns; k++)
+        // the bands stacked up each side edge, low bands at the bottom; each throws its own tongue outward
+        const int Rows = 8;
+        for (int k = 0; k < Rows; k++)
         {
-            float f = (k + .5f) / _columns;
+            float f = (k + .5f) / Rows;
             int index = Math.Clamp((int)(f * Bands * .95f), 0, Bands - 1);
             float b = _bands[index];
+            float y = dock.Bottom + (f * (dock.Top - dock.Bottom));
             for (int s = -1; s <= 1; s += 2)
             {
-                float x = s < 0 ? dock.Left * (1 - f) : dock.Right + (f * (1 - dock.Right));
-                SplatDye(context, aspect, x, 0, b * b * 1.6f * k60, .0012f);
-                SplatVelocity(context, aspect, x, .03f, s * Side * .5f * b * k60 * .1f * stretch, Side * .2f * b * k60 * .1f, .002f);
+                float x = (s < 0 ? dock.Left : dock.Right) + (s * 6 * dip);
+                SplatDye(context, aspect, x, y, b * b * 1.6f * k60, .0012f);
+                SplatVelocity(context, aspect, x, y, s * Side * .7f * b * k60 * .1f * stretch, Side * .1f * b * k60 * .1f, .002f);
             }
         }
 
-        // the kick throws a gust out of both sides and a burst of dye under the dock
+        // the kick throws a gust and a burst of fire out of both side edges
         if (kick)
         {
             for (int s = -1; s <= 1; s += 2)
             {
                 float x0 = s < 0 ? dock.Left : dock.Right;
-                SplatVelocity(context, aspect, x0 + (s * 40 * dip), .06f, s * Side * 4 * stretch, Side, .006f);
-                SplatDye(context, aspect, x0, .04f, 2.5f, .008f);
+                SplatVelocity(context, aspect, x0 + (s * 30 * dip), mid, s * Side * 4 * stretch, Side * .5f, .006f);
+                SplatDye(context, aspect, x0, mid, 2.5f, .006f);
             }
         }
     }

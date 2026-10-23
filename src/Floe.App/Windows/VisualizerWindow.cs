@@ -29,7 +29,7 @@ internal sealed class VisualizerWindow : Window
     private GpuLayerWindow? _gpu;
     private GpuLayerWindow? _flame;
     private FluidFireGpuScene? _fire;
-    private double _dockLeft, _dockRight;
+    private Rect _dockRect;
     private bool _gpuFailed;
     private IntPtr _hwnd;
     private IntPtr _dock;
@@ -93,12 +93,11 @@ internal sealed class VisualizerWindow : Window
         CaptureReveal.Exclude(_hwnd);
     }
 
-    /// <summary>dockLeft/dockRight: the dock's two ends on screen, in DIPs.</summary>
-    public void Place(Rect bounds, double scale, IntPtr dock, double dockLeft, double dockRight)
+    /// <summary>dockRect: the dock's capsule on screen, in DIPs.</summary>
+    public void Place(Rect bounds, double scale, IntPtr dock, Rect dockRect)
     {
         _scale = scale;
-        _dockLeft = dockLeft;
-        _dockRight = dockRight;
+        _dockRect = dockRect;
         PlaceFire(bounds);
         // The dock re-places the strip on every poll; touching the window (and
         // the z-order) only when something changed keeps that poll cheap.
@@ -168,7 +167,7 @@ internal sealed class VisualizerWindow : Window
                 {
                     // Show() restores the window's own placement; re-apply the strip at once.
                     _placed = false;
-                    Place(_bounds, _scale, _dock, _dockLeft, _dockRight);
+                    Place(_bounds, _scale, _dock, _dockRect);
                 }
             }
         }
@@ -182,8 +181,12 @@ internal sealed class VisualizerWindow : Window
 
     private void PlaceFire(Rect bounds)
     {
-        if (_fire is null || bounds.Width <= 0) return;
-        _fire.SetDock((float)((_dockLeft - bounds.Left) / bounds.Width), (float)((_dockRight - bounds.Left) / bounds.Width));
+        if (_fire is null || bounds.Width <= 0 || bounds.Height <= 0 || _dockRect.IsEmpty) return;
+        _fire.SetDock(
+            (float)((_dockRect.Left - bounds.Left) / bounds.Width),
+            (float)((_dockRect.Right - bounds.Left) / bounds.Width),
+            (float)((bounds.Bottom - _dockRect.Bottom) / bounds.Height),
+            (float)((bounds.Bottom - _dockRect.Top) / bounds.Height));
     }
 
     private bool Layer(ref GpuLayerWindow? layer, Func<IGpuScene> scene)
