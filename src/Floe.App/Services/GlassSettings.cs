@@ -65,6 +65,9 @@ public static class GlassSettings
 
     public static NowPlayingIntro Intro { get; private set; } = NowPlayingIntro.Drop;
 
+    /// <summary>Edge of one cube of the Cubes visualizer, in DIP.</summary>
+    public static double CubeSize { get; private set; } = 17;
+
     public static void Load()
     {
         try
@@ -86,6 +89,7 @@ public static class GlassSettings
             VisualizerLook = Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
             HologramTint = Enum.TryParse<HologramColor>(model.HologramTint, true, out var tint) ? tint : HologramColor.Blue;
             Intro = Enum.TryParse<NowPlayingIntro>(model.Intro, true, out var intro) ? intro : NowPlayingIntro.Drop;
+            CubeSize = model.CubeSize <= 0 ? 17 : Math.Clamp(Math.Round(model.CubeSize), 8, 24);
         }
         catch
         {
@@ -168,6 +172,19 @@ public static class GlassSettings
         Changed?.Invoke();
     }
 
+    public static void SetCubeSize(double size)
+    {
+        size = Math.Clamp(Math.Round(size), 8, 24);
+        if (CubeSize == size)
+        {
+            return;
+        }
+
+        CubeSize = size;
+        Save();
+        Changed?.Invoke();
+    }
+
     private static void Save()
     {
         try
@@ -180,6 +197,7 @@ public static class GlassSettings
                 VisualizerLook = VisualizerLook.ToString(),
                 HologramTint = HologramTint.ToString(),
                 Intro = Intro.ToString(),
+                CubeSize = CubeSize,
             }));
         }
         catch
@@ -197,6 +215,8 @@ public static class GlassSettings
         public string Bulge { get; set; } = nameof(BulgeStyle.Soft);
 
         public string VisualizerLook { get; set; } = nameof(VisualizerStyle.Glow);
+
+        public double CubeSize { get; set; } = 17;
 
         public string HologramTint { get; set; } = nameof(HologramColor.Blue);
 

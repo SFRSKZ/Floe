@@ -28,15 +28,15 @@ public sealed class CubeVisualizer : FrameworkElement
     private const double FadeOutSeconds = 0.40;
     private const double FadeInSeconds = 0.22;
 
-    private const double Cell = 17;
+    private static double Cell => GlassSettings.CubeSize;
     private const double Gap = 1.2;
     // the glass: a bright rim this wide around each front, a gloss over its upper part and a streak of light
     private const double Rim = .9;
     private const double Gloss = .45;
-    private const int MaxColumns = 220;
-    private const int MaxRows = 7;
+    private const int MaxColumns = 400;
+    private const int MaxRows = 9;
     // The cube's depth: its side and top faces lean back up and to the right.
-    private static readonly Vector Depth = new(Cell * .30, -Cell * .22);
+    private static Vector Depth => new(Cell * .30, -Cell * .22);
 
     // A column follows its target faster up than down, so the stacks jump on a beat and settle slowly.
     private const double RiseSeconds = .06;
