@@ -277,8 +277,9 @@ public sealed class StardustVisualizer : FrameworkElement
     private void Blur(double dt)
     {
         int w = _w, h = _h;
-        float decay = (float)Math.Exp(-dt / .055);
-        float lift = (float)(.35 * _scale * dt * 30);
+        // the wave leaves trails that drift up behind it as it rolls; free dust only a short blur
+        float decay = (float)Math.Exp(-dt / (Wave ? .30 : .055));
+        float lift = (float)((Wave ? .6 : .35) * _scale * dt * 30);
         var (r, g, b, r2, g2, b2) = (_r, _g, _b, _r2, _g2, _b2);
         Parallel.For(0, h, y =>
         {
@@ -321,7 +322,7 @@ public sealed class StardustVisualizer : FrameworkElement
             float twinkle = .75f + (.25f * MathF.Sin(_phase[p] + (t * (2.2f + (_phase[p] % 3)))));
             float depth = _depth[p];
             float flare = _flare[p];
-            float i = 1.9f * _bright[p] * envelope * (twinkle + (shimmer * .8f * (1 - depth))) * (1 + (2.5f * flare));
+            float i = (Wave ? .9f : 1.9f) * _bright[p] * envelope * (twinkle + (shimmer * .8f * (1 - depth))) * (1 + (2.5f * flare));
             if (i <= .004f) continue;
             int hue = _hue[p];
             // near dust is out of focus: wide and faint, like bokeh
