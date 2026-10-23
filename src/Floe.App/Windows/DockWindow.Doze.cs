@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Floe.App.Effects.Derezz;
@@ -31,6 +32,13 @@ public partial class DockWindow
     private bool _dozeRezz;
     // A derezz the settings asked for: it rezzes straight back instead of waiting for the cursor.
     private bool _dozePreview;
+    // Lite fades the dock out and back instead of breaking it into cubes.
+    private int _dozeFadeToken;
+    private bool _dozeFadingOut;
+
+    // Coarse cubes cost less to simulate; the performance level may ask for bigger ones.
+    private static double DozeCell =>
+        Math.Clamp(Math.Round(AuraSettings.DerezzCell * Performance.DerezzCellScale), 4, 24);
 
     private void InitializeDoze()
     {
@@ -110,6 +118,13 @@ public partial class DockWindow
     // The dock is excluded from screen capture, so it is revealed for a few frames before the grab.
     private async void Derezz()
     {
+        if (Performance.DerezzAsFade)
+        {
+            // no grab, no cube field: a plain fade ends in the same hidden state
+            Fade(0);
+            return;
+        }
+
         CaptureReveal.Reveal(TimeSpan.FromMilliseconds(400));
         await Task.Delay(RevealSettle);
         if (!_dozing && !_dozePreview) return;
@@ -127,7 +142,7 @@ public partial class DockWindow
             return;
         }
 
-        _dozeField = new DerezzField(_dozeSnapshot, rect, AuraSettings.DerezzCell, new Point(rect.X + (rect.Width / 2), rect.Bottom), WindowHeight, rezz: false,
+        _dozeField = new DerezzField(_dozeSnapshot, rect, DozeCell, new Point(rect.X + (rect.Width / 2), rect.Bottom), WindowHeight, rezz: false,
             speed: AuraSettings.DerezzSpeed)
         {
             DrawIntact = false,
@@ -147,6 +162,16 @@ public partial class DockWindow
             return;
         }
 
+        if (Performance.DerezzAsFade)
+        {
+            // fade back in, whether the fade out finished or is still running
+            if (!_dozeHidden && !_dozeFadingOut) return;
+            _dozeHidden = false;
+            _dozeFadingOut = false;
+            Fade(1);
+            return;
+        }
+
         if (!_dozeHidden) return;
         _dozeHidden = false;
         Root.Opacity = 1;
@@ -159,7 +184,7 @@ public partial class DockWindow
         var rect = CapsuleRect();
         var (cursorX, _) = ScreenInput.GetCursorPosition();
         double x = Math.Clamp(Root.PointFromScreen(new Point(cursorX, 0)).X, rect.Left, rect.Right);
-        _dozeField = new DerezzField(_dozeSnapshot, rect, AuraSettings.DerezzCell, new Point(x, rect.Bottom), WindowHeight, rezz: true,
+        _dozeField = new DerezzField(_dozeSnapshot, rect, DozeCell, new Point(x, rect.Bottom), WindowHeight, rezz: true,
             speed: RezzSpeed * AuraSettings.DerezzSpeed, seed: Environment.TickCount & 0xFF);
         _dozeTime = 0;
         _dozeDirection = 1;
@@ -173,6 +198,41 @@ public partial class DockWindow
         _dozeHidden = true;
         Root.Opacity = 0;
         Root.OpacityMask = null;
+    }
+
+    // Lite's doze: a plain eased fade, then the same hidden state a derezz leaves behind.
+    private void Fade(double to)
+    {
+        var token = ++_dozeFadeToken;
+        var hiding = to <= 0;
+        Root.OpacityMask = null;
+        var fade = new DoubleAnimation
+        {
+            From = Root.Opacity,
+            To = to,
+            Duration = TimeSpan.FromSeconds(.45 / AuraSettings.DerezzSpeed),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut },
+            FillBehavior = FillBehavior.HoldEnd,
+        };
+        fade.Completed += (_, _) =>
+        {
+            // a newer fade replaced this one
+            if (token != _dozeFadeToken) return;
+            Root.BeginAnimation(OpacityProperty, null);
+            Root.Opacity = to;
+            _dozeFadingOut = false;
+            if (hiding)
+            {
+                HideDozedDock();
+                if (_dozePreview) Rezz();
+            }
+            else
+            {
+                _dozePreview = false;
+            }
+        };
+        _dozeFadingOut = hiding;
+        Root.BeginAnimation(OpacityProperty, fade, HandoffBehavior.SnapshotAndReplace);
     }
 
     /// <summary>Advances the dock's own derezz; false once there is nothing left to draw.</summary>
