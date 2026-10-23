@@ -74,7 +74,7 @@ public sealed class HologramVisualizer : FrameworkElement
     private static Brush[] PoolBrushes = Array.Empty<Brush>();
     private static Brush[] PoolWideBrushes = Array.Empty<Brush>();
 
-    private static HologramColor? _paletteTint;
+    private static int _paletteVersion = -1;
 
     private readonly Stopwatch _clock = Stopwatch.StartNew();
 
@@ -473,7 +473,7 @@ public sealed class HologramVisualizer : FrameworkElement
 
     private static void BuildPalette()
     {
-        _paletteTint = GlassSettings.HologramTint;
+        _paletteVersion = GlassSettings.ColorVersion;
 
         FamilyColors = new Color[BaseFamilyColors.Length];
         for (int i = 0; i < BaseFamilyColors.Length; i++)
@@ -494,7 +494,7 @@ public sealed class HologramVisualizer : FrameworkElement
     // Rebuilds only when the configured tint actually changed.
     private static void EnsurePalette()
     {
-        if (_paletteTint != GlassSettings.HologramTint)
+        if (_paletteVersion != GlassSettings.ColorVersion)
         {
             BuildPalette();
         }
@@ -510,6 +510,14 @@ public sealed class HologramVisualizer : FrameworkElement
         if (tint == HologramColor.Blue)
         {
             return c;
+        }
+
+        if (tint == HologramColor.Custom)
+        {
+            // the chosen colour's hue and saturation; its lightness lifts or lowers the whole ramp a little
+            ToHsl(GlassSettings.CustomTint, out double customHue, out double customSaturation, out double customLightness);
+            ToHsl(c, out _, out double sourceS, out double sourceL);
+            return FromHsl(customHue, Math.Clamp(sourceS * customSaturation * 1.1, 0, 1), Math.Clamp(sourceL + ((customLightness - .55) * .6), 0, 1), c.A);
         }
 
         var (hue, saturation) = Preset(tint);

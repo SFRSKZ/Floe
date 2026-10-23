@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Windows.Media;
 
 namespace Floe.App.Services;
 
@@ -30,6 +31,7 @@ public enum HologramColor
     Gold,
     Green,
     White,
+    Custom,
 }
 
 /// <summary>Colours of the dust visualizers: one tint, or a gradient of several.</summary>
@@ -41,6 +43,7 @@ public enum DustPalette
     Ocean,
     Neon,
     Rainbow,
+    Custom,
 }
 
 public enum BulgeStyle
@@ -80,6 +83,18 @@ public static class GlassSettings
 
     public static DustPalette DustColors { get; private set; } = DustPalette.Tint;
 
+    /// <summary>The colour the <see cref="HologramColor.Custom"/> tint takes its hue from.</summary>
+    public static Color CustomTint { get; private set; } = Color.FromRgb(0x4D, 0xE0, 0xC0);
+
+    /// <summary>The four stops of the <see cref="DustPalette.Custom"/> palette, middle of the strip outwards.</summary>
+    public static Color[] CustomPalette { get; } =
+    {
+        Color.FromRgb(0xFF, 0xE0, 0x8A), Color.FromRgb(0xFF, 0x6F, 0x91), Color.FromRgb(0x9B, 0x6B, 0xFF), Color.FromRgb(0x3F, 0xC8, 0xFF),
+    };
+
+    /// <summary>Goes up whenever any visualizer colour changes, so palettes know to rebuild.</summary>
+    public static int ColorVersion { get; private set; }
+
     /// <summary>Edge of one cube of the Cubes visualizer, in DIP.</summary>
     public static double CubeSize { get; private set; } = 17;
 
@@ -105,6 +120,11 @@ public static class GlassSettings
             HologramTint = Enum.TryParse<HologramColor>(model.HologramTint, true, out var tint) ? tint : HologramColor.Blue;
             Intro = Enum.TryParse<NowPlayingIntro>(model.Intro, true, out var intro) ? intro : NowPlayingIntro.Drop;
             DustColors = Enum.TryParse<DustPalette>(model.DustColors, true, out var dust) ? dust : DustPalette.Tint;
+            if (TryParseColor(model.CustomTint, out var custom)) CustomTint = custom;
+            for (int i = 0; i < CustomPalette.Length && i < (model.CustomPalette?.Length ?? 0); i++)
+            {
+                if (TryParseColor(model.CustomPalette![i], out var stop)) CustomPalette[i] = stop;
+            }
             CubeSize = model.CubeSize <= 0 ? 17 : Math.Clamp(Math.Round(model.CubeSize), 8, 24);
         }
         catch
@@ -169,12 +189,17 @@ public static class GlassSettings
         }
 
         HologramTint = tint;
+        ColorVersion++;
         Save();
         Changed?.Invoke();
     }
 
     // Diagnostic override for offscreen renders; the user's choice is not persisted.
-    internal static void PreviewTint(HologramColor tint) => HologramTint = tint;
+    internal static void PreviewTint(HologramColor tint)
+    {
+        HologramTint = tint;
+        ColorVersion++;
+    }
 
     public static void SetIntro(NowPlayingIntro intro)
     {
@@ -196,12 +221,51 @@ public static class GlassSettings
         }
 
         DustColors = palette;
+        ColorVersion++;
         Save();
         Changed?.Invoke();
     }
 
     // Diagnostic override for offscreen renders; the user's choice is not persisted.
-    internal static void PreviewDustColors(DustPalette palette) => DustColors = palette;
+    internal static void PreviewDustColors(DustPalette palette)
+    {
+        DustColors = palette;
+        ColorVersion++;
+    }
+
+    // The custom colours change live while a slider is dragged: no Changed (that re-lays the dock out),
+    // the visualizers pick them up through ColorVersion, and the file is written once the dragging pauses.
+    public static void SetCustomTint(Color color)
+    {
+        CustomTint = color;
+        ColorVersion++;
+        SaveSoon();
+    }
+
+    public static void SetCustomPaletteStop(int index, Color color)
+    {
+        CustomPalette[index] = color;
+        ColorVersion++;
+        SaveSoon();
+    }
+
+    private static System.Threading.Timer? _saveTimer;
+
+    private static void SaveSoon()
+    {
+        _saveTimer ??= new System.Threading.Timer(_ => Save());
+        _saveTimer.Change(400, System.Threading.Timeout.Infinite);
+    }
+
+    private static string Hex(Color c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+
+    private static bool TryParseColor(string? text, out Color color)
+    {
+        color = default;
+        if (text is not { Length: 7 } || text[0] != '#' || !int.TryParse(text[1..], System.Globalization.NumberStyles.HexNumber, null, out int rgb)) return false;
+        color = Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
+        return true;
+    }
 
     public static void SetCubeSize(double size)
     {
@@ -230,6 +294,8 @@ public static class GlassSettings
                 Intro = Intro.ToString(),
                 CubeSize = CubeSize,
                 DustColors = DustColors.ToString(),
+                CustomTint = Hex(CustomTint),
+                CustomPalette = CustomPalette.Select(Hex).ToArray(),
             }));
         }
         catch
@@ -255,5 +321,9 @@ public static class GlassSettings
         public string Intro { get; set; } = nameof(NowPlayingIntro.Drop);
 
         public string DustColors { get; set; } = nameof(DustPalette.Tint);
+
+        public string? CustomTint { get; set; }
+
+        public string[]? CustomPalette { get; set; }
     }
 }

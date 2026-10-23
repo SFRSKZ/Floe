@@ -369,6 +369,11 @@ public partial class SettingsWindow : Window
         HologramTintGold.Checked += (_, _) => GlassSettings.SetHologramTint(HologramColor.Gold);
         HologramTintGreen.Checked += (_, _) => GlassSettings.SetHologramTint(HologramColor.Green);
         HologramTintWhite.Checked += (_, _) => GlassSettings.SetHologramTint(HologramColor.White);
+        HologramTintCustom.IsChecked = GlassSettings.HologramTint == HologramColor.Custom;
+        HologramTintCustom.Checked += (_, _) => GlassSettings.SetHologramTint(HologramColor.Custom);
+        DustColorsCustom.IsChecked = GlassSettings.DustColors == DustPalette.Custom;
+        DustColorsCustom.Checked += (_, _) => GlassSettings.SetDustColors(DustPalette.Custom);
+        InitializeCustomColors();
         DustColorsTint.IsChecked = GlassSettings.DustColors == DustPalette.Tint;
         DustColorsTint.Checked += (_, _) => GlassSettings.SetDustColors(DustPalette.Tint);
         DustColorsSunset.IsChecked = GlassSettings.DustColors == DustPalette.Sunset;

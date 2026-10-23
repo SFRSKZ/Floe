@@ -138,6 +138,32 @@
             </Setter>
         </Style>
 
+        <!-- a slider whose track shows the colours it picks from; the code-behind paints the Background -->
+        <Style x:Key="ColorSlider" TargetType="Slider">
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Background" Value="#24FFFFFF" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid VerticalAlignment="Center">
+                            <Border Height="8" CornerRadius="4" Background="{TemplateBinding Background}" BorderBrush="#30FFFFFF" BorderThickness="1" />
+                            <Track x:Name="PART_Track">
+                                <Track.Thumb>
+                                    <Thumb Width="14" Height="14">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Ellipse Fill="#F2FFFFFF" Stroke="#99000000" StrokeThickness="1" />
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="GlassToggle" TargetType="CheckBox">
             <Setter Property="Foreground" Value="#F2FFFFFF" />
             <Setter Property="FontSize" Value="13" />
@@ -388,6 +414,7 @@
                     <RadioButton x:Name="HologramTintGold" GroupName="HologramTint" Style="{StaticResource ModeToggle}" Content="Altın" />
                     <RadioButton x:Name="HologramTintGreen" GroupName="HologramTint" Style="{StaticResource ModeToggle}" Content="Yeşil" />
                     <RadioButton x:Name="HologramTintWhite" GroupName="HologramTint" Style="{StaticResource ModeToggle}" Content="Beyaz" />
+                    <RadioButton x:Name="HologramTintCustom" GroupName="HologramTint" Style="{StaticResource ModeToggle}" Content="Özel" />
                 </WrapPanel>
 
                 <TextBlock Text="Toz paleti" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
@@ -398,7 +425,29 @@
                     <RadioButton x:Name="DustColorsOcean" GroupName="DustColors" Style="{StaticResource ModeToggle}" Content="Okyanus" />
                     <RadioButton x:Name="DustColorsNeon" GroupName="DustColors" Style="{StaticResource ModeToggle}" Content="Neon" />
                     <RadioButton x:Name="DustColorsRainbow" GroupName="DustColors" Style="{StaticResource ModeToggle}" Content="Gökkuşağı" />
+                    <RadioButton x:Name="DustColorsCustom" GroupName="DustColors" Style="{StaticResource ModeToggle}" Content="Özel" />
                 </WrapPanel>
+
+                <TextBlock Text="Özel renkler" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
+                <StackPanel x:Name="CustomSwatches" Orientation="Horizontal" Margin="0,0,0,4" />
+                <TextBlock x:Name="CustomTarget" Foreground="#8AFFFFFF" FontSize="11" Margin="2,2,0,4" />
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="78" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition />
+                        <RowDefinition />
+                        <RowDefinition />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Ton" Foreground="#C8FFFFFF" FontSize="12" VerticalAlignment="Center" />
+                    <Slider x:Name="CustomHue" Grid.Column="1" Style="{StaticResource ColorSlider}" Minimum="0" Maximum="360" />
+                    <TextBlock Grid.Row="1" Text="Doygunluk" Foreground="#C8FFFFFF" FontSize="12" VerticalAlignment="Center" />
+                    <Slider x:Name="CustomSaturation" Grid.Row="1" Grid.Column="1" Style="{StaticResource ColorSlider}" Minimum="0" Maximum="1" />
+                    <TextBlock Grid.Row="2" Text="Parlaklık" Foreground="#C8FFFFFF" FontSize="12" VerticalAlignment="Center" />
+                    <Slider x:Name="CustomValue" Grid.Row="2" Grid.Column="1" Style="{StaticResource ColorSlider}" Minimum="0.15" Maximum="1" />
+                </Grid>
 
                 <TextBlock Text="Görselleştirici küp boyutu" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
                 <Grid>

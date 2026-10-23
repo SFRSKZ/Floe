@@ -77,7 +77,7 @@ public sealed class CubeVisualizer : FrameworkElement
     private static Brush[] GlossBrushes = Array.Empty<Brush>();
     private static Brush[] StreakBrushes = Array.Empty<Brush>();
     private static Brush[] PoolBrushes = Array.Empty<Brush>();
-    private static HologramColor? _paletteTint;
+    private static int _paletteVersion = -1;
 
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly double[] _height = new double[MaxColumns];
@@ -467,8 +467,8 @@ public sealed class CubeVisualizer : FrameworkElement
 
     private static void EnsurePalette()
     {
-        if (_paletteTint == GlassSettings.HologramTint) return;
-        _paletteTint = GlassSettings.HologramTint;
+        if (_paletteVersion == GlassSettings.ColorVersion) return;
+        _paletteVersion = GlassSettings.ColorVersion;
         var body = HologramVisualizer.Tint(BaseBody);
         var core = HologramVisualizer.Tint(BaseCore);
         var tip = HologramVisualizer.Tint(BaseTip);

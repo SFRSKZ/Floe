@@ -70,6 +70,7 @@ public partial class App : Application
         if (Effects.Visualizer.HologramPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.CubePreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.StardustPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Floe.App.Windows.SettingsPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.DozeDissolvePreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.HologramIntroPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Derezz.DerezzPreview.TryRender(e.Args)) { Shutdown(); return; }

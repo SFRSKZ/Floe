@@ -37,8 +37,7 @@ public sealed class StardustVisualizer : FrameworkElement
     private static readonly float[] PaletteR = new float[PaletteSize];
     private static readonly float[] PaletteG = new float[PaletteSize];
     private static readonly float[] PaletteB = new float[PaletteSize];
-    private static HologramColor? _paletteTint;
-    private static DustPalette? _paletteKind;
+    private static int _paletteVersion = -1;
 
     // The gradient palettes, from the middle of the strip out to its ends.
     private static readonly Color[] Sunset = { Rgb(0xFFD27A), Rgb(0xFF8A5C), Rgb(0xF04F82), Rgb(0x8C55E0) };
@@ -696,9 +695,8 @@ public sealed class StardustVisualizer : FrameworkElement
     private static void EnsurePalette(double time)
     {
         var kind = GlassSettings.DustColors;
-        if (kind != DustPalette.Rainbow && _paletteKind == kind && (kind != DustPalette.Tint || _paletteTint == GlassSettings.HologramTint)) return;
-        _paletteKind = kind;
-        _paletteTint = GlassSettings.HologramTint;
+        if (kind != DustPalette.Rainbow && _paletteVersion == GlassSettings.ColorVersion) return;
+        _paletteVersion = GlassSettings.ColorVersion;
         var primary = HologramVisualizer.Tint(BasePrimary);
         Color[]? stops = kind switch
         {
@@ -706,6 +704,7 @@ public sealed class StardustVisualizer : FrameworkElement
             DustPalette.Aurora => Northern,
             DustPalette.Ocean => Ocean,
             DustPalette.Neon => Neon,
+            DustPalette.Custom => GlassSettings.CustomPalette,
             _ => null,
         };
         for (int i = 0; i < PaletteSize; i++)
