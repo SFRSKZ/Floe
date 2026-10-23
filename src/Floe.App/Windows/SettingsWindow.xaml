@@ -406,6 +406,11 @@
                     <RadioButton x:Name="VisualizerLookSilkContour" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="İpek kontur" />
                 </WrapPanel>
 
+                <CheckBox x:Name="GpuVisualizerToggle"
+                          Style="{StaticResource GlassToggle}"
+                          Content="Toz stillerini GPU ile çiz (deneysel)"
+                          Margin="0,8,0,0" />
+
                 <TextBlock Text="Hologram, küp, toz ve kontur rengi" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
                 <WrapPanel>
                     <RadioButton x:Name="HologramTintBlue" GroupName="HologramTint" Style="{StaticResource ModeToggle}" Content="Mavi" />

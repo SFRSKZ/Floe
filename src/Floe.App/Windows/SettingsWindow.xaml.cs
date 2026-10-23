@@ -295,6 +295,10 @@ public partial class SettingsWindow : Window
         VisualizerToggle.Checked += (_, _) => GlassSettings.SetVisualizer(true);
         VisualizerToggle.Unchecked += (_, _) => GlassSettings.SetVisualizer(false);
 
+        GpuVisualizerToggle.IsChecked = GlassSettings.GpuVisualizer;
+        GpuVisualizerToggle.Checked += (_, _) => GlassSettings.SetGpuVisualizer(true);
+        GpuVisualizerToggle.Unchecked += (_, _) => GlassSettings.SetGpuVisualizer(false);
+
         DerezzToggle.IsChecked = AuraSettings.Derezz;
         DerezzToggle.Checked += (_, _) =>
         {

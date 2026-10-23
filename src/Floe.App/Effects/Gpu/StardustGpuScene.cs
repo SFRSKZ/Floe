@@ -335,8 +335,9 @@ public sealed class StardustGpuScene : IGpuScene
                 _radius[s] = MathF.Max(1, MathF.Ceiling(_sigma[s] * 2.5f));
             }
 
-            // a crisp dot is a bilinear splat of 1.4x the colour in Dot()
-            _norm[0] *= 1.4f;
+            // a crisp dot is a bilinear splat of 1.4x the colour in Dot(): the same light in total, not at its peak,
+            // or the grains clip to white
+            _norm[0] = 1.4f / (2 * MathF.PI * Sigmas[0] * Sigmas[0]);
         }
 
         if (wave && (_waveCount == 0 || MathF.Abs(_waveWidth - _width) > .5f))

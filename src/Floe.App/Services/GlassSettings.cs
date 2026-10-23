@@ -75,6 +75,9 @@ public static class GlassSettings
 
     public static bool Visualizer { get; private set; } = true;
 
+    /// <summary>Stardust and the dust wave drawn by Direct3D in their own layer instead of WPF (experimental).</summary>
+    public static bool GpuVisualizer { get; private set; }
+
     public static BulgeStyle Bulge { get; private set; } = BulgeStyle.Soft;
 
     public static VisualizerStyle VisualizerLook { get; private set; } = VisualizerStyle.Glow;
@@ -117,6 +120,7 @@ public static class GlassSettings
 
             Rim = Enum.TryParse<RimStyle>(model.Rim, true, out var rim) ? rim : RimStyle.Plain;
             Visualizer = model.Visualizer;
+            GpuVisualizer = model.GpuVisualizer;
             Bulge = Enum.TryParse<BulgeStyle>(model.Bulge, true, out var bulge) ? bulge : BulgeStyle.Soft;
             VisualizerLook = Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
             HologramTint = Enum.TryParse<HologramColor>(model.HologramTint, true, out var tint) ? tint : HologramColor.Blue;
@@ -155,6 +159,18 @@ public static class GlassSettings
         }
 
         Visualizer = enabled;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetGpuVisualizer(bool enabled)
+    {
+        if (GpuVisualizer == enabled)
+        {
+            return;
+        }
+
+        GpuVisualizer = enabled;
         Save();
         Changed?.Invoke();
     }
@@ -290,6 +306,7 @@ public static class GlassSettings
             {
                 Rim = Rim.ToString(),
                 Visualizer = Visualizer,
+                GpuVisualizer = GpuVisualizer,
                 Bulge = Bulge.ToString(),
                 VisualizerLook = VisualizerLook.ToString(),
                 HologramTint = HologramTint.ToString(),
@@ -311,6 +328,8 @@ public static class GlassSettings
         public string Rim { get; set; } = nameof(RimStyle.Plain);
 
         public bool Visualizer { get; set; } = true;
+
+        public bool GpuVisualizer { get; set; }
 
         public string Bulge { get; set; } = nameof(BulgeStyle.Soft);
 

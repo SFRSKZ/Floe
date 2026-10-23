@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Floe.App.Effects.Gpu;
 using Floe.App.Effects.Visualizer;
 using Floe.App.Services;
 using Floe.Core.Interop;
@@ -25,9 +26,12 @@ internal sealed class VisualizerWindow : Window
     private readonly StardustVisualizer _stardust = new();
     private readonly StardustVisualizer _dustWave = new() { Wave = true };
     private readonly SilkContourVisualizer _silkContour = new();
+    private GpuLayerWindow? _gpu;
+    private bool _gpuFailed;
     private IntPtr _hwnd;
     private IntPtr _dock;
     private Rect _bounds = Rect.Empty;
+    private double _scale = 1;
     private DispatcherTimer? _hideTimer;
     private bool _placed;
     private bool _running;
@@ -60,10 +64,17 @@ internal sealed class VisualizerWindow : Window
 
     public IntPtr Handle => _hwnd;
 
+    /// <summary>The window the light is drawn in right now: the GPU layer when it carries the look.</summary>
+    public IntPtr TopHandle => _gpu is { IsRunning: true } gpu ? gpu.Handle : _hwnd;
+
+    public bool Showing => IsVisible || _gpu is { IsRunning: true };
+
     protected override void OnClosed(EventArgs e)
     {
         _hideTimer?.Stop();
         CaptureReveal.Forget(_hwnd);
+        _gpu?.Dispose();
+        _gpu = null;
         base.OnClosed(e);
     }
 
@@ -77,8 +88,9 @@ internal sealed class VisualizerWindow : Window
         CaptureReveal.Exclude(_hwnd);
     }
 
-    public void Place(Rect bounds, IntPtr dock)
+    public void Place(Rect bounds, double scale, IntPtr dock)
     {
+        _scale = scale;
         // The dock re-places the strip on every poll; touching the window (and
         // the z-order) only when something changed keeps that poll cheap.
         if (!_placed || bounds != _bounds)
@@ -97,18 +109,29 @@ internal sealed class VisualizerWindow : Window
         }
 
         _placed = true;
+        PlaceGpu();
     }
 
     public void PlaceBelowDock(IntPtr dock)
     {
         _dock = dock;
         WindowStyling.PlaceBelow(_hwnd, dock);
+        _gpu?.PlaceBelowDock(dock);
     }
 
     public void SetRunning(bool running)
     {
-        _running = running;
         var look = GlassSettings.VisualizerLook;
+        bool gpu = running && UseGpu(look);
+        if (_gpu is not null)
+        {
+            _gpu.Wave = look == VisualizerStyle.DustWave;
+            _gpu.SetRunning(gpu);
+        }
+
+        // the GPU layer carries the dust looks by itself; this window only fades out what it drew before
+        running &= !gpu;
+        _running = running;
         _glow.IsActive = running && look == VisualizerStyle.Glow;
         _hologram.IsActive = running && look == VisualizerStyle.Hologram;
         _cubes.IsActive = running && look == VisualizerStyle.Cubes;
@@ -126,7 +149,7 @@ internal sealed class VisualizerWindow : Window
                 {
                     // Show() restores the window's own placement; re-apply the strip at once.
                     _placed = false;
-                    Place(_bounds, _dock);
+                    Place(_bounds, _scale, _dock);
                 }
             }
         }
@@ -136,6 +159,48 @@ internal sealed class VisualizerWindow : Window
             _hideTimer ??= CreateHideTimer();
             _hideTimer.Start();
         }
+    }
+
+    private bool UseGpu(VisualizerStyle look)
+    {
+        if (!GlassSettings.GpuVisualizer || _gpuFailed) return false;
+        if (look is not (VisualizerStyle.Stardust or VisualizerStyle.DustWave)) return false;
+        if (_gpu is null)
+        {
+            try
+            {
+                _gpu = new GpuLayerWindow(new StardustGpuScene());
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Floe.Gpu] layer: {ex.Message}");
+            }
+
+            // no window means no device or no composition: stay on the WPF path for good
+            if (_gpu is null || _gpu.Handle == IntPtr.Zero)
+            {
+                _gpu?.Dispose();
+                _gpu = null;
+                _gpuFailed = true;
+                return false;
+            }
+
+            PlaceGpu();
+        }
+
+        return true;
+    }
+
+    private void PlaceGpu()
+    {
+        if (_gpu is null || _bounds.IsEmpty) return;
+        // the dock hands over DIP bounds; the composition layer works in physical pixels
+        var pixels = new Int32Rect(
+            (int)Math.Round(_bounds.Left * _scale),
+            (int)Math.Round(_bounds.Top * _scale),
+            (int)Math.Round(_bounds.Width * _scale),
+            (int)Math.Round(_bounds.Height * _scale));
+        _gpu.Place(pixels, _scale, _dock);
     }
 
     private DispatcherTimer CreateHideTimer()

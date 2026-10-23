@@ -115,8 +115,8 @@ public partial class DockWindow
 
     private void SinkBelowVisualizer()
     {
-        if (_dozing && _visualizerWindow is { IsVisible: true } visualizer)
-            WindowStyling.PlaceBelow(_hwnd, visualizer.Handle);
+        if (_dozing && _visualizerWindow is { Showing: true } visualizer)
+            WindowStyling.PlaceBelow(_hwnd, visualizer.TopHandle);
     }
 
     private Rect CapsuleRect() => new(_capsuleLeft, RestTop, _capsuleWidth, RestBarHeight);
