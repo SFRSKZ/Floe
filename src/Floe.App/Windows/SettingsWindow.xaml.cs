@@ -341,6 +341,8 @@ public partial class SettingsWindow : Window
         VisualizerLookHologram.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Hologram;
         VisualizerLookGlow.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Glow);
         VisualizerLookHologram.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Hologram);
+        VisualizerLookCubes.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Cubes;
+        VisualizerLookCubes.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Cubes);
 
         HologramTintBlue.IsChecked = GlassSettings.HologramTint == HologramColor.Blue;
         HologramTintCyan.IsChecked = GlassSettings.HologramTint == HologramColor.Cyan;

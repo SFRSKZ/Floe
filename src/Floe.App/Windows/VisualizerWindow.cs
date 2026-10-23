@@ -21,6 +21,7 @@ internal sealed class VisualizerWindow : Window
 
     private readonly VisualizerGlow _glow = new();
     private readonly HologramVisualizer _hologram = new();
+    private readonly CubeVisualizer _cubes = new();
     private IntPtr _hwnd;
     private IntPtr _dock;
     private Rect _bounds = Rect.Empty;
@@ -44,11 +45,12 @@ internal sealed class VisualizerWindow : Window
         var root = new Grid { IsHitTestVisible = false };
         root.Children.Add(_glow);
         root.Children.Add(_hologram);
+        root.Children.Add(_cubes);
         Content = root;
         SizeChanged += (_, _) => UpdateCapsule();
     }
 
-    public bool IsRunning => _glow.IsActive || _hologram.IsActive;
+    public bool IsRunning => _glow.IsActive || _hologram.IsActive || _cubes.IsActive;
 
     public IntPtr Handle => _hwnd;
 
@@ -103,6 +105,7 @@ internal sealed class VisualizerWindow : Window
         var look = GlassSettings.VisualizerLook;
         _glow.IsActive = running && look == VisualizerStyle.Glow;
         _hologram.IsActive = running && look == VisualizerStyle.Hologram;
+        _cubes.IsActive = running && look == VisualizerStyle.Cubes;
 
         if (running)
         {
@@ -150,5 +153,7 @@ internal sealed class VisualizerWindow : Window
         _glow.Capsule = strip with { Y = strip.Height - 2, Height = 2 };
         // the hologram keeps its base line 4 DIP above the capsule's bottom; push that onto the screen edge
         _hologram.Capsule = strip with { Height = strip.Height + 4 };
+        // the cubes stand on the screen's bottom edge
+        _cubes.Capsule = strip;
     }
 }
