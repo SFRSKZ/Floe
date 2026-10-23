@@ -38,7 +38,7 @@ public partial class DockWindow
 
     // Coarse cubes cost less to simulate; the performance level may ask for bigger ones.
     private static double DozeCell =>
-        Math.Clamp(Math.Round(AuraSettings.DerezzCell * Performance.DerezzCellScale), 4, 24);
+        Math.Clamp(Math.Round(AuraSettings.DerezzCell * Performance.DerezzCellScale), 4, 32);
 
     private void InitializeDoze()
     {
@@ -48,6 +48,13 @@ public partial class DockWindow
         _dozeTimer.Tick += (_, _) => DozeTick();
         _dozeTimer.Start();
         AuraSettings.DerezzPreviewRequested += PreviewDoze;
+        // Diagnostics: FLOE_DEREZZTEST runs the settings preview every few seconds, no cursor needed.
+        if (Environment.GetEnvironmentVariable("FLOE_DEREZZTEST") is not null)
+        {
+            var test = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
+            test.Tick += (_, _) => PreviewDoze();
+            test.Start();
+        }
         Closed += (_, _) =>
         {
             AuraSettings.DerezzPreviewRequested -= PreviewDoze;

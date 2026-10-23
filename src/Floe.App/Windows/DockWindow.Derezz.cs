@@ -21,6 +21,11 @@ public partial class DockWindow
     private double _derezzStamp;
     private double _derezzTickTime = TargetFrame;
     private int _derezzTicks;
+    // FLOE_PERF: frames, work and worst gap of one derezz run
+    private int _derezzPerfFrames;
+    private double _derezzPerfWork;
+    private double _derezzPerfMax;
+    private double _derezzPerfGap;
 
     private void InitializeDerezz()
     {
@@ -45,6 +50,10 @@ public partial class DockWindow
     private void StopDerezzLoop()
     {
         if (_derezzRendering) CompositionTarget.Rendering -= RenderDerezz;
+        if (_derezzRendering && PerfLog && _derezzPerfFrames > 0)
+            Log($"perf derezz frames={_derezzPerfFrames} secs={_derezzClock.Elapsed.TotalSeconds:F2} avg={_derezzPerfWork / _derezzPerfFrames:F2}ms max={_derezzPerfMax:F2}ms maxGap={_derezzPerfGap:F1}ms cell={DozeCell}");
+        _derezzPerfFrames = 0;
+        _derezzPerfWork = _derezzPerfMax = _derezzPerfGap = 0;
         _derezzRendering = false;
         Effects.Visualizer.VisualizerPacing.DockAnimating = _renderingHooked;
         _derezzClock.Stop();
@@ -68,7 +77,9 @@ public partial class DockWindow
         int every = Math.Max(1, (int)Math.Round(TargetFrame / _derezzTickTime));
         if (_derezzLast >= 0 && ++_derezzTicks < every) return;
         _derezzTicks = 0;
+        if (_derezzLast >= 0) _derezzPerfGap = Math.Max(_derezzPerfGap, (stamp - _derezzLast) * 1000);
         double dt = _derezzLast < 0 ? 0 : Math.Min(.05, stamp - _derezzLast);
+        long started = Stopwatch.GetTimestamp();
         _derezzLast = stamp;
         _derezzRuns.Clear();
         if (!AdvanceDoze(dt, _derezzRuns))
@@ -78,5 +89,9 @@ public partial class DockWindow
         }
 
         _derezzLayer.Draw(_derezzRuns);
+        double work = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        _derezzPerfFrames++;
+        _derezzPerfWork += work;
+        _derezzPerfMax = Math.Max(_derezzPerfMax, work);
     }
 }

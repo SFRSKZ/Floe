@@ -50,10 +50,12 @@ public sealed class DerezzField
     private static readonly Brush[] ShellFills = CreateLadder(Ink, .22);
     // Liquid glass: clear rims, a white glint along the edge facing the light and a soft white bloom.
     private static readonly Brush[] FlashFills = CreateLadder(Colors.White, .55);
-    private static readonly Pen[] LatticePens = CreatePens(Color.FromRgb(0xEE, 0xF6, 0xFF), .5, .6);
-    private static readonly Pen[] EdgePens = CreatePens(Colors.White, .55, .7);
-    private static readonly Pen[] GlintPens = CreatePens(Colors.White, 1.1, 1);
-    private static readonly Pen[] GlowPens = CreatePens(Color.FromRgb(0xD8, 0xE8, 0xFF), 1.6, .32);
+    // Lines are filled as ready-made outlines: a pen would make the render thread widen every edge, every frame.
+    private const double LatticeWidth = .5, EdgeWidth = .55, GlintWidth = 1.1, GlowWidth = 1.6;
+    private static readonly Brush[] LatticeInk = CreateLadder(Color.FromRgb(0xEE, 0xF6, 0xFF), .6);
+    private static readonly Brush[] EdgeInk = CreateLadder(Colors.White, .7);
+    private static readonly Brush[] GlintInk = CreateLadder(Colors.White, 1);
+    private static readonly Brush[] GlowInk = CreateLadder(Color.FromRgb(0xD8, 0xE8, 0xFF), .32);
     private static readonly Vector3D Light = new Vector3D(-.45, -.8, .4) / new Vector3D(-.45, -.8, .4).Length;
 
     private readonly BitmapSource _source;
@@ -74,6 +76,8 @@ public sealed class DerezzField
 
     private readonly Point[] _projected = new Point[8];
     private readonly Point[] _quad = new Point[4];
+    private readonly Point[] _hull = new Point[8];
+    private readonly Point[] _sorted = new Point[8];
     private readonly Batch[] _shell = NewBatches(Grades);
     private readonly Batch[] _lattice = NewBatches(Grades);
     private readonly Dictionary<int, Batch> _faces = new();
@@ -308,18 +312,18 @@ public sealed class DerezzField
         }
 
         Fill(dc, _shell, ShellFills);
-        Stroke(dc, _lattice, LatticePens);
+        Fill(dc, _lattice, LatticeInk);
         foreach (var (key, batch) in _faces)
         {
             batch.Fill(dc, FaceBrush(key));
         }
 
-        Stroke(dc, _edges, EdgePens);
-        Stroke(dc, _glint, GlintPens);
+        Fill(dc, _edges, EdgeInk);
+        Fill(dc, _glint, GlintInk);
         Fill(dc, _flash, FlashFills);
         if (glow is not null)
         {
-            Stroke(glow, _glow, GlowPens);
+            Fill(glow, _glow, GlowInk);
             Fill(glow, _flash, FlashFills);
         }
     }
@@ -343,11 +347,11 @@ public sealed class DerezzField
         _shell[Grade(ease)].Quad(_quad, true);
         double light = Math.Min(1, k * 1.6);
         bool bright = _lit[i] > Bright;
-        _lattice[Grade(light * (bright ? .9 : .18 + (.2 * _lit[i])))].Quad(_quad, false);
+        _lattice[Grade(light * (bright ? .9 : .18 + (.2 * _lit[i])))].Outline(_quad, LatticeWidth / 2);
         if (bright)
         {
-            _glint[Grade(light * .8)].Line(_quad[0], _quad[1]);
-            _glow[Grade(light * .7)].Quad(_quad, false);
+            _glint[Grade(light * .8)].Segment(_quad[0], _quad[1], GlintWidth / 2);
+            _glow[Grade(light * .7)].Outline(_quad, GlowWidth / 2);
         }
     }
 
@@ -376,6 +380,10 @@ public sealed class DerezzField
         int grade = Grade(fade);
         bool bright = _lit[i] > Bright;
         int edge = Grade(fade * (bright ? 1 : .3 + (.3 * _lit[i])));
+        // one rim around the whole cube instead of one per face: the render thread tessellates every rim each frame,
+        // and the faces' shading already shows the inner edges
+        _edges[edge].Outline(_hull, Hull(_projected, _hull), EdgeWidth / 2);
+
         for (int f = 0; f < Faces.Length; f++)
         {
             var n = rotation.Transform(Normals[f]);
@@ -389,23 +397,60 @@ public sealed class DerezzField
             var shade = n.Y < -.3 ? (bright ? Shade.Lit : Shade.Top) : n.Z > .7 ? Shade.Front : Shade.Side;
             Face(_hue[i], shade, grade).Quad(_quad, true);
 
-            _edges[edge].Quad(_quad, false);
             // Faces turned to the light glint along their upper edge, sharply, like polished glass.
             double glint = Math.Pow(Math.Max(0, Vector3D.DotProduct(n, Light)), 3) * (bright ? 1 : .55);
             if (glint > .05)
             {
                 int top = TopEdge(_quad);
-                _glint[Grade(fade * glint)].Line(_quad[top], _quad[(top + 1) % 4]);
+                _glint[Grade(fade * glint)].Segment(_quad[top], _quad[(top + 1) % 4], GlintWidth / 2);
             }
             if (bright)
             {
-                _glow[Grade(fade * .9)].Quad(_quad, false);
+                _glow[Grade(fade * .9)].Outline(_quad, GlowWidth / 2);
             }
             if (bright && flash > .02 && n.Z > .7)
             {
                 _flash[Grade(flash)].Quad(_quad, true);
             }
         }
+    }
+
+    // Convex hull of the projected corners (monotone chain), counter-clockwise into hull; returns its corner count.
+    private int Hull(Point[] points, Point[] hull)
+    {
+        int n = points.Length;
+        Array.Copy(points, _sorted, n);
+        for (int a = 1; a < n; a++)
+        {
+            var p = _sorted[a];
+            int b = a - 1;
+            while (b >= 0 && (_sorted[b].X > p.X || (_sorted[b].X == p.X && _sorted[b].Y > p.Y)))
+            {
+                _sorted[b + 1] = _sorted[b];
+                b--;
+            }
+
+            _sorted[b + 1] = p;
+        }
+
+        static double Cross(Point o, Point a, Point b) => ((a.X - o.X) * (b.Y - o.Y)) - ((a.Y - o.Y) * (b.X - o.X));
+        Span<Point> chain = stackalloc Point[(2 * 8) + 1];
+        int k = 0;
+        for (int a = 0; a < n; a++)
+        {
+            while (k >= 2 && Cross(chain[k - 2], chain[k - 1], _sorted[a]) <= 1e-9) k--;
+            chain[k++] = _sorted[a];
+        }
+
+        for (int a = n - 2, low = k + 1; a >= 0; a--)
+        {
+            while (k >= low && Cross(chain[k - 2], chain[k - 1], _sorted[a]) <= 1e-9) k--;
+            chain[k++] = _sorted[a];
+        }
+
+        int count = Math.Min(8, k - 1);
+        for (int a = 0; a < count; a++) hull[a] = chain[a];
+        return count;
     }
 
     private enum Shade { Front, Side, Top, Lit }
@@ -581,11 +626,6 @@ public sealed class DerezzField
         for (int g = 1; g < Grades; g++) set[g].Fill(dc, brushes[g]);
     }
 
-    private static void Stroke(DrawingContext dc, Batch[] set, Pen[] pens)
-    {
-        for (int g = 1; g < Grades; g++) set[g].Stroke(dc, pens[g]);
-    }
-
     private static Batch[] NewBatches(int count)
     {
         var batches = new Batch[count];
@@ -606,23 +646,7 @@ public sealed class DerezzField
         return brushes;
     }
 
-    private static Pen[] CreatePens(Color color, double thickness, double max)
-    {
-        var pens = new Pen[Grades];
-        for (int g = 0; g < Grades; g++)
-        {
-            var pen = new Pen(new SolidColorBrush(Color.FromArgb((byte)(255 * max * g / (Grades - 1.0)), color.R, color.G, color.B)), thickness)
-            {
-                LineJoin = PenLineJoin.Round,
-            };
-            pen.Freeze();
-            pens[g] = pen;
-        }
-
-        return pens;
-    }
-
-    /// <summary>One brush or pen worth of quads, built into a single geometry per frame.</summary>
+    /// <summary>One brush worth of quads, built into a single geometry per frame.</summary>
     private sealed class Batch
     {
         private StreamGeometry? _geometry;
@@ -651,27 +675,77 @@ public sealed class DerezzField
             _context.LineTo(points[3], true, false);
         }
 
-        public void Line(Point from, Point to)
+        /// <summary>A quad's outline <paramref name="half"/> wide either side of its edges, as a ring to fill.</summary>
+        public void Outline(Point[] q, double half) => Outline(q, 4, half);
+
+        public void Outline(Point[] q, int count, double half)
+        {
+            if (count < 3) return;
+            var centre = new Point();
+            for (int c = 0; c < count; c++)
+            {
+                if ((q[(c + 1) % count] - q[c]).LengthSquared < 1e-6) return;
+                centre.X += q[c].X / count;
+                centre.Y += q[c].Y / count;
+            }
+
+            // the normal of the first edge tells which way is out for the whole (convex) polygon
+            var first = Normal(q[0], q[1]);
+            double side = Vector.Multiply(first, new Point((q[0].X + q[1].X) / 2, (q[0].Y + q[1].Y) / 2) - centre) < 0 ? -1 : 1;
+            for (int c = 0; c < count; c++)
+            {
+                var prev = Normal(q[(c + count - 1) % count], q[c]) * side;
+                var next = Normal(q[c], q[(c + 1) % count]) * side;
+                // a miter: as far out along both normals as the edges themselves, kept short at sharp corners
+                double reach = half / Math.Max(.35, 1 + Vector.Multiply(prev, next));
+                var miter = (prev + next) * reach;
+                _outer[c] = q[c] + miter;
+                _inner[c] = q[c] - miter;
+            }
+
+            Begin(_outer[0]);
+            for (int c = 1; c < count; c++) _context!.LineTo(_outer[c], false, false);
+            // wound the other way, so the fill leaves the inside open
+            _context!.BeginFigure(_inner[count - 1], true, true);
+            for (int c = count - 2; c >= 0; c--) _context.LineTo(_inner[c], false, false);
+        }
+
+        /// <summary>A straight line <paramref name="half"/> wide either side, as a thin quad to fill.</summary>
+        public void Segment(Point from, Point to, double half)
+        {
+            if ((to - from).LengthSquared < 1e-6) return;
+            var n = Normal(from, to) * half;
+            Begin(from + n);
+            _context!.LineTo(to + n, false, false);
+            _context.LineTo(to - n, false, false);
+            _context.LineTo(from - n, false, false);
+        }
+
+        private readonly Point[] _outer = new Point[8];
+        private readonly Point[] _inner = new Point[8];
+
+        private static Vector Normal(Point from, Point to)
+        {
+            var d = to - from;
+            d.Normalize();
+            return new Vector(d.Y, -d.X);
+        }
+
+        private void Begin(Point start)
         {
             if (_context is null)
             {
-                _geometry = new StreamGeometry();
+                _geometry = new StreamGeometry { FillRule = FillRule.Nonzero };
                 _context = _geometry.Open();
             }
 
             _any = true;
-            _context.BeginFigure(from, false, false);
-            _context.LineTo(to, true, false);
+            _context.BeginFigure(start, true, true);
         }
 
         public void Fill(DrawingContext dc, Brush brush)
         {
             if (Close() is { } geometry) dc.DrawGeometry(brush, null, geometry);
-        }
-
-        public void Stroke(DrawingContext dc, Pen pen)
-        {
-            if (Close() is { } geometry) dc.DrawGeometry(null, pen, geometry);
         }
 
         private StreamGeometry? Close()

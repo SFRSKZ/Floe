@@ -412,7 +412,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Slider x:Name="DerezzCellSlider" Style="{StaticResource GlassSlider}" Minimum="4" Maximum="12" SmallChange="1" LargeChange="2" IsSnapToTickEnabled="True" TickFrequency="1" Value="6" />
+                    <Slider x:Name="DerezzCellSlider" Style="{StaticResource GlassSlider}" Minimum="4" Maximum="24" SmallChange="1" LargeChange="2" IsSnapToTickEnabled="True" TickFrequency="1" Value="6" />
                     <TextBlock x:Name="DerezzCellValue" Grid.Column="1" Width="36" TextAlignment="Right" VerticalAlignment="Center" Foreground="#F2FFFFFF" FontSize="12" />
                 </Grid>
             </StackPanel>

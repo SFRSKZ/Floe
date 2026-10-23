@@ -124,7 +124,7 @@ public static class AuraSettings
             ClickSpeed = model.ClickSpeed <= 0 ? 1.0 : Math.Clamp(model.ClickSpeed, 0.5, 2.0);
             Derezz = model.Derezz;
             DerezzSpeed = model.DerezzSpeed <= 0 ? 1.0 : Math.Clamp(model.DerezzSpeed, 0.5, 2.0);
-            DerezzCell = model.DerezzCell <= 0 ? 6 : Math.Clamp(Math.Round(model.DerezzCell), 4, 12);
+            DerezzCell = model.DerezzCell <= 0 ? 6 : Math.Clamp(Math.Round(model.DerezzCell), 4, 24);
             Mode = Enum.TryParse<AuraColorMode>(model.Mode, true, out var mode) ? mode : AuraColorMode.Palette;
             Effect = Enum.TryParse<AuraEffect>(model.Effect, true, out var effect) ? effect : AuraEffect.Glow;
             SpectralIntensity = model.SpectralIntensity <= 0 ? 1.5 : Math.Clamp(model.SpectralIntensity, 0.5, 2.5);
@@ -179,7 +179,7 @@ public static class AuraSettings
 
     public static void SetDerezzCell(double cell)
     {
-        cell = Math.Clamp(Math.Round(cell), 4, 12);
+        cell = Math.Clamp(Math.Round(cell), 4, 24);
         if (Math.Abs(DerezzCell - cell) < 0.001) return;
         DerezzCell = cell;
         Save();

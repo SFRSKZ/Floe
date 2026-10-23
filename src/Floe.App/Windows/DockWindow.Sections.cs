@@ -28,6 +28,11 @@ public partial class DockWindow
 
     private readonly Grid _media = new() { Width = MediaWidth, Height = ArtSize, Opacity = 0 };
     private readonly Image _mediaArt = new() { Stretch = Stretch.UniformToFill };
+    // the cover before a track change, under the new one while that fades in
+    private readonly Image _mediaArtBehind = new() { Stretch = Stretch.UniformToFill };
+    // the cover fills the whole section, a little past the text, up to the dividers and nearly the bar's height
+    private static readonly Thickness CoverBleed = new(-(ClockGap / 2) + 2, -8, -(ClockGap / 2) + 2, -8);
+    private const double CoverRadius = 12;
     private readonly TextBlock _mediaTitle = new() { Foreground = Brushes.White, FontSize = 12.5, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly TextBlock _mediaArtist = new() { Foreground = new SolidColorBrush(Color.FromArgb(0xB0, 0xFF, 0xFF, 0xFF)), FontSize = 10.5, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly ScaleTransform _mediaProgress = new(0, 1);
@@ -104,20 +109,9 @@ public partial class DockWindow
 
     private void BuildMedia()
     {
-        _media.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ArtSize) });
         _media.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         _media.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(MediaButton * 3) });
-
-        var art = new Border
-        {
-            Width = ArtSize,
-            Height = ArtSize,
-            CornerRadius = new CornerRadius(9),
-            ClipToBounds = true,
-            Background = new SolidColorBrush(Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF)),
-            Child = _mediaArt,
-        };
-        _media.Children.Add(art);
+        _media.Children.Add(BuildCover());
 
         var progress = new Grid { Height = 2, Margin = new Thickness(0, 4, 0, 0) };
         progress.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)), CornerRadius = new CornerRadius(1) });
@@ -129,11 +123,11 @@ public partial class DockWindow
             RenderTransform = _mediaProgress,
         });
 
-        var text = new StackPanel { Margin = new Thickness(9, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+        var text = new StackPanel { Margin = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
         text.Children.Add(_mediaTitle);
         text.Children.Add(_mediaArtist);
         text.Children.Add(progress);
-        Grid.SetColumn(text, 1);
+        Grid.SetColumn(text, 0);
         _media.Children.Add(text);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
@@ -141,8 +135,56 @@ public partial class DockWindow
         _playGlyph.Source = DotMatrixIcons.Render("play", 22, GlyphColor, DpiScale);
         buttons.Children.Add(GlyphButton(_playGlyph, MediaButton, () => _ = TogglePlayAsync()));
         buttons.Children.Add(GlyphButton(Glyph("next", 20), MediaButton, () => _ = MediaService.NextAsync()));
-        Grid.SetColumn(buttons, 2);
+        Grid.SetColumn(buttons, 1);
         _media.Children.Add(buttons);
+    }
+
+    // The album cover as the section's backdrop: it melts into the glass at both ends, darkens under the text and
+    // buttons so they stay readable, and carries the same soft sheen as the glass on top.
+    private Grid BuildCover()
+    {
+        var cover = new Grid { Margin = CoverBleed, IsHitTestVisible = false };
+        Grid.SetColumnSpan(cover, 2);
+        cover.Children.Add(_mediaArtBehind);
+        cover.Children.Add(_mediaArt);
+
+        var shade = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
+        shade.GradientStops.Add(new GradientStop(Color.FromArgb(0x88, 0, 0, 0), 0));
+        shade.GradientStops.Add(new GradientStop(Color.FromArgb(0x5C, 0, 0, 0), 0.45));
+        shade.GradientStops.Add(new GradientStop(Color.FromArgb(0x90, 0, 0, 0), 1));
+        shade.Freeze();
+        cover.Children.Add(new Border { Background = shade });
+
+        var sheen = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
+        sheen.GradientStops.Add(new GradientStop(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF), 0));
+        sheen.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0xFF, 0xFF, 0xFF), 0.5));
+        sheen.GradientStops.Add(new GradientStop(Color.FromArgb(0x1A, 0, 0, 0), 1));
+        sheen.Freeze();
+        cover.Children.Add(new Border { Background = sheen });
+
+        var melt = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
+        melt.GradientStops.Add(new GradientStop(Colors.Transparent, 0));
+        melt.GradientStops.Add(new GradientStop(Colors.White, 0.1));
+        melt.GradientStops.Add(new GradientStop(Colors.White, 0.9));
+        melt.GradientStops.Add(new GradientStop(Colors.Transparent, 1));
+        melt.Freeze();
+        cover.OpacityMask = melt;
+
+        var clip = new RectangleGeometry { RadiusX = CoverRadius, RadiusY = CoverRadius };
+        cover.Clip = clip;
+        cover.SizeChanged += (_, e) => clip.Rect = new Rect(e.NewSize);
+        return cover;
+    }
+
+    // a new track's cover fades in over the last one instead of popping in
+    private void ShowCover(ImageSource? artwork)
+    {
+        _mediaArtBehind.Source = _mediaArt.Source;
+        _mediaArt.Source = artwork;
+        _mediaArt.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(450))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        });
     }
 
     private void BuildWeather()
@@ -256,7 +298,7 @@ public partial class DockWindow
                 // MediaService hands back the same frozen bitmap for the same track
                 if (!ReferenceEquals(_mediaArt.Source, media.Artwork))
                 {
-                    _mediaArt.Source = media.Artwork;
+                    ShowCover(media.Artwork);
                 }
 
                 // sub-pixel progress moves are not worth invalidating the transform
