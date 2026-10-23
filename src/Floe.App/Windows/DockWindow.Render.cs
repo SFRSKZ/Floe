@@ -52,6 +52,7 @@ public partial class DockWindow
         _renderDrawn = false;
         _renderStamp = double.NaN;
         _renderTicks = 0;
+        ApplyShadowLevel();
     }
 
     private void StopAnimation()

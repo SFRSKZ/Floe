@@ -102,6 +102,7 @@ public partial class DockWindow
     private RimStyle _appliedRim = (RimStyle)(-1);
     private double _metalTime;
     private double _backdropLogicalWidth;
+    private RenderTargetBitmap? _backdropBlurred;
     private readonly RectangleGeometry _windowGlassBounds = new();
     private readonly RectangleGeometry _shadowClip = new();
     private double _dpi = 1;
@@ -123,13 +124,19 @@ public partial class DockWindow
     // Diagnostics: FLOE_NOFX=shadow,vibrancy,metal switches single effects off to find render costs.
     private static readonly string NoFx = Environment.GetEnvironmentVariable("FLOE_NOFX") ?? "";
 
+    private DropShadowEffect? _shadowEffect;
+
+    // the shadow re-blurs with every bulge change, which a software-rendered dock cannot afford
+    private void ApplyShadowLevel() => _shadow.Effect = Performance.Level == PerformanceLevel.Lite ? null : _shadowEffect;
+
     private void InitializeGlass()
     {
         _glassPreview = Environment.GetCommandLineArgs().Any(a => a.StartsWith("--render=", StringComparison.OrdinalIgnoreCase));
         Root.Clip = _windowGlassBounds;
         _shadow.Data = _shapeGeometry;
         _shadow.Fill = Brushes.Black;
-        if (!NoFx.Contains("shadow")) _shadow.Effect = new DropShadowEffect { BlurRadius = 24, ShadowDepth = 6, Direction = 270, Opacity = 0.35, Color = Colors.Black, RenderingBias = RenderingBias.Performance };
+        if (!NoFx.Contains("shadow")) _shadowEffect = new DropShadowEffect { BlurRadius = 24, ShadowDepth = 6, Direction = 270, Opacity = 0.35, Color = Colors.Black, RenderingBias = RenderingBias.Performance };
+        ApplyShadowLevel();
         // A 16k x 8k rect made the exclude combine walk 134M px whenever the capsule changed; the shadow
         // only reaches ~30 px past the capsule, so a padded capsule rect clips the same pixels for free.
         _shadowClip.Rect = ShadowClipRect();
@@ -307,10 +314,20 @@ public partial class DockWindow
             _smallBlur.Radius = BlurSettings.Radius * width / Math.Max(1, _windowWidth);
             _smallBackdrop.Measure(new Size(width, height));
             _smallBackdrop.Arrange(new Rect(0, 0, width, height));
-            var drawing = new GeometryDrawing(new VisualBrush(_smallBackdrop) { Stretch = Stretch.Fill, ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, width, height) }, null, new RectangleGeometry(new Rect(0, 0, width, height)));
-            _backdrop.Source = new DrawingImage(drawing);
+            _backdropBlurred = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+            _backdrop.Source = _backdropBlurred;
         }
         _backdropBitmap.WritePixels(new Int32Rect(0, 0, width, height), pixels, stride, 0);
+        RenderBackdrop();
+    }
+
+    // A VisualBrush would re-run the blur on every dock frame; the backdrop only changes when a capture
+    // arrives, so the blur runs once per capture into a bitmap the frames just scale.
+    private void RenderBackdrop()
+    {
+        if (_backdropBlurred is null) return;
+        _backdropBlurred.Clear();
+        _backdropBlurred.Render(_smallBackdrop);
     }
 
     private void PrepareGlassPreview()
@@ -328,6 +345,7 @@ public partial class DockWindow
             _backdrop.Effect = null; // RenderTargetBitmap cannot run ps_3_0; same vibrancy math is baked into this diagnostic frame.
             PresentBackdrop(pixels, width, height, width * 4);
             _smallBlur.Radius = 0;
+            RenderBackdrop();
         }
         _shapeHover = double.NaN;
     }
