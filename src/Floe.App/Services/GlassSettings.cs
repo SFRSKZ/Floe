@@ -23,6 +23,7 @@ public enum VisualizerStyle
     DustWave,
     SilkContour,
     EyeFlame,
+    Oled,
 }
 
 public enum HologramColor

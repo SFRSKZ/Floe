@@ -28,6 +28,7 @@ internal sealed class VisualizerWindow : Window
     private readonly SilkContourVisualizer _silkContour = new();
     private GpuLayerWindow? _gpu;
     private GpuLayerWindow? _flame;
+    private GpuLayerWindow? _oled;
     private FluidFireGpuScene? _fire;
     private Rect _dockRect;
     private bool _gpuFailed;
@@ -68,9 +69,9 @@ internal sealed class VisualizerWindow : Window
     public IntPtr Handle => _hwnd;
 
     /// <summary>The window the light is drawn in right now: the GPU layer when it carries the look.</summary>
-    public IntPtr TopHandle => _flame is { IsRunning: true } flame ? flame.Handle : _gpu is { IsRunning: true } gpu ? gpu.Handle : _hwnd;
+    public IntPtr TopHandle => _oled is { IsRunning: true } oled ? oled.Handle : _flame is { IsRunning: true } flame ? flame.Handle : _gpu is { IsRunning: true } gpu ? gpu.Handle : _hwnd;
 
-    public bool Showing => IsVisible || _gpu is { IsRunning: true } || _flame is { IsRunning: true };
+    public bool Showing => IsVisible || _gpu is { IsRunning: true } || _flame is { IsRunning: true } || _oled is { IsRunning: true };
 
     protected override void OnClosed(EventArgs e)
     {
@@ -80,6 +81,8 @@ internal sealed class VisualizerWindow : Window
         _gpu = null;
         _flame?.Dispose();
         _flame = null;
+        _oled?.Dispose();
+        _oled = null;
         base.OnClosed(e);
     }
 
@@ -126,6 +129,7 @@ internal sealed class VisualizerWindow : Window
         WindowStyling.PlaceBelow(_hwnd, dock);
         _gpu?.PlaceBelowDock(dock);
         _flame?.PlaceBelowDock(dock);
+        _oled?.PlaceBelowDock(dock);
     }
 
     public void SetRunning(bool running)
@@ -134,6 +138,7 @@ internal sealed class VisualizerWindow : Window
         // the eye flame only exists on the GPU; the dust looks move there when the setting asks for it
         bool flame = running && look == VisualizerStyle.EyeFlame && Layer(ref _flame, () => _fire = new FluidFireGpuScene());
         PlaceFire(_bounds);
+        bool oled = running && look == VisualizerStyle.Oled && Layer(ref _oled, () => new OledGpuScene());
         bool dust = running && GlassSettings.GpuVisualizer && look is VisualizerStyle.Stardust or VisualizerStyle.DustWave
             && Layer(ref _gpu, () => new StardustGpuScene());
         if (_gpu is not null)
@@ -143,12 +148,13 @@ internal sealed class VisualizerWindow : Window
         }
 
         _flame?.SetRunning(flame);
+        _oled?.SetRunning(oled);
 
-        // without a GPU the eye flame falls back to stardust
-        if (look == VisualizerStyle.EyeFlame && !flame) look = VisualizerStyle.Stardust;
+        // without a GPU the eye flame and the OLED panel fall back to stardust
+        if ((look == VisualizerStyle.EyeFlame && !flame) || (look == VisualizerStyle.Oled && !oled)) look = VisualizerStyle.Stardust;
 
         // a GPU layer carries its look by itself; this window only fades out what it drew before
-        running &= !(dust || flame);
+        running &= !(dust || flame || oled);
         _running = running;
         _glow.IsActive = running && look == VisualizerStyle.Glow;
         _hologram.IsActive = running && look == VisualizerStyle.Hologram;
@@ -229,6 +235,7 @@ internal sealed class VisualizerWindow : Window
             (int)Math.Round(_bounds.Height * _scale));
         _gpu?.Place(pixels, _scale, _dock);
         _flame?.Place(pixels, _scale, _dock);
+        _oled?.Place(pixels, _scale, _dock);
     }
 
     private DispatcherTimer CreateHideTimer()

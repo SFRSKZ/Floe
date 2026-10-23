@@ -364,6 +364,8 @@ public partial class SettingsWindow : Window
         VisualizerLookSilkContour.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.SilkContour);
         VisualizerLookEyeFlame.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.EyeFlame;
         VisualizerLookEyeFlame.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.EyeFlame);
+        VisualizerLookOled.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Oled;
+        VisualizerLookOled.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Oled);
         CubeSizeSlider.Value = GlassSettings.CubeSize;
         CubeSizeValue.Text = GlassSettings.CubeSize.ToString("0") + " px";
         CubeSizeSlider.ValueChanged += (_, e) =>

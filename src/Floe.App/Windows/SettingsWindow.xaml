@@ -409,6 +409,7 @@
                     <RadioButton x:Name="VisualizerLookDustWave" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Toz dalgası" />
                     <RadioButton x:Name="VisualizerLookSilkContour" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="İpek kontur" />
                     <RadioButton x:Name="VisualizerLookEyeFlame" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Sauron'un gözü" />
+                    <RadioButton x:Name="VisualizerLookOled" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="OLED ekran" />
                 </WrapPanel>
 
                 <CheckBox x:Name="GpuVisualizerToggle"
