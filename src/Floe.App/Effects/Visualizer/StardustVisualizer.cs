@@ -326,9 +326,12 @@ public sealed class StardustVisualizer : FrameworkElement
             int hue = _hue[p];
             // near dust is out of focus: wide and faint, like bokeh
             int s = flare > .2f ? 2 : Math.Min(Sigmas.Length - 1, (int)(depth * Sigmas.Length));
-            Sprite(_x[p] * scale, _y[p] * scale, s, PaletteR[hue] * i, PaletteG[hue] * i, PaletteB[hue] * i);
+            // a little lighter than the aurora behind, so the grains stand out from it
+            Sprite(_x[p] * scale, _y[p] * scale, s, Light(PaletteR[hue]) * i, Light(PaletteG[hue]) * i, Light(PaletteB[hue]) * i);
         }
     }
+
+    private static float Light(float c) => (c * .6f) + .4f;
 
     private void Sprite(float px, float py, int s, float cr, float cg, float cb)
     {
@@ -391,8 +394,7 @@ public sealed class StardustVisualizer : FrameworkElement
             int b0 = Math.Min(Bands - 2, (int)at);
             float band = _band[b0] + ((_band[b0 + 1] - _band[b0]) * (at - b0));
             float centre = MathF.Exp(-(xn * xn) / (2 * .22f * .22f));
-            // kept low enough that its soft top fades out under the dock's top line
-            float reach = Math.Min(.40f, .08f + (.30f * MathF.Pow(band, 1.2f) * (.6f + (.4f * level))) + (.10f * (bass + pulse))) * (float)height;
+            float reach = (.13f + (.80f * MathF.Pow(band, 1.2f) * (.6f + (.4f * level))) + (.25f * (bass + pulse))) * (float)height;
             _auraHeight[x] = Math.Max(1, reach);
             int hue = (int)(xn * (PaletteSize - 1));
             float glow = .24f + (.40f * band) + (.28f * pulse);
@@ -443,11 +445,14 @@ public sealed class StardustVisualizer : FrameworkElement
             {
                 // a soft column of light, brightest on the edge and fading smoothly upwards
                 float u = above / height[x];
-                float aura = u < 2.2f ? MathF.Exp(-u * u * 2.2f) : 0;
-                float vr = Knee(r[i] + (ar[x] * aura)) * top;
-                float vg = Knee(g[i] + (ag[x] * aura)) * top;
-                float vb = Knee(b[i] + (ab[x] * aura)) * top;
-                float a = Math.Max(vr, Math.Max(vg, vb));
+                float aura = u < 3 ? MathF.Exp(-u * u * 1.6f) : 0;
+                // the dust sits in front of the aurora: where a grain is, the light behind it is covered
+                float dr = Knee(r[i]), dg = Knee(g[i]), db = Knee(b[i]);
+                float cover = 1 - Math.Max(dr, Math.Max(dg, db));
+                float vr = (dr + (ar[x] * aura * cover)) * top;
+                float vg = (dg + (ag[x] * aura * cover)) * top;
+                float vb = (db + (ab[x] * aura * cover)) * top;
+                float a = Math.Min(1, Math.Max(vr, Math.Max(vg, vb)));
                 pixels[i] = ((int)(a * 255) << 24) | ((int)(vr * 255) << 16) | ((int)(vg * 255) << 8) | (int)(vb * 255);
             }
         });
