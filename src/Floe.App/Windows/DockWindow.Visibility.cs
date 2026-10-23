@@ -81,6 +81,7 @@ public partial class DockWindow
 
         _shown = true;
         UpdateEffectVisibility();
+        _visualizerWindow?.PlaceBelowDock(_hwnd);
         _outsideTicks = 0;
         AnimateTop(ShownTop);
     }

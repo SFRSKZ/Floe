@@ -42,6 +42,7 @@ internal sealed class GpuLayerWindow : IDisposable
     // Requests from the WPF thread, guarded by _gate.
     private bool _placePending;
     private bool _dockPending;
+    private bool _sinkPending;
     private Int32Rect _requestedRect;
     private double _requestedPpd = 1;
     private IntPtr _requestedDock;
@@ -134,11 +135,12 @@ internal sealed class GpuLayerWindow : IDisposable
 
     public void PlaceBelowDock(IntPtr dock)
     {
+        // always re-applied: the dock may have come back above or below us with the same handle
         lock (_gate)
         {
-            if (_requestedDock == dock && !_placePending && !_dockPending) return;
             _requestedDock = dock;
             _dockPending = true;
+            _sinkPending = true;
         }
 
         _wake.Set();
@@ -367,9 +369,11 @@ internal sealed class GpuLayerWindow : IDisposable
         double ppd;
         IntPtr dock;
         bool place;
-        bool dockChanged;
+        bool dockChanged, sink;
         lock (_gate)
         {
+            sink = _sinkPending;
+            _sinkPending = false;
             place = _placePending;
             dockChanged = _placePending || _dockPending;
             _placePending = false;
@@ -404,7 +408,7 @@ internal sealed class GpuLayerWindow : IDisposable
             _ppd = ppd;
         }
 
-        if (dockChanged && dock != _dock)
+        if (dockChanged && (dock != _dock || sink))
         {
             _dock = dock;
             WindowStyling.PlaceBelow(_hwnd, dock);
