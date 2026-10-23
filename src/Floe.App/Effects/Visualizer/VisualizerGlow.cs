@@ -304,7 +304,8 @@ public sealed class VisualizerGlow : FrameworkElement
 
         // See VisualizerPacing: the strip shares the render thread with the dock.
         // Sampling and the envelopes only need to run once per painted frame,
-        // so accumulate dt and do that work inside the gate.
+        // so accumulate dt and do that work inside the gate. The interval is
+        // re-read every frame, so a level change costs the skipped frames nothing.
         _sinceRepaint += dt;
         if (_sinceRepaint < VisualizerPacing.RepaintInterval)
         {

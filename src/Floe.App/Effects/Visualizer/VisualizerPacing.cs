@@ -1,3 +1,5 @@
+using Floe.App.Services;
+
 namespace Floe.App.Effects.Visualizer;
 
 /// <summary>
@@ -6,9 +8,36 @@ namespace Floe.App.Effects.Visualizer;
 /// </summary>
 public static class VisualizerPacing
 {
-    public static bool DockAnimating { get; set; }
+    private static bool _dockAnimating;
 
-    public static double RepaintInterval => DockAnimating ? 1.0 / 15 : 1.0 / 30;
+    public static bool DockAnimating
+    {
+        get => _dockAnimating;
+        set
+        {
+            if (_dockAnimating == value)
+            {
+                return;
+            }
+
+            _dockAnimating = value;
+            DockAnimatingChanged?.Invoke();
+        }
+    }
+
+    /// <summary>Never faster than <see cref="Performance.VisualizerFps"/> when that is set.</summary>
+    public static double RepaintInterval
+    {
+        get
+        {
+            double interval = DockAnimating ? 1.0 / 15 : 1.0 / 30;
+            double fps = Performance.VisualizerFps;
+            return fps > 0 ? Math.Max(interval, 1 / fps) : interval;
+        }
+    }
+
+    /// <summary>Raised when <see cref="DockAnimating"/> changes, so frame clocks can switch tick sources.</summary>
+    public static event Action? DockAnimatingChanged;
 
     /// <summary>Raised on the frames a visualizer repaints, so other animated content can update in step.</summary>
     public static event Action? Repainted;

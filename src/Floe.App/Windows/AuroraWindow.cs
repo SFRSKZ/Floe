@@ -34,6 +34,7 @@ internal sealed class AuroraWindow : Window
     private IntPtr _hwnd;
     private double _fade;
     private double _target;
+    private bool _wanted;
     private double _last = -1;
     private double _lastRaster = double.NegativeInfinity;
 
@@ -59,10 +60,12 @@ internal sealed class AuroraWindow : Window
 
         // a separate window: it re-presents on its own, so it ticks on every visualizer frame
         _clock = new PacedClock(Tick, 1, everyFrameWhileDockAnimates: false);
+        Performance.Changed += OnPerformanceChanged;
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        Performance.Changed -= OnPerformanceChanged;
         CaptureReveal.Forget(_hwnd);
         _clock.Stop();
         base.OnClosed(e);
@@ -82,6 +85,14 @@ internal sealed class AuroraWindow : Window
     /// <summary>Fades the aurora in at the anchor (or keeps it there).</summary>
     public void Begin()
     {
+        _wanted = true;
+        if (!Performance.AmbientMotion)
+        {
+            // the level holds idle decoration still: a curtain that never finishes its fade would just hang there
+            Suspend();
+            return;
+        }
+
         if (_target == 1 && IsVisible)
         {
             Track();
@@ -105,7 +116,33 @@ internal sealed class AuroraWindow : Window
     }
 
     /// <summary>Fades out and hides.</summary>
-    public void End() => _target = 0;
+    public void End()
+    {
+        _wanted = false;
+        _target = 0;
+    }
+
+    private void OnPerformanceChanged()
+    {
+        if (!Performance.AmbientMotion)
+        {
+            Suspend();
+        }
+        else if (_wanted && !IsVisible)
+        {
+            Begin();
+        }
+    }
+
+    /// <summary>Hides at once, without a fade: the clock is not ticking, so a fade would never finish.</summary>
+    private void Suspend()
+    {
+        _target = 0;
+        _fade = 0;
+        _last = -1;
+        _clock.Stop();
+        Hide();
+    }
 
     /// <summary>Moves onto the anchor; false when there is none.</summary>
     public bool Track()
