@@ -353,8 +353,8 @@ public partial class SettingsWindow : Window
         VisualizerLookDustWave.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.DustWave);
         VisualizerLookSilkContour.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.SilkContour;
         VisualizerLookSilkContour.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.SilkContour);
-        VisualizerLookWraithWind.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.WraithWind;
-        VisualizerLookWraithWind.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.WraithWind);
+        VisualizerLookEyeFlame.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.EyeFlame;
+        VisualizerLookEyeFlame.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.EyeFlame);
         CubeSizeSlider.Value = GlassSettings.CubeSize;
         CubeSizeValue.Text = GlassSettings.CubeSize.ToString("0") + " px";
         CubeSizeSlider.ValueChanged += (_, e) =>

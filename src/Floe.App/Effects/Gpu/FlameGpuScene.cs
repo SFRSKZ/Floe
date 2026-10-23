@@ -8,15 +8,14 @@ using Vortice.Mathematics;
 namespace Floe.App.Effects.Gpu;
 
 /// <summary>
-/// The wraith wind visualizer: the pale grey-green fog of the ring world, rising from the bottom of the strip.
+/// The eye flame visualizer: Sauron's fire, black, red and yellow, running out from under the dock to both sides.
 /// <para>
-/// It is one feedback field, not a simulation: every frame the previous float texture is read at a point pulled
-/// toward the bottom middle (the wind noise and the beat widen that pull), dimmed a little, and the fog source is
-/// added along the bottom where the spectrum is loud. A second pass blurs and tone-maps the field and writes the
-/// premultiplied strip, so the fog is a transparent layer over the desktop.
+/// It is one feedback field of heat, not a simulation: every frame the previous field is read a step closer to the
+/// middle and lower down, so the fire travels outward and up; the bass feeds it under the dock and each band along
+/// the edge. A second pass tears it into tongues and maps heat to the fire's colours, premultiplied.
 /// </para>
 /// </summary>
-public sealed class WraithGpuScene : IGpuScene
+public sealed class FlameGpuScene : IGpuScene
 {
     private const int Bands = 24;
     private const int PaletteSize = 16;
@@ -176,7 +175,7 @@ public sealed class WraithGpuScene : IGpuScene
         _cb[3] = _beat;
         _cb[4] = _level;
         _cb[5] = dt60;
-        _cb[6] = MathF.Pow(.95f, dt60);
+        _cb[6] = MathF.Pow(.935f, dt60);
         _cb[7] = Math.Clamp(frame.Fade, 0, 1);
         context.UpdateSubresource(_cb, _constants!);
 
@@ -237,7 +236,7 @@ public sealed class WraithGpuScene : IGpuScene
     // ---- shaders ----------------------------------------------------------------------------------
 
     private static ReadOnlyMemory<byte> Compile(string profile, string source) =>
-        Compiler.Compile(source, "main", "Wraith", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
+        Compiler.Compile(source, "main", "Flame", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
 
     private const string FullscreenVs = """
         struct VSOut
@@ -317,29 +316,22 @@ public sealed class WraithGpuScene : IGpuScene
         {
             float2 uv = float2(position.x / Size.x, 1 - (position.y / Size.y));
             float aspect = Size.x / Size.y;
-            float2 d = uv - float2(.5, 0);
-            float2 q = uv * float2(5, 2.5);
+            float side = uv.x < .5 ? -1 : 1;
+            float2 q = uv * float2(9, 4);
 
-            // the wind, and the suck toward the bottom middle that a beat widens
-            float2 wind = float2(fbm(q + float2(Time * .5, 0)) - .5, fbm(q + float2(9, Time * .4)) - .5) * (.007 + (.02 * Level));
-            float2 push = (d * (.004 + (.035 * Beat))) + wind + float2(0, -.005);
-            float3 pc = Fetch(uv + (push * Dt60));
+            // the fire runs out from under the dock to both sides and licks upward; a beat throws it faster
+            float2 turb = float2(fbm(q + float2(0, -Time * 2.2)) - .5, fbm(q + float2(7, -Time * 1.7)) - .5) * .012;
+            float2 push = float2(side * (.003 + (.022 * Beat) + (.006 * Level)), .0035) + turb;
+            float heat = Fetch(uv - (push * Dt60)).r * Decay - (.002 * Dt60);
 
-            // it fades and loses its colour as it goes
-            pc = lerp(pc, lu(pc).xxx, .05 * Dt60) * Decay - (.0015 * Dt60);
-
-            // the source: the fog hills the bands make along the bottom, the low bands in the middle
+            // fed under the dock by the bass, and along the bottom edge by each band
             float band = Bands.SampleLevel(LinearClamp, float2(abs((uv.x * 2) - 1), .5), 0).r;
-            float s = fbm(float2(uv.x * aspect * 1.4, (uv.y * 3) - (Time * 1.3)));
-            float hill = .08 + (.6 * band);
-            float3 tint = Palette.Load(int3(min(15, (int)(uv.x * 15)), 0, 0)).rgb;
-            float3 base = lerp(float3(.75, .88, .82), tint, .35);
-            // torn into wisps, so the fog reads as threads of smoke and not a blanket
-            float wisp = fbm(float2(uv.x * aspect * 3, (uv.y * 6) - (Time * 2)));
-            wisp = saturate((wisp - .35) * 2.2);
-            float3 src = base * smoothstep(0, .3, hill - uv.y + (s * .4) - .18) * .065 * (.3 + band) * (.15 + (wisp * wisp * 1.6));
+            float x = (uv.x - .5) * aspect;
+            float core = exp(-x * x * 1.4) * exp(-uv.y * 7) * (.25 + Level + (1.4 * Beat));
+            float edge = band * band * exp(-uv.y * 16) * (.5 + fbm(float2(uv.x * aspect * 4, Time * 3)));
+            heat += ((core * .05) + (edge * .03)) * Dt60;
 
-            return float4(max(pc, 0) + (src * Dt60), 1);
+            return float4(max(heat, 0), 0, 0, 1);
         }
         """;
 
@@ -357,29 +349,25 @@ public sealed class WraithGpuScene : IGpuScene
             float2 uv = float2(position.x / Size.x, 1 - (position.y / Size.y));
             float aspect = Size.x / Size.y;
 
-            // the fog, a wide bloom of the same field, and a copy a touch up and right for a soft streak
-            float3 f = Fetch(uv);
-            float3 bl = 0;
-            for (int i = 0; i < 10; i++)
-            {
-                float a = i * .628;
-                bl += Fetch(uv + (float2(cos(a) / aspect, sin(a)) * .045));
-            }
-            bl /= 10;
-            float3 g = Fetch(uv + float2(.012 * Beat, .004));
+            // the flame's tongues: the heat field torn by fast rising noise
+            float heat = (Fetch(uv).r * .7) + (Fetch(uv + float2(0, -.02)).r * .3);
+            // the tongues drift outward with the fire, so the waves read as running along the dock
+            float ax = abs(uv.x - .5) * aspect;
+            float tongue = fbm(float2((ax * 2.6) - (Time * 1.6), (uv.y * 5) - (Time * 2.8)));
+            tongue = saturate((tongue - .28) * 2.4);
+            heat *= .15 + (1.5 * tongue * tongue);
+            float t = 1 - exp(-heat * 1.7);
 
-            float3 c = (f * .75) + (bl * .55) + (g * .25);
-            c = lerp(c, lu(c) * float3(.78, .92, .86), .55);
-            c = 1 - exp(-c * 2.2);
+            // black, then blood red, orange, the yellow of the eye, and a white-hot core
+            float3 c = lerp(float3(0, 0, 0), float3(.38, .02, 0), saturate(t / .3));
+            c = lerp(c, float3(1, .22, 0), saturate((t - .3) / .25));
+            c = lerp(c, float3(1, .72, .08), saturate((t - .55) / .25));
+            c = lerp(c, float3(1, .97, .7), saturate((t - .82) / .18));
 
-            // grain only where there is light, so the empty air stays clean
-            float light = max(c.r, max(c.g, c.b));
-            c += (h((uv * Size) + (frac(Time * 7) * 100)) - .5) * .045 * light;
-
-            // thin out toward the top, then the host's fade; premultiplied over the desktop
-            c *= (1 - smoothstep(.45, 1.08, uv.y)) * Fade;
-            float alpha = min(1, max(c.r, max(c.g, c.b)));
-            return float4(c, alpha);
+            // the cold rim stays as soot: dark but not see-through, so the fire reads black-edged on any wallpaper
+            float alpha = saturate(t * 4.5) * (.8 + (.2 * saturate(t * 3)));
+            alpha *= (1 - smoothstep(.5, 1.05, uv.y)) * Fade;
+            return float4(c * alpha, alpha);
         }
         """;
 }

@@ -4,15 +4,15 @@ using Floe.Core.Interop;
 namespace Floe.App.Effects.Gpu;
 
 /// <summary>
-/// --render-gpu-wraith=&lt;dir&gt; writes 120 PNG frames (30 fps, 1800x240 at 2 px/DIP) of
-/// <see cref="WraithGpuScene"/> over the dock's backdrop, fed the same made-up beat as the other previews;
+/// --render-gpu-flame=&lt;dir&gt; writes 120 PNG frames (30 fps, 1800x240 at 2 px/DIP) of
+/// <see cref="FlameGpuScene"/> over the dock's backdrop, fed the same made-up beat as the other previews;
 /// --stardust-live feeds it what the speakers play instead, in real time.
 /// <para>
 /// The frames go through <see cref="GpuOffscreen.RenderFrames"/>, which owns the device and the readback:
 /// 120 frames because a feedback field needs a couple of seconds before it has built its fog.
 /// </para>
 /// </summary>
-public static class WraithGpuPreview
+public static class FlameGpuPreview
 {
     private const int Width = 1800;
     private const int Height = 240;
@@ -20,7 +20,7 @@ public static class WraithGpuPreview
 
     public static bool TryRender(string[] args)
     {
-        const string option = "--render-gpu-wraith=";
+        const string option = "--render-gpu-flame=";
         var argument = args.FirstOrDefault(a => a.StartsWith(option, StringComparison.OrdinalIgnoreCase));
         if (argument is null) return false;
 
@@ -28,7 +28,7 @@ public static class WraithGpuPreview
         bool live = args.Contains("--stardust-live", StringComparer.OrdinalIgnoreCase);
         try
         {
-            using var scene = new WraithGpuScene();
+            using var scene = new FlameGpuScene();
             using var spectrum = live ? new AudioSpectrum() : null;
             if (live) Thread.Sleep(400);
             var started = DateTime.UtcNow;
@@ -51,12 +51,12 @@ public static class WraithGpuPreview
 
             File.WriteAllText(
                 Path.Combine(folder, "render-info.txt"),
-                "WraithGpuScene: two feedback passes (R16G16B16A16_FLOAT ping-pong), 1800x240 at 2 px/dip, "
+                "FlameGpuScene: two feedback passes (R16G16B16A16_FLOAT ping-pong), 1800x240 at 2 px/dip, "
                 + $"{Frames} frames at 30 fps, {(live ? "live AudioSpectrum" : "Fake() beat")}, composited over #0B0E14.\n");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Floe.Gpu] wraith preview failed: {ex}");
+            System.Diagnostics.Debug.WriteLine($"[Floe.Gpu] flame preview failed: {ex}");
             try { File.WriteAllText(Path.Combine(folder, "render-error.txt"), ex.ToString()); } catch { }
             Environment.ExitCode = 1;
         }

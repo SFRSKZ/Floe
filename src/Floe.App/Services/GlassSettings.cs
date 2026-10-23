@@ -21,7 +21,7 @@ public enum VisualizerStyle
     Stardust,
     DustWave,
     SilkContour,
-    WraithWind,
+    EyeFlame,
 }
 
 public enum HologramColor
@@ -123,7 +123,9 @@ public static class GlassSettings
             Visualizer = model.Visualizer;
             GpuVisualizer = model.GpuVisualizer;
             Bulge = Enum.TryParse<BulgeStyle>(model.Bulge, true, out var bulge) ? bulge : BulgeStyle.Soft;
-            VisualizerLook = Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
+            // the eye flame replaced the wraith wind in its place in the list
+            VisualizerLook = model.VisualizerLook == "WraithWind" ? VisualizerStyle.EyeFlame
+                : Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
             HologramTint = Enum.TryParse<HologramColor>(model.HologramTint, true, out var tint) ? tint : HologramColor.Blue;
             Intro = Enum.TryParse<NowPlayingIntro>(model.Intro, true, out var intro) ? intro : NowPlayingIntro.Drop;
             DustColors = Enum.TryParse<DustPalette>(model.DustColors, true, out var dust) ? dust : DustPalette.Tint;

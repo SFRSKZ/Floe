@@ -27,7 +27,7 @@ internal sealed class VisualizerWindow : Window
     private readonly StardustVisualizer _dustWave = new() { Wave = true };
     private readonly SilkContourVisualizer _silkContour = new();
     private GpuLayerWindow? _gpu;
-    private GpuLayerWindow? _wraith;
+    private GpuLayerWindow? _flame;
     private bool _gpuFailed;
     private IntPtr _hwnd;
     private IntPtr _dock;
@@ -66,9 +66,9 @@ internal sealed class VisualizerWindow : Window
     public IntPtr Handle => _hwnd;
 
     /// <summary>The window the light is drawn in right now: the GPU layer when it carries the look.</summary>
-    public IntPtr TopHandle => _wraith is { IsRunning: true } wraith ? wraith.Handle : _gpu is { IsRunning: true } gpu ? gpu.Handle : _hwnd;
+    public IntPtr TopHandle => _flame is { IsRunning: true } flame ? flame.Handle : _gpu is { IsRunning: true } gpu ? gpu.Handle : _hwnd;
 
-    public bool Showing => IsVisible || _gpu is { IsRunning: true } || _wraith is { IsRunning: true };
+    public bool Showing => IsVisible || _gpu is { IsRunning: true } || _flame is { IsRunning: true };
 
     protected override void OnClosed(EventArgs e)
     {
@@ -76,8 +76,8 @@ internal sealed class VisualizerWindow : Window
         CaptureReveal.Forget(_hwnd);
         _gpu?.Dispose();
         _gpu = null;
-        _wraith?.Dispose();
-        _wraith = null;
+        _flame?.Dispose();
+        _flame = null;
         base.OnClosed(e);
     }
 
@@ -120,14 +120,14 @@ internal sealed class VisualizerWindow : Window
         _dock = dock;
         WindowStyling.PlaceBelow(_hwnd, dock);
         _gpu?.PlaceBelowDock(dock);
-        _wraith?.PlaceBelowDock(dock);
+        _flame?.PlaceBelowDock(dock);
     }
 
     public void SetRunning(bool running)
     {
         var look = GlassSettings.VisualizerLook;
-        // the wraith only exists on the GPU; the dust looks move there when the setting asks for it
-        bool wraith = running && look == VisualizerStyle.WraithWind && Layer(ref _wraith, () => new WraithGpuScene());
+        // the eye flame only exists on the GPU; the dust looks move there when the setting asks for it
+        bool flame = running && look == VisualizerStyle.EyeFlame && Layer(ref _flame, () => new FlameGpuScene());
         bool dust = running && GlassSettings.GpuVisualizer && look is VisualizerStyle.Stardust or VisualizerStyle.DustWave
             && Layer(ref _gpu, () => new StardustGpuScene());
         if (_gpu is not null)
@@ -136,13 +136,13 @@ internal sealed class VisualizerWindow : Window
             _gpu.SetRunning(dust);
         }
 
-        _wraith?.SetRunning(wraith);
+        _flame?.SetRunning(flame);
 
-        // without a GPU the wraith falls back to the stardust it grew out of
-        if (look == VisualizerStyle.WraithWind && !wraith) look = VisualizerStyle.Stardust;
+        // without a GPU the eye flame falls back to stardust
+        if (look == VisualizerStyle.EyeFlame && !flame) look = VisualizerStyle.Stardust;
 
         // a GPU layer carries its look by itself; this window only fades out what it drew before
-        running &= !(dust || wraith);
+        running &= !(dust || flame);
         _running = running;
         _glow.IsActive = running && look == VisualizerStyle.Glow;
         _hologram.IsActive = running && look == VisualizerStyle.Hologram;
@@ -212,7 +212,7 @@ internal sealed class VisualizerWindow : Window
             (int)Math.Round(_bounds.Width * _scale),
             (int)Math.Round(_bounds.Height * _scale));
         _gpu?.Place(pixels, _scale, _dock);
-        _wraith?.Place(pixels, _scale, _dock);
+        _flame?.Place(pixels, _scale, _dock);
     }
 
     private DispatcherTimer CreateHideTimer()
