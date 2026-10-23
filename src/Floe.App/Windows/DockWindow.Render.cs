@@ -86,8 +86,8 @@ public partial class DockWindow
     private void OnRendering(object? sender, EventArgs e)
     {
         var started = Stopwatch.GetTimestamp();
-        OnRenderingCore(e is RenderingEventArgs args ? args.RenderingTime.TotalSeconds : -1);
-        if (PerfLog)
+        // frames the cap skips are not counted as drawn
+        if (OnRenderingCore(e is RenderingEventArgs args ? args.RenderingTime.TotalSeconds : -1) && PerfLog)
         {
             if (!_perfHooked)
             {
@@ -123,16 +123,17 @@ public partial class DockWindow
         }
     }
 
-    private void OnRenderingCore(double stamp)
+    /// <returns>False on a monitor frame the cap skips.</returns>
+    private bool OnRenderingCore(double stamp)
     {
         var cap = Performance.DockFrameCap;
         if (cap > 0 && cap < Performance.RefreshRate && stamp >= 0)
         {
             // draw on every n-th distinct monitor frame: an even cadence, where a time threshold would judder.
-            if (stamp <= _renderStamp) return;
+            if (stamp <= _renderStamp) return false;
             _renderStamp = stamp;
             var every = Math.Max(1, (int)Math.Round(Performance.RefreshRate / cap));
-            if (_renderDrawn && ++_renderTicks < every) return;
+            if (_renderDrawn && ++_renderTicks < every) return false;
             _renderTicks = 0;
         }
 
@@ -207,6 +208,8 @@ public partial class DockWindow
             // a held-still rim must not keep the loop alive by itself
             if (_metalEffect is null || !IsMouseOver || !Performance.AmbientMotion) StopAnimation();
         }
+
+        return true;
     }
 
     private static double Spring(double position, ref double velocity, double target, double dt, double stiffness = 260, double damping = 27)

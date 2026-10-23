@@ -54,8 +54,8 @@ public sealed class ActiveIconEffect : ShaderEffect
         // inside the dock window: every other visualizer frame is plenty for a slow colour flow
         _clock = new PacedClock(now =>
         {
-            // the shader only flows its colour slowly: the ambient rate is indistinguishable and saves constant writes
-            double fps = Performance.AmbientFps;
+            // the shader only flows its colour slowly: 12 fps is indistinguishable and saves constant writes
+            double fps = Math.Min(12, Performance.AmbientFps);
             if (!VisualizerPacing.DockAnimating && (fps <= 0 || now - _lastTime < 1.0 / fps))
             {
                 return;
