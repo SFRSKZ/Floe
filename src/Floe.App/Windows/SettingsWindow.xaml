@@ -52,6 +52,11 @@
                                     </LinearGradientBrush>
                                 </Border.BorderBrush>
                             </Border>
+                            <!-- transparent metal-ring overlay; the code-behind gives it the shader -->
+                            <Border x:Name="Rim"
+                                    Background="Transparent"
+                                    CornerRadius="9"
+                                    IsHitTestVisible="False" />
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -101,6 +106,12 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+            <Style.Triggers>
+                <!-- keep the ring's halo above neighbouring toggles instead of under them -->
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Panel.ZIndex" Value="1" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="GlassSlider" TargetType="Slider">
@@ -192,6 +203,11 @@
                                     </LinearGradientBrush>
                                 </Border.BorderBrush>
                             </Border>
+                            <!-- transparent metal-ring overlay; the code-behind gives it the shader -->
+                            <Border x:Name="Rim"
+                                    Background="Transparent"
+                                    CornerRadius="9"
+                                    IsHitTestVisible="False" />
                             <ContentPresenter Margin="14,7" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <ContentPresenter.Effect>
                                     <DropShadowEffect BlurRadius="1" ShadowDepth="1" Direction="270"

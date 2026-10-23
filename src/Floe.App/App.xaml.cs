@@ -227,6 +227,24 @@ public partial class App : Application
             if (window.Content is Visual root)
             {
                 target.Render(root);
+
+                // the software rasterizer skips ps_3_0; add the rims from the WARP renderer
+                try
+                {
+                    var visual = new DrawingVisual();
+                    using (var context = visual.RenderOpen())
+                    {
+                        context.DrawImage(target, new Rect(0, 0, width, height));
+                        window.DrawMetalRims(context, root);
+                    }
+                    var composite = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+                    composite.Render(visual);
+                    target = composite;
+                }
+                catch
+                {
+                    // keep the plain settings render when the diagnostic overlay fails
+                }
             }
 
             var encoder = new PngBitmapEncoder();

@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using Floe.App.Effects.Chromatic;
+using Floe.App.Effects.MetalRim;
 using Floe.App.Services;
 using Floe.Core.Interop;
 
@@ -15,7 +16,7 @@ namespace Floe.App.Windows;
 
 public partial class SettingsWindow : Window
 {
-    private readonly List<(Border Row, int Index)> _rows = new();
+    private readonly List<(Border Row, Border Rim, Grid Shell, int Index)> _rows = new();
 
     public SettingsWindow()
     {
@@ -98,32 +99,112 @@ public partial class SettingsWindow : Window
     private static int _lastTab;
 
     private ChromaticAnimator? _chromatic;
+    private readonly List<(Border Rim, Func<bool> Strong)> _metalRims = new();
+
+    private static readonly bool NoMetal =
+        (Environment.GetEnvironmentVariable("FLOE_NOFX") ?? "").Contains("metal");
 
     /// <summary>
     /// Puts the chromatic material on the selected toggles and the close button only:
-    /// unchecked toggles keep the plain glass face. The animator stops with the window.
+    /// unchecked toggles keep the plain glass face. The same clock also runs the metal
+    /// rims around every option (quiet until selected), which stop with the window.
     /// </summary>
     private void AttachChromatic()
     {
-        if (!ChromaticEffect.IsAvailable || !RenderCapability.IsPixelShaderVersionSupported(2, 0) || Content is not DependencyObject root)
+        if (Content is not DependencyObject root)
+        {
+            return;
+        }
+
+        var faces = ChromaticEffect.IsAvailable && RenderCapability.IsPixelShaderVersionSupported(2, 0);
+        var rims = !NoMetal && RenderCapability.IsPixelShaderVersionSupported(3, 0);
+        if (!faces && !rims)
         {
             return;
         }
 
         _chromatic = new ChromaticAnimator();
+        var used = false;
         foreach (var toggle in FindVisualChildren<RadioButton>(root))
         {
-            AttachChromaticFace(toggle, () => toggle.IsChecked == true);
+            used |= faces && AttachChromaticFace(toggle, () => toggle.IsChecked == true);
+            used |= rims && AttachMetalRim(toggle, () => toggle.IsChecked == true);
         }
-        AttachChromaticFace(CloseButton, () => true);
+        used |= faces && AttachChromaticFace(CloseButton, () => true);
+        used |= rims && AttachMetalRim(CloseButton, () => true);
+        if (rims)
+        {
+            foreach (var (_, rim, _, index) in _rows)
+            {
+                var strong = new Func<bool>(() =>
+                    AuraSettings.Mode == AuraColorMode.Palette && AuraSettings.PaletteIndex == index);
+                if (_chromatic.AddRim(rim, strong))
+                {
+                    _metalRims.Add((rim, strong));
+                    used = true;
+                }
+            }
+        }
+
+        if (!used)
+        {
+            _chromatic.Dispose();
+            _chromatic = null;
+        }
     }
 
-    private void AttachChromaticFace(Control control, Func<bool> active)
+    private bool AttachChromaticFace(Control control, Func<bool> active)
     {
         control.ApplyTemplate();
         if (control.Template?.FindName("Chroma", control) is Border face)
         {
             _chromatic?.Add(face, control, active);
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool AttachMetalRim(Control control, Func<bool> strong)
+    {
+        control.ApplyTemplate();
+        if (control.Template?.FindName("Rim", control) is Border rim && _chromatic?.AddRim(rim, strong) == true)
+        {
+            _metalRims.Add((rim, strong));
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Diagnostic only: RenderTargetBitmap is software-only and skips ps_3_0, so the
+    /// --rendersettings PNG gets its rims composited from the WARP renderer.
+    /// </summary>
+    internal void DrawMetalRims(DrawingContext context, Visual root)
+    {
+        foreach (var (rim, _) in _metalRims)
+        {
+            if (!rim.IsVisible || rim.ActualWidth < 1 || rim.ActualHeight < 1
+                || rim.Effect is not MetalRimEffect live)
+            {
+                continue;
+            }
+
+            var rect = rim.TransformToAncestor(root).TransformBounds(new Rect(rim.RenderSize));
+            var effect = MetalRimEffect.ApplyPreset("chromatic", true);
+            effect.Thickness = live.Thickness;
+            effect.Strength = live.Strength;
+            effect.GlowGain = live.GlowGain;
+            effect.CornerRadius = live.CornerRadius;
+            effect.Size = rect.Size;
+            effect.Time = 4;
+            using var renderer = new MetalRimPreview.OffscreenRenderer(
+                (int)Math.Ceiling(rect.Width), (int)Math.Ceiling(rect.Height));
+            var bitmap = renderer.Render(effect);
+            context.DrawImage(bitmap, new Rect(
+                rect.X - MetalRimEffect.GlowPadding, rect.Y - MetalRimEffect.GlowPadding,
+                bitmap.PixelWidth, bitmap.PixelHeight));
         }
     }
 
@@ -276,14 +357,22 @@ public partial class SettingsWindow : Window
         for (var i = 0; i < AuraSettings.Palettes.Count; i++)
         {
             var palette = AuraSettings.Palettes[i];
+            var shell = new Grid { Margin = new Thickness(0, 0, 6, 6) };
             var row = new Border
             {
                 CornerRadius = new CornerRadius(9),
                 Padding = new Thickness(10, 7, 10, 7),
-                Margin = new Thickness(0, 0, 6, 6),
                 BorderThickness = new Thickness(1),
                 Cursor = Cursors.Hand,
             };
+            // the ring overlays the card so its halo can bleed past the card's bounds
+            var rim = new Border
+            {
+                CornerRadius = new CornerRadius(9),
+                IsHitTestVisible = false,
+            };
+            shell.Children.Add(row);
+            shell.Children.Add(rim);
 
             var content = new StackPanel { Orientation = Orientation.Horizontal };
             foreach (var color in palette.Colors)
@@ -311,8 +400,8 @@ public partial class SettingsWindow : Window
             var index = i;
             row.MouseLeftButtonUp += (_, _) => AuraSettings.SetPalette(index);
 
-            _rows.Add((row, index));
-            PaletteList.Children.Add(row);
+            _rows.Add((row, rim, shell, index));
+            PaletteList.Children.Add(shell);
         }
     }
 
@@ -323,7 +412,7 @@ public partial class SettingsWindow : Window
 
         var paletteActive = AuraSettings.Mode == AuraColorMode.Palette;
 
-        foreach (var (row, index) in _rows)
+        foreach (var (row, rim, shell, index) in _rows)
         {
             var selected = paletteActive && index == AuraSettings.PaletteIndex;
             row.Background = new SolidColorBrush(selected
@@ -332,6 +421,8 @@ public partial class SettingsWindow : Window
             row.BorderBrush = new SolidColorBrush(selected
                 ? Color.FromArgb(0x80, 0x5B, 0xC8, 0xFF)
                 : Color.FromArgb(0x1E, 0xFF, 0xFF, 0xFF));
+            // every card wears the ring; the selected one is brighter and sits above its neighbours
+            Panel.SetZIndex(shell, selected ? 1 : 0);
         }
 
         PaletteList.Visibility = paletteActive ? Visibility.Visible : Visibility.Collapsed;
