@@ -53,6 +53,7 @@ internal sealed class ChromaticAnimator : IDisposable
     {
         _timer.Tick += (_, _) => Tick();
         Performance.Changed += OnPerformanceChanged;
+        Visualizer.VisualizerPacing.DockAnimatingChanged += OnDockAnimatingChanged;
     }
 
     /// <summary>Gives <paramref name="surface"/> a chromatic face; hover follows the owning control.</summary>
@@ -142,6 +143,7 @@ internal sealed class ChromaticAnimator : IDisposable
     public void Dispose()
     {
         Performance.Changed -= OnPerformanceChanged;
+        Visualizer.VisualizerPacing.DockAnimatingChanged -= OnDockAnimatingChanged;
         _started = false;
         _timer.Stop();
         _clock.Stop();
@@ -174,9 +176,15 @@ internal sealed class ChromaticAnimator : IDisposable
         Tick();
     }
 
+    // The dock shares the render thread: while it moves, the material holds still and picks up again after.
+    private void OnDockAnimatingChanged()
+    {
+        if (!Visualizer.VisualizerPacing.DockAnimating) Wake();
+    }
+
     private void Tick()
     {
-        var motion = Performance.AmbientMotion;
+        var motion = Performance.AmbientMotion && !Visualizer.VisualizerPacing.DockAnimating;
         var now = _clock.Elapsed.TotalSeconds;
         var delta = Math.Min(Math.Max(0, now - _previous), 0.1);
         _previous = now;

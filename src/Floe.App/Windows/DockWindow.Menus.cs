@@ -140,7 +140,8 @@ public partial class DockWindow
 
         if (_clock.IsMouseOver || _clockDivider.IsMouseOver)
         {
-            OpenSettings();
+            if (!_settingsClosedByClick) OpenSettings();
+            _settingsClosedByClick = false;
             e.Handled = true;
             return;
         }
@@ -199,6 +200,17 @@ public partial class DockWindow
 
         e.Handled = true;
     }
+
+    // The dock never takes focus, so a click on it would not deactivate the settings; close them here too.
+    protected override void OnPreviewMouseDown(MouseButtonEventArgs e)
+    {
+        base.OnPreviewMouseDown(e);
+        _settingsClosedByClick = _settings is not null;
+        _settings?.Close();
+    }
+
+    // the right click on the clock that closed the settings must not open them again on release
+    private bool _settingsClosedByClick;
 
     private void OpenSettings()
     {

@@ -18,6 +18,8 @@ public partial class SettingsWindow : Window
 {
     private readonly List<(Border Row, Border Rim, Grid Shell, int Index)> _rows = new();
 
+    private bool _closing;
+
     public SettingsWindow()
     {
         InitializeComponent();
@@ -26,6 +28,12 @@ public partial class SettingsWindow : Window
         // until the first dispatcher pass so it never flashes at the default position
         Opacity = 0;
         Loaded += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Background, () => Opacity = 1);
+        // a click anywhere else closes it, like a popover
+        Deactivated += (_, _) =>
+        {
+            if (!_closing) Close();
+        };
+        Closing += (_, _) => _closing = true;
 
         BuildPaletteRows();
         ClickEffectToggle.IsChecked = AuraSettings.ClickEffect;
