@@ -38,6 +38,13 @@ public sealed class StardustVisualizer : FrameworkElement
     private static readonly float[] PaletteG = new float[PaletteSize];
     private static readonly float[] PaletteB = new float[PaletteSize];
     private static HologramColor? _paletteTint;
+    private static DustPalette? _paletteKind;
+
+    // The gradient palettes, from the middle of the strip out to its ends.
+    private static readonly Color[] Sunset = { Rgb(0xFFD27A), Rgb(0xFF8A5C), Rgb(0xF04F82), Rgb(0x8C55E0) };
+    private static readonly Color[] Northern = { Rgb(0x7CFFC0), Rgb(0x34D8C8), Rgb(0x4A8CFF), Rgb(0xB070FF) };
+    private static readonly Color[] Ocean = { Rgb(0xA8F4FF), Rgb(0x3CC6F2), Rgb(0x2A80E2), Rgb(0x4652D0) };
+    private static readonly Color[] Neon = { Rgb(0xFF3DCB), Rgb(0x8C5CFF), Rgb(0x2EE6FF), Rgb(0xB8FF40) };
 
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly Random _random = new(0x5DA57);
@@ -163,7 +170,7 @@ public sealed class StardustVisualizer : FrameworkElement
         _time += dt;
         if (DebugFrame is not null) _fade = 1;
         if (!EnsureBuffers()) return;
-        EnsurePalette();
+        EnsurePalette(_time);
         var f = DebugFrame ?? _frame;
         bool live = _active || DebugFrame is not null;
 
@@ -675,16 +682,48 @@ public sealed class StardustVisualizer : FrameworkElement
         return Math.Sqrt(-2 * Math.Log(u)) * Math.Cos(2 * Math.PI * v);
     }
 
-    // From the tint in the middle to a hue 50° along at the sides; white stays white.
-    private static void EnsurePalette()
+    private static Color Rgb(int rgb) => Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
+
+    // The tint runs from itself in the middle to a hue 50° along at the sides (white stays white); the gradients
+    // run through their stops; the rainbow sweeps the hues and turns slowly.
+    private static void EnsurePalette(double time)
     {
-        if (_paletteTint == GlassSettings.HologramTint) return;
+        var kind = GlassSettings.DustColors;
+        if (kind != DustPalette.Rainbow && _paletteKind == kind && (kind != DustPalette.Tint || _paletteTint == GlassSettings.HologramTint)) return;
+        _paletteKind = kind;
         _paletteTint = GlassSettings.HologramTint;
         var primary = HologramVisualizer.Tint(BasePrimary);
+        Color[]? stops = kind switch
+        {
+            DustPalette.Sunset => Sunset,
+            DustPalette.Aurora => Northern,
+            DustPalette.Ocean => Ocean,
+            DustPalette.Neon => Neon,
+            _ => null,
+        };
         for (int i = 0; i < PaletteSize; i++)
         {
             double t = i / (double)(PaletteSize - 1);
-            var (r, g, b) = RotateHue(primary.R / 255.0, primary.G / 255.0, primary.B / 255.0, 50 * t);
+            double r, g, b;
+            if (stops is not null)
+            {
+                double at = t * (stops.Length - 1);
+                int k = Math.Min(stops.Length - 2, (int)at);
+                double u = at - k;
+                r = (stops[k].R + ((stops[k + 1].R - stops[k].R) * u)) / 255;
+                g = (stops[k].G + ((stops[k + 1].G - stops[k].G) * u)) / 255;
+                b = (stops[k].B + ((stops[k + 1].B - stops[k].B) * u)) / 255;
+            }
+            else if (kind == DustPalette.Rainbow)
+            {
+                // a vivid light red, its hue swept across the strip and turning 18° a second
+                (r, g, b) = RotateHue(1, .42, .48, (time * 18) + (t * 300));
+            }
+            else
+            {
+                (r, g, b) = RotateHue(primary.R / 255.0, primary.G / 255.0, primary.B / 255.0, 50 * t);
+            }
+
             PaletteR[i] = (float)Math.Clamp(r, 0, 1);
             PaletteG[i] = (float)Math.Clamp(g, 0, 1);
             PaletteB[i] = (float)Math.Clamp(b, 0, 1);

@@ -11,7 +11,7 @@ namespace Floe.App.Effects.Visualizer;
 /// <summary>
 /// --render-stardust=&lt;dir&gt; writes 90 PNG frames (30 fps) of the star dust visualizer over a dark stage, fed a
 /// made-up beat; --stardust-live feeds it what the speakers play instead, in real time, and writes what the
-/// analysis heard to spectrum.txt. --stardust-wave renders the dust wave look. --hologram-tint=&lt;name&gt; previews another tint.
+/// analysis heard to spectrum.txt. --stardust-wave renders the dust wave look. --hologram-tint=&lt;name&gt; and --dust-colors=&lt;name&gt; preview other colours.
 /// </summary>
 public static class StardustPreview
 {
@@ -31,6 +31,13 @@ public static class StardustPreview
             if (tintArgument is not null && Enum.TryParse<HologramColor>(tintArgument[tintOption.Length..], true, out var tint))
             {
                 GlassSettings.PreviewTint(tint);
+            }
+
+            const string dustOption = "--dust-colors=";
+            var dustArgument = args.FirstOrDefault(a => a.StartsWith(dustOption, StringComparison.OrdinalIgnoreCase));
+            if (dustArgument is not null && Enum.TryParse<DustPalette>(dustArgument[dustOption.Length..], true, out var palette))
+            {
+                GlassSettings.PreviewDustColors(palette);
             }
 
             bool live = args.Contains("--stardust-live", StringComparer.OrdinalIgnoreCase);

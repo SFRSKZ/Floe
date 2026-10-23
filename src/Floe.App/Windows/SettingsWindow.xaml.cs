@@ -369,6 +369,18 @@ public partial class SettingsWindow : Window
         HologramTintGold.Checked += (_, _) => GlassSettings.SetHologramTint(HologramColor.Gold);
         HologramTintGreen.Checked += (_, _) => GlassSettings.SetHologramTint(HologramColor.Green);
         HologramTintWhite.Checked += (_, _) => GlassSettings.SetHologramTint(HologramColor.White);
+        DustColorsTint.IsChecked = GlassSettings.DustColors == DustPalette.Tint;
+        DustColorsTint.Checked += (_, _) => GlassSettings.SetDustColors(DustPalette.Tint);
+        DustColorsSunset.IsChecked = GlassSettings.DustColors == DustPalette.Sunset;
+        DustColorsSunset.Checked += (_, _) => GlassSettings.SetDustColors(DustPalette.Sunset);
+        DustColorsAurora.IsChecked = GlassSettings.DustColors == DustPalette.Aurora;
+        DustColorsAurora.Checked += (_, _) => GlassSettings.SetDustColors(DustPalette.Aurora);
+        DustColorsOcean.IsChecked = GlassSettings.DustColors == DustPalette.Ocean;
+        DustColorsOcean.Checked += (_, _) => GlassSettings.SetDustColors(DustPalette.Ocean);
+        DustColorsNeon.IsChecked = GlassSettings.DustColors == DustPalette.Neon;
+        DustColorsNeon.Checked += (_, _) => GlassSettings.SetDustColors(DustPalette.Neon);
+        DustColorsRainbow.IsChecked = GlassSettings.DustColors == DustPalette.Rainbow;
+        DustColorsRainbow.Checked += (_, _) => GlassSettings.SetDustColors(DustPalette.Rainbow);
 
         IntroDrop.IsChecked = GlassSettings.Intro == NowPlayingIntro.Drop;
         IntroHologram.IsChecked = GlassSettings.Intro == NowPlayingIntro.Hologram;

@@ -390,6 +390,16 @@
                     <RadioButton x:Name="HologramTintWhite" GroupName="HologramTint" Style="{StaticResource ModeToggle}" Content="Beyaz" />
                 </WrapPanel>
 
+                <TextBlock Text="Toz paleti" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
+                <WrapPanel>
+                    <RadioButton x:Name="DustColorsTint" GroupName="DustColors" Style="{StaticResource ModeToggle}" Content="Tek renk" />
+                    <RadioButton x:Name="DustColorsSunset" GroupName="DustColors" Style="{StaticResource ModeToggle}" Content="Gün batımı" />
+                    <RadioButton x:Name="DustColorsAurora" GroupName="DustColors" Style="{StaticResource ModeToggle}" Content="Kuzey ışıkları" />
+                    <RadioButton x:Name="DustColorsOcean" GroupName="DustColors" Style="{StaticResource ModeToggle}" Content="Okyanus" />
+                    <RadioButton x:Name="DustColorsNeon" GroupName="DustColors" Style="{StaticResource ModeToggle}" Content="Neon" />
+                    <RadioButton x:Name="DustColorsRainbow" GroupName="DustColors" Style="{StaticResource ModeToggle}" Content="Gökkuşağı" />
+                </WrapPanel>
+
                 <TextBlock Text="Görselleştirici küp boyutu" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
                 <Grid>
                     <Grid.ColumnDefinitions>

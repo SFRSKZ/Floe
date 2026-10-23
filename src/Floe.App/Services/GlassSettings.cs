@@ -32,6 +32,17 @@ public enum HologramColor
     White,
 }
 
+/// <summary>Colours of the dust visualizers: one tint, or a gradient of several.</summary>
+public enum DustPalette
+{
+    Tint,
+    Sunset,
+    Aurora,
+    Ocean,
+    Neon,
+    Rainbow,
+}
+
 public enum BulgeStyle
 {
     Soft,
@@ -67,6 +78,8 @@ public static class GlassSettings
 
     public static NowPlayingIntro Intro { get; private set; } = NowPlayingIntro.Drop;
 
+    public static DustPalette DustColors { get; private set; } = DustPalette.Tint;
+
     /// <summary>Edge of one cube of the Cubes visualizer, in DIP.</summary>
     public static double CubeSize { get; private set; } = 17;
 
@@ -91,6 +104,7 @@ public static class GlassSettings
             VisualizerLook = Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
             HologramTint = Enum.TryParse<HologramColor>(model.HologramTint, true, out var tint) ? tint : HologramColor.Blue;
             Intro = Enum.TryParse<NowPlayingIntro>(model.Intro, true, out var intro) ? intro : NowPlayingIntro.Drop;
+            DustColors = Enum.TryParse<DustPalette>(model.DustColors, true, out var dust) ? dust : DustPalette.Tint;
             CubeSize = model.CubeSize <= 0 ? 17 : Math.Clamp(Math.Round(model.CubeSize), 8, 24);
         }
         catch
@@ -174,6 +188,21 @@ public static class GlassSettings
         Changed?.Invoke();
     }
 
+    public static void SetDustColors(DustPalette palette)
+    {
+        if (DustColors == palette)
+        {
+            return;
+        }
+
+        DustColors = palette;
+        Save();
+        Changed?.Invoke();
+    }
+
+    // Diagnostic override for offscreen renders; the user's choice is not persisted.
+    internal static void PreviewDustColors(DustPalette palette) => DustColors = palette;
+
     public static void SetCubeSize(double size)
     {
         size = Math.Clamp(Math.Round(size), 8, 24);
@@ -200,6 +229,7 @@ public static class GlassSettings
                 HologramTint = HologramTint.ToString(),
                 Intro = Intro.ToString(),
                 CubeSize = CubeSize,
+                DustColors = DustColors.ToString(),
             }));
         }
         catch
@@ -223,5 +253,7 @@ public static class GlassSettings
         public string HologramTint { get; set; } = nameof(HologramColor.Blue);
 
         public string Intro { get; set; } = nameof(NowPlayingIntro.Drop);
+
+        public string DustColors { get; set; } = nameof(DustPalette.Tint);
     }
 }
