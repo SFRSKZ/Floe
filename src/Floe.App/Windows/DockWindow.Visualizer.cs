@@ -81,7 +81,8 @@ public partial class DockWindow
         var scale = DockScale;
         var area = _monitorInfo.Monitor;
         var height = RestBarHeight + BottomMargin;
-        _visualizerWindow.Place(new Rect(area.Left / scale, (area.Bottom / scale) - height, (area.Right - area.Left) / scale, height), scale, _hwnd, _capsuleWidth);
+        _visualizerWindow.Place(new Rect(area.Left / scale, (area.Bottom / scale) - height, (area.Right - area.Left) / scale, height), scale, _hwnd,
+            ToScreenX(_capsuleLeft), ToScreenX(_capsuleLeft + _capsuleWidth));
         _visualizerWindow.SetRunning(_visualizerRunning);
         SinkBelowVisualizer();
     }

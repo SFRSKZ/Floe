@@ -254,21 +254,24 @@ public sealed class FluidFireGpuScene : IGpuScene
 
     // ---- the reference's splats -------------------------------------------------------------------
 
-    /// <summary>The share of the strip's width the dock covers; the fire is born at its two ends. Any thread.</summary>
-    public float DockShare
+    /// <summary>The dock's two ends across the strip, 0..1 from its left edge; the fire is born there. Any thread.</summary>
+    public void SetDock(float left, float right)
     {
-        get => Volatile.Read(ref _dockShare);
-        set => Volatile.Write(ref _dockShare, Math.Clamp(value, 0, .95f));
+        left = Math.Clamp(left, .02f, .5f);
+        right = Math.Clamp(right, .5f, .98f);
+        lock (_dockLock) _dockEdges = (left, right);
     }
 
-    private float _dockShare;
+    private readonly object _dockLock = new();
+    private (float Left, float Right) _dockEdges = (.5f, .5f);
 
     private void Splat(ID3D11DeviceContext context, float aspect, float k60, bool kick)
     {
         float bass = _bands[0];
         float widthDip = _pixelW / _pixelsPerDip;
         // the middle is behind the dock: the demo's sources move out to the dock's two ends
-        float edge = DockShare * .5f;
+        (float Left, float Right) dock;
+        lock (_dockLock) dock = _dockEdges;
         float dip = 1 / Math.Max(1, widthDip);
 
         // The demo's sideways push crosses its 680 DIP strip in a fifth of a second; on a wider strip the
@@ -280,7 +283,7 @@ public sealed class FluidFireGpuScene : IGpuScene
         float lift = Side * .3f * k60 * .1f;
         for (int s = -1; s <= 1; s += 2)
         {
-            float x0 = .5f + (s * edge);
+            float x0 = s < 0 ? dock.Left : dock.Right;
             SplatDye(context, aspect, x0, .02f, (0.35f + bass) * k60, .004f);
             SplatVelocity(context, aspect, x0 + (s * 20 * dip), .05f, s * jet, lift, .003f);
         }
@@ -289,12 +292,11 @@ public sealed class FluidFireGpuScene : IGpuScene
         for (int k = 0; k < _columns; k++)
         {
             float f = (k + .5f) / _columns;
-            float u = edge + (f * (.5f - edge));
             int index = Math.Clamp((int)(f * Bands * .95f), 0, Bands - 1);
             float b = _bands[index];
             for (int s = -1; s <= 1; s += 2)
             {
-                float x = .5f + (s * u);
+                float x = s < 0 ? dock.Left * (1 - f) : dock.Right + (f * (1 - dock.Right));
                 SplatDye(context, aspect, x, 0, b * b * 1.6f * k60, .0012f);
                 SplatVelocity(context, aspect, x, .03f, s * Side * .5f * b * k60 * .1f * stretch, Side * .2f * b * k60 * .1f, .002f);
             }
@@ -305,7 +307,7 @@ public sealed class FluidFireGpuScene : IGpuScene
         {
             for (int s = -1; s <= 1; s += 2)
             {
-                float x0 = .5f + (s * edge);
+                float x0 = s < 0 ? dock.Left : dock.Right;
                 SplatVelocity(context, aspect, x0 + (s * 40 * dip), .06f, s * Side * 4 * stretch, Side, .006f);
                 SplatDye(context, aspect, x0, .04f, 2.5f, .008f);
             }
