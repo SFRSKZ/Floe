@@ -64,7 +64,7 @@ public partial class SettingsWindow
         CustomSaturation.Value = s;
         CustomValue.Value = Math.Max(CustomValue.Minimum, v);
         _syncingPicker = false;
-        CustomTarget.Text = i == 0 ? "Seçili: tek renk (hologram, küpler ve tozlar)" : $"Seçili: özel toz paletinin {i}. rengi (ortadan kenara doğru)";
+        CustomTarget.Text = i == 0 ? "Seçili: tek renk (hologram, küpler, tozlar ve kontur)" : $"Seçili: özel toz/kontur paletinin {i}. rengi (ortadan kenara doğru)";
         RefreshCustomColors();
     }
 

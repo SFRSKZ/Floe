@@ -347,6 +347,8 @@ public partial class SettingsWindow : Window
         VisualizerLookStardust.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Stardust);
         VisualizerLookDustWave.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.DustWave;
         VisualizerLookDustWave.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.DustWave);
+        VisualizerLookSilkContour.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.SilkContour;
+        VisualizerLookSilkContour.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.SilkContour);
         CubeSizeSlider.Value = GlassSettings.CubeSize;
         CubeSizeValue.Text = GlassSettings.CubeSize.ToString("0") + " px";
         CubeSizeSlider.ValueChanged += (_, e) =>
@@ -386,6 +388,8 @@ public partial class SettingsWindow : Window
         DustColorsNeon.Checked += (_, _) => GlassSettings.SetDustColors(DustPalette.Neon);
         DustColorsRainbow.IsChecked = GlassSettings.DustColors == DustPalette.Rainbow;
         DustColorsRainbow.Checked += (_, _) => GlassSettings.SetDustColors(DustPalette.Rainbow);
+        DustColorsSilk.IsChecked = GlassSettings.DustColors == DustPalette.Silk;
+        DustColorsSilk.Checked += (_, _) => GlassSettings.SetDustColors(DustPalette.Silk);
 
         IntroDrop.IsChecked = GlassSettings.Intro == NowPlayingIntro.Drop;
         IntroHologram.IsChecked = GlassSettings.Intro == NowPlayingIntro.Hologram;

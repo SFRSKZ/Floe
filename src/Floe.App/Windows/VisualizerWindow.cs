@@ -24,6 +24,7 @@ internal sealed class VisualizerWindow : Window
     private readonly CubeVisualizer _cubes = new();
     private readonly StardustVisualizer _stardust = new();
     private readonly StardustVisualizer _dustWave = new() { Wave = true };
+    private readonly SilkContourVisualizer _silkContour = new();
     private IntPtr _hwnd;
     private IntPtr _dock;
     private Rect _bounds = Rect.Empty;
@@ -50,11 +51,12 @@ internal sealed class VisualizerWindow : Window
         root.Children.Add(_cubes);
         root.Children.Add(_stardust);
         root.Children.Add(_dustWave);
+        root.Children.Add(_silkContour);
         Content = root;
         SizeChanged += (_, _) => UpdateCapsule();
     }
 
-    public bool IsRunning => _glow.IsActive || _hologram.IsActive || _cubes.IsActive || _stardust.IsActive || _dustWave.IsActive;
+    public bool IsRunning => _glow.IsActive || _hologram.IsActive || _cubes.IsActive || _stardust.IsActive || _dustWave.IsActive || _silkContour.IsActive;
 
     public IntPtr Handle => _hwnd;
 
@@ -112,6 +114,7 @@ internal sealed class VisualizerWindow : Window
         _cubes.IsActive = running && look == VisualizerStyle.Cubes;
         _stardust.IsActive = running && look == VisualizerStyle.Stardust;
         _dustWave.IsActive = running && look == VisualizerStyle.DustWave;
+        _silkContour.IsActive = running && look == VisualizerStyle.SilkContour;
 
         if (running)
         {
@@ -163,5 +166,6 @@ internal sealed class VisualizerWindow : Window
         _cubes.Capsule = strip;
         _stardust.Capsule = strip;
         _dustWave.Capsule = strip;
+        _silkContour.Capsule = strip;
     }
 }

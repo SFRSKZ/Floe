@@ -20,6 +20,7 @@ public enum VisualizerStyle
     Cubes,
     Stardust,
     DustWave,
+    SilkContour,
 }
 
 public enum HologramColor
@@ -34,7 +35,7 @@ public enum HologramColor
     Custom,
 }
 
-/// <summary>Colours of the dust visualizers: one tint, or a gradient of several.</summary>
+/// <summary>Colours of the dust and contour visualizers: one tint, or a gradient of several.</summary>
 public enum DustPalette
 {
     Tint,
@@ -44,6 +45,7 @@ public enum DustPalette
     Neon,
     Rainbow,
     Custom,
+    Silk,
 }
 
 public enum BulgeStyle
