@@ -39,6 +39,10 @@ public sealed class FluidFireGpuScene : IGpuScene
     // one sim cell is 150/SH of the 680x150 demo, kept in DIP, so the fire keeps its size on any strip
     private const float CellDip = 2.66f;
 
+    // one fire source every this many DIP along the eye's ellipse, which stands this far off the dock
+    private const float SourceDip = 18;
+    private const float RimDip = 6;
+
     // the spectrum and the beat, smoothed on the CPU; the shaders only see the splats
     private readonly float[] _bands = new float[Bands];
     private float _beat;
@@ -272,55 +276,66 @@ public sealed class FluidFireGpuScene : IGpuScene
 
     private void Splat(ID3D11DeviceContext context, float aspect, float k60, bool kick)
     {
-        float bass = _bands[0];
         float widthDip = _pixelW / _pixelsPerDip;
+        float heightDip = _pixelH / _pixelsPerDip;
         (float Left, float Right, float Bottom, float Top) dock;
         lock (_dockLock) dock = _dock;
-        float dip = 1 / Math.Max(1, widthDip);
-        float mid = (dock.Bottom + dock.Top) * .5f;
 
         // The demo's sideways push crosses its 680 DIP strip in a fifth of a second; on a wider strip the
         // same texel speed would barely show, so the sideways components keep that pace across the width.
         float stretch = _columns / 8f;
+        float push = Side * k60 * .1f;
 
-        // everything is born on the dock's two side edges: the bass at the middle of each edge, with a jet that
-        // throws the fire out to the screen's sides
-        float jet = Side * (1 + (2 * _beat)) * k60 * .1f * stretch;
-        float lift = Side * .15f * k60 * .1f;
-        for (int s = -1; s <= 1; s += 2)
+        // Like the eye: the dock is the pupil and the fire streams out of an ellipse around it, along the
+        // ellipse's normal: straight up over the middle, sideways out of the two tips, slanting in between.
+        // The sim cells are square in DIP, so the ellipse and its normals are worked out in DIP.
+        float cx = (dock.Left + dock.Right) * .5f * widthDip;
+        float cy = (dock.Bottom + dock.Top) * .5f * heightDip;
+        float a = ((dock.Right - dock.Left) * .5f * widthDip) + RimDip;
+        float b = ((dock.Top - dock.Bottom) * .5f * heightDip) + RimDip;
+
+        // the upper half only (the lower one is under the screen's edge), sources spaced evenly along the arc
+        float arc = MathF.PI * .5f * (a + b);
+        int count = Math.Clamp((int)(arc / SourceDip), 8, 64);
+        for (int k = 0; k < count; k++)
         {
-            float x0 = s < 0 ? dock.Left : dock.Right;
-            SplatDye(context, aspect, x0, mid, (0.35f + bass) * k60, .003f);
-            SplatVelocity(context, aspect, x0 + (s * 12 * dip), mid, s * jet, lift, .003f);
+            float t = MathF.PI * (k + .5f) / count;
+            float cos = MathF.Cos(t), sin = MathF.Sin(t);
+            float x = cx + (a * cos);
+            float y = cy + (b * sin);
+
+            // outward normal of the ellipse; the tips are where the fire is flung hardest
+            float nx = cos / a, ny = sin / b;
+            float n = MathF.Sqrt((nx * nx) + (ny * ny));
+            nx /= n; ny /= n;
+            float tip = MathF.Abs(cos);
+            float band = Band(1 - MathF.Abs((t / MathF.PI * 2) - 1));
+            float heat = (.12f + (tip * tip * (.35f + _bands[0])) + (band * band * 1.2f)) * k60;
+            float force = push * (.3f + band + (tip * tip * (1 + (2 * _beat))));
+
+            float u = x / widthDip, v = y / heightDip;
+            SplatDye(context, aspect, u, v, heat, .0014f);
+            SplatVelocity(context, aspect, u + (nx * 4 / widthDip), v + (ny * 4 / heightDip), nx * force * stretch, ny * force, .0018f);
         }
 
-        // the bands stacked up each side edge, low bands at the bottom; each throws its own tongue outward
-        const int Rows = 8;
-        for (int k = 0; k < Rows; k++)
-        {
-            float f = (k + .5f) / Rows;
-            int index = Math.Clamp((int)(f * Bands * .95f), 0, Bands - 1);
-            float b = _bands[index];
-            float y = dock.Bottom + (f * (dock.Top - dock.Bottom));
-            for (int s = -1; s <= 1; s += 2)
-            {
-                float x = (s < 0 ? dock.Left : dock.Right) + (s * 6 * dip);
-                SplatDye(context, aspect, x, y, b * b * 1.6f * k60, .0012f);
-                SplatVelocity(context, aspect, x, y, s * Side * .7f * b * k60 * .1f * stretch, Side * .1f * b * k60 * .1f, .002f);
-            }
-        }
-
-        // the kick throws a gust and a burst of fire out of both side edges
+        // the kick: the whole ellipse flares at once, hardest out of the tips
         if (kick)
         {
             for (int s = -1; s <= 1; s += 2)
             {
-                float x0 = s < 0 ? dock.Left : dock.Right;
-                SplatVelocity(context, aspect, x0 + (s * 30 * dip), mid, s * Side * 4 * stretch, Side * .5f, .006f);
-                SplatDye(context, aspect, x0, mid, 2.5f, .006f);
+                float u = (cx + (s * a)) / widthDip;
+                float v = cy / heightDip;
+                SplatVelocity(context, aspect, u + (s * 20 / widthDip), v, s * Side * 3 * stretch, Side * .4f, .008f);
+                SplatDye(context, aspect, u, v, 1.4f, .007f);
             }
+
+            SplatVelocity(context, aspect, cx / widthDip, (cy + b) / heightDip, 0, Side * 1.2f, .02f);
         }
     }
+
+    // a band by position: 0 is the bass, 1 the top of the spectrum
+    private float Band(float position) => _bands[Math.Clamp((int)(position * Bands * .95f), 0, Bands - 1)];
+
 
     private void SplatDye(ID3D11DeviceContext context, float aspect, float x, float y, float value, float radius)
     {
