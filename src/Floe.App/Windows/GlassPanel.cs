@@ -119,6 +119,8 @@ public sealed class GlassPanel : Grid
             return;
         }
 
+        _tint.Fill = DockWindow.BuildGlassBrush();
+        _hairline.Stroke = DockWindow.BuildRimBrush();
         ApplyRim();
     }
 
@@ -126,6 +128,7 @@ public sealed class GlassPanel : Grid
     {
         _metal = GlassSettings.Rim switch
         {
+            not RimStyle.Plain when GlassSettings.Mordor => MetalRimEffect.ApplyPreset("ember", true),
             RimStyle.MetalSilver => MetalRimEffect.ApplyPreset("silver", true),
             RimStyle.MetalGold => MetalRimEffect.ApplyPreset("gold", true),
             RimStyle.MetalChromatic => MetalRimEffect.ApplyPreset("chromatic", true),

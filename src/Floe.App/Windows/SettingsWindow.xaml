@@ -376,6 +376,10 @@
             </StackPanel>
 
             <StackPanel x:Name="GlassPage">
+                <CheckBox x:Name="MordorToggle"
+                          Style="{StaticResource GlassToggle}"
+                          Content="Mordor teması: kara demir cam, kor parıltısı, Sauron'un gözü"
+                          Margin="0,0,0,12" />
                 <TextBlock Text="Kenar stili" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
                 <WrapPanel>
                     <RadioButton x:Name="RimPlain" GroupName="Rim" Style="{StaticResource ModeToggle}" Content="Sade" />

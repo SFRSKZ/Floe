@@ -54,6 +54,17 @@ public partial class DockWindow
             StartPoint = new Point(0, 0),
             EndPoint = new Point(0, 1),
         };
+        if (GlassSettings.Mordor)
+        {
+            // black iron, a little rust in it, with the embers below glowing up through the bottom
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xC8, 0x16, 0x10, 0x0E), 0.0));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD2, 0x0E, 0x0A, 0x09), 0.35));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD4, 0x1C, 0x08, 0x04), 0.72));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xDC, 0x6A, 0x18, 0x04), 1.0));
+            brush.Freeze();
+            return brush;
+        }
+
         brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x52, 0x25, 0x25, 0x25), 0.0));
         brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x58, 0x1E, 0x1E, 0x1E), 0.08));
         brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x59, 0x1E, 0x1E, 0x1E), 0.42));
@@ -81,6 +92,16 @@ public partial class DockWindow
             StartPoint = new Point(0, 0),
             EndPoint = new Point(0, 1),
         };
+        if (GlassSettings.Mordor)
+        {
+            // a hot edge: dull red on top, brighter where the embers below catch it
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x50, 0xFF, 0x7A, 0x30), 0.0));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x26, 0xC8, 0x2A, 0x0A), 0.4));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x60, 0xFF, 0x5A, 0x10), 1.0));
+            brush.Freeze();
+            return brush;
+        }
+
         brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF), 0.0));
         brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF), 0.35));
         brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF), 1.0));
@@ -176,6 +197,19 @@ public partial class DockWindow
 
     private void ApplyGlassSettings()
     {
+        if (_appliedMordor != GlassSettings.Mordor)
+        {
+            _appliedMordor = GlassSettings.Mordor;
+            _glass.Fill = BuildGlassBrush();
+            _rim.Stroke = BuildRimBrush();
+            // the sheen catches the fire's warm light instead of white
+            var sheen = GlassSettings.Mordor ? Color.FromRgb(0xFF, 0xA0, 0x60) : Colors.White;
+            foreach (var stop in _sheenBrush.GradientStops) stop.Color = Color.FromArgb(stop.Color.A, sheen.R, sheen.G, sheen.B);
+            _spectralItem = null;
+            UpdateAura();
+            _appliedRim = (RimStyle)(-1);
+        }
+
         var style = GlassSettings.Rim;
         if (_glassPreview)
         {
@@ -186,6 +220,7 @@ public partial class DockWindow
         _appliedRim = style;
         _metalEffect = _appliedRim switch
         {
+            not RimStyle.Plain when GlassSettings.Mordor => MetalRimEffect.ApplyPreset("ember", true),
             RimStyle.MetalSilver => MetalRimEffect.ApplyPreset("silver", true),
             RimStyle.MetalGold => MetalRimEffect.ApplyPreset("gold", true),
             RimStyle.MetalChromatic => MetalRimEffect.ApplyPreset("chromatic", true),
@@ -349,6 +384,8 @@ public partial class DockWindow
         }
         _shapeHover = double.NaN;
     }
+
+    private bool _appliedMordor;
 
     private void DisposeGlass() => GlassSettings.Changed -= OnGlassSettingsChanged;
 }
