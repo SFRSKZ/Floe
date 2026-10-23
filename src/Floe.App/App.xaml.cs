@@ -22,10 +22,13 @@ public partial class App : Application
         // Before anything reads settings: bring them over from the MacDock days.
         Floe.Core.Services.LegacyMigration.Run(Environment.ProcessPath);
 
-        // FLOE_WEAK stands in for a low-end PC: no GPU and two cores.
-        if (Environment.GetEnvironmentVariable("FLOE_WEAK") is not null)
+        // FLOE_WEAK stands in for a low-end PC: two cores, and with FLOE_WEAK=gpu no GPU either.
+        if (Environment.GetEnvironmentVariable("FLOE_WEAK") is { } weak)
         {
-            RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+            if (weak.Equals("gpu", StringComparison.OrdinalIgnoreCase))
+            {
+                RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+            }
             System.Diagnostics.Process.GetCurrentProcess().ProcessorAffinity = (IntPtr)0x3;
         }
         Services.Performance.Load();
