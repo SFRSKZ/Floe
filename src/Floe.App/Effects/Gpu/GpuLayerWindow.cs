@@ -75,7 +75,11 @@ internal sealed class GpuLayerWindow : IDisposable
     private double _ppd = 1;
     private IntPtr _dock;
 
-    public GpuLayerWindow(IGpuScene scene)
+    /// <param name="capturable">
+    /// Leaves the layer in screen captures, so the dock's glass shows it through its blur; by default the
+    /// light stays out of the dock's backdrop.
+    /// </param>
+    public GpuLayerWindow(IGpuScene scene, bool capturable = false)
     {
         _scene = scene ?? throw new ArgumentNullException(nameof(scene));
         _wndProc = WindowProc;
@@ -87,7 +91,7 @@ internal sealed class GpuLayerWindow : IDisposable
         _ready.WaitOne(TimeSpan.FromSeconds(5));
 
         var hwnd = Volatile.Read(ref _hwnd);
-        if (hwnd != IntPtr.Zero && Application.Current is { } app)
+        if (hwnd != IntPtr.Zero && !capturable && Application.Current is { } app)
         {
             app.Dispatcher.Invoke(() => CaptureReveal.Exclude(hwnd));
         }

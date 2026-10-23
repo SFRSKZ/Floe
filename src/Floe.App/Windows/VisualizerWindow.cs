@@ -71,6 +71,9 @@ internal sealed class VisualizerWindow : Window
     /// <summary>The window the light is drawn in right now: the GPU layer when it carries the look.</summary>
     public IntPtr TopHandle => _oled is { IsRunning: true } oled ? oled.Handle : _flame is { IsRunning: true } flame ? flame.Handle : _gpu is { IsRunning: true } gpu ? gpu.Handle : _hwnd;
 
+    /// <summary>The OLED panel runs under the dock: its glass has to keep up with what moves behind it.</summary>
+    public bool PanelBehindDock => _oled is { IsRunning: true };
+
     public bool Showing => IsVisible || _gpu is { IsRunning: true } || _flame is { IsRunning: true } || _oled is { IsRunning: true };
 
     protected override void OnClosed(EventArgs e)
@@ -138,7 +141,7 @@ internal sealed class VisualizerWindow : Window
         // the eye flame only exists on the GPU; the dust looks move there when the setting asks for it
         bool flame = running && look == VisualizerStyle.EyeFlame && Layer(ref _flame, () => _fire = new FluidFireGpuScene());
         PlaceFire(_bounds);
-        bool oled = running && look == VisualizerStyle.Oled && Layer(ref _oled, () => new OledGpuScene());
+        bool oled = running && look == VisualizerStyle.Oled && Layer(ref _oled, () => new OledGpuScene(), capturable: true);
         bool dust = running && GlassSettings.GpuVisualizer && look is VisualizerStyle.Stardust or VisualizerStyle.DustWave
             && Layer(ref _gpu, () => new StardustGpuScene());
         if (_gpu is not null)
@@ -195,14 +198,14 @@ internal sealed class VisualizerWindow : Window
             (float)((bounds.Bottom - _dockRect.Top) / bounds.Height));
     }
 
-    private bool Layer(ref GpuLayerWindow? layer, Func<IGpuScene> scene)
+    private bool Layer(ref GpuLayerWindow? layer, Func<IGpuScene> scene, bool capturable = false)
     {
         if (_gpuFailed) return false;
         if (layer is null)
         {
             try
             {
-                layer = new GpuLayerWindow(scene());
+                layer = new GpuLayerWindow(scene(), capturable);
             }
             catch (Exception ex)
             {

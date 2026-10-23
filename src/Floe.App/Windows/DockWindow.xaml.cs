@@ -517,7 +517,7 @@ public partial class DockWindow : Window
 
             if (BlurBackdrop && !NoFx.Contains("capture"))
             {
-                _backdropCapture = new BackdropCapture(this, PresentBackdrop, () => _renderingHooked || _menuOpen);
+                _backdropCapture = new BackdropCapture(this, PresentBackdrop, () => _renderingHooked || _menuOpen || _visualizerWindow is { PanelBehindDock: true });
             }
 
             InitializeSections();
