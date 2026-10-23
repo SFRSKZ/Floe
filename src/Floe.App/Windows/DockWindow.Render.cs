@@ -79,6 +79,7 @@ public partial class DockWindow
     private bool _perfHooked;
     // Cap: Rendering can fire twice per monitor frame, so frames are counted by distinct timestamps.
     private double _renderStamp = double.NaN;
+    private double _renderTickTime = 1 / 60.0;
     private int _renderTicks;
     private bool _renderDrawn;
     private bool _perfEvents;
@@ -131,8 +132,10 @@ public partial class DockWindow
         {
             // draw on every n-th distinct monitor frame: an even cadence, where a time threshold would judder.
             if (stamp <= _renderStamp) return false;
+            // n comes from the frames actually arriving: a loaded render thread delivers fewer than the monitor's rate
+            if (!double.IsNaN(_renderStamp) && stamp - _renderStamp < .05) _renderTickTime += (stamp - _renderStamp - _renderTickTime) * .1;
             _renderStamp = stamp;
-            var every = Math.Max(1, (int)Math.Round(Performance.RefreshRate / cap));
+            var every = Math.Max(1, (int)Math.Round(1 / cap / _renderTickTime));
             if (_renderDrawn && ++_renderTicks < every) return false;
             _renderTicks = 0;
         }
@@ -144,7 +147,8 @@ public partial class DockWindow
         _perfMaxGap = Math.Max(_perfMaxGap, gap * 1000);
         if (_renderDrawn)
         {
-            Performance.ReportFrame(gap, 1 / (cap > 0 ? Math.Min(cap, Performance.RefreshRate) : Performance.RefreshRate));
+            // judged against 60 fps at most: 100 fps on a 180 Hz monitor is smooth, not late
+            Performance.ReportFrame(gap, 1 / Math.Min(60, cap > 0 ? Math.Min(cap, Performance.RefreshRate) : Performance.RefreshRate));
         }
         _renderDrawn = true;
 
