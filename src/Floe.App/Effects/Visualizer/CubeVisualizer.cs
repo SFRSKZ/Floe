@@ -28,8 +28,11 @@ public sealed class CubeVisualizer : FrameworkElement
     private const double FadeOutSeconds = 0.40;
     private const double FadeInSeconds = 0.22;
 
-    private const double Cell = 11;
-    private const double Gap = .9;
+    private const double Cell = 17;
+    private const double Gap = 1.2;
+    // the glass: a bright rim this wide around each front, a gloss over its upper part and a streak of light
+    private const double Rim = .9;
+    private const double Gloss = .45;
     private const int MaxColumns = 220;
     private const int MaxRows = 7;
     // The cube's depth: its side and top faces lean back up and to the right.
@@ -70,6 +73,9 @@ public sealed class CubeVisualizer : FrameworkElement
     private static Brush[][] SideBrushes = Array.Empty<Brush[]>();
     private static Brush[][] TopBrushes = Array.Empty<Brush[]>();
     private static Brush[] GlintBrushes = Array.Empty<Brush>();
+    private static Brush[][] RimBrushes = Array.Empty<Brush[]>();
+    private static Brush[] GlossBrushes = Array.Empty<Brush>();
+    private static Brush[] StreakBrushes = Array.Empty<Brush>();
     private static Brush[] PoolBrushes = Array.Empty<Brush>();
     private static HologramColor? _paletteTint;
 
@@ -86,6 +92,9 @@ public sealed class CubeVisualizer : FrameworkElement
     private readonly Batch[][] _side = NewBatches();
     private readonly Batch[][] _top = NewBatches();
     private readonly Batch[] _glint = NewRow();
+    private readonly Batch[][] _rim = NewBatches();
+    private readonly Batch[] _gloss = NewRow();
+    private readonly Batch[] _streak = NewRow();
     private readonly Point[] _quad = new Point[4];
     private readonly Point[] _projected = new Point[8];
 
@@ -228,7 +237,7 @@ public sealed class CubeVisualizer : FrameworkElement
         dc.DrawEllipse(PoolBrushes[Math.Clamp((int)Math.Round(poolAlpha * (PoolBrushes.Length - 1)), 0, PoolBrushes.Length - 1)], null,
             new Point(capsule.Left + (capsule.Width / 2), floor), capsule.Width * .5, Cell * (1.2 + (1.4 * level)));
 
-        foreach (var set in new[] { _front, _side, _top })
+        foreach (var set in new[] { _front, _side, _top, _rim })
         {
             foreach (var row in set)
             {
@@ -236,7 +245,10 @@ public sealed class CubeVisualizer : FrameworkElement
             }
         }
 
-        foreach (var batch in _glint) batch.Begin();
+        foreach (var row in new[] { _glint, _gloss, _streak })
+        {
+            foreach (var batch in row) batch.Begin();
+        }
 
         for (int i = 0; i < count; i++)
         {
@@ -279,6 +291,14 @@ public sealed class CubeVisualizer : FrameworkElement
             for (int g = 1; g < Grades; g++) _front[s][g].Fill(dc, FrontBrushes[s][g]);
         }
 
+        // the glass lies over the faces: gloss, rims, the streak and the lid's glint
+        for (int g = 1; g < Grades; g++) _gloss[g].Fill(dc, GlossBrushes[g]);
+        for (int s = 0; s < Shades; s++)
+        {
+            for (int g = 1; g < Grades; g++) _rim[s][g].Fill(dc, RimBrushes[s][g]);
+        }
+
+        for (int g = 1; g < Grades; g++) _streak[g].Fill(dc, StreakBrushes[g]);
         for (int g = 1; g < Grades; g++) _glint[g].Fill(dc, GlintBrushes[g]);
     }
 
@@ -318,6 +338,25 @@ public sealed class CubeVisualizer : FrameworkElement
 
         Set(tl, tr, br, bl);
         _front[shade][grade].Quad(_quad);
+
+        double w = tr.X - tl.X, h = bl.Y - tl.Y;
+        // rim as four bars that do not overlap, so the translucent edge keeps one strength all round
+        var rim = _rim[shade][grade];
+        Bar(rim, tl.X, tl.Y, w, Rim);
+        Bar(rim, tl.X, bl.Y - Rim, w, Rim);
+        Bar(rim, tl.X, tl.Y + Rim, Rim, h - (2 * Rim));
+        Bar(rim, tr.X - Rim, tl.Y + Rim, Rim, h - (2 * Rim));
+        Bar(_gloss[grade], tl.X + Rim, tl.Y + Rim, w - (2 * Rim), (h - (2 * Rim)) * Gloss);
+        Set(new Point(tl.X + (w * .2), tl.Y + Rim), new Point(tl.X + (w * .34), tl.Y + Rim),
+            new Point(tl.X + Rim, tl.Y + (h * .34)), new Point(tl.X + Rim, tl.Y + (h * .2)));
+        _streak[grade].Quad(_quad);
+    }
+
+    private void Bar(Batch batch, double x, double y, double w, double h)
+    {
+        if (w <= 0 || h <= 0) return;
+        Set(new Point(x, y), new Point(x + w, y), new Point(x + w, y + h), new Point(x, y + h));
+        batch.Quad(_quad);
     }
 
     // A thrown cube, rotating about its own axis: every face turned to the viewer, shaded by where it points.
@@ -436,15 +475,21 @@ public sealed class CubeVisualizer : FrameworkElement
         FrontBrushes = new Brush[Shades][];
         SideBrushes = new Brush[Shades][];
         TopBrushes = new Brush[Shades][];
+        RimBrushes = new Brush[Shades][];
         for (int s = 0; s < Shades; s++)
         {
             // low cubes in the deep body colour, the high ones paling towards the icy tip
             double k = s / (Shades - 1.0);
             var face = k < .5 ? Mix(body, core, k * 2) : Mix(core, tip, (k - .5) * 1.4);
-            FrontBrushes[s] = Ladder(face, .85);
-            SideBrushes[s] = Ladder(Mix(face, Colors.Black, .4), .85);
-            TopBrushes[s] = Ladder(Mix(face, Colors.White, .5), .92);
+            // tinted glass: the light behind shows through the faces, the rims carry the shape
+            FrontBrushes[s] = Ladder(face, .42);
+            SideBrushes[s] = Ladder(Mix(face, Colors.Black, .35), .5);
+            TopBrushes[s] = Ladder(Mix(face, Colors.White, .55), .55);
+            RimBrushes[s] = Ladder(Mix(face, Colors.White, .65), .85);
         }
+
+        GlossBrushes = Ladder(Colors.White, .14);
+        StreakBrushes = Ladder(Colors.White, .5);
 
         GlintBrushes = Ladder(Colors.White, .85);
         var pool = new RadialGradientBrush();
