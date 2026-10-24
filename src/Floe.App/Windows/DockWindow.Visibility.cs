@@ -107,7 +107,7 @@ public partial class DockWindow
         BeginAnimation(TopProperty, animation);
     }
 
-    private double ShownTop => (MonitorBottomPx / DockScale) - Height - BottomMargin;
+    private double ShownTop => (MonitorBottomPx / DockScale) - Height - BottomMargin + Sink;
 
     private double HiddenTop => (MonitorBottomPx / DockScale) - TriggerShow - RestTop;
 
