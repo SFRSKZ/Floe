@@ -52,14 +52,14 @@ public static class TaskbarController
         }
 
         var found = new List<IntPtr>();
-        var primary = FindWindow(null, PrimaryClass);
+        var primary = FindWindow(PrimaryClass, null);
         if (primary != IntPtr.Zero)
         {
             found.Add(primary);
         }
 
         var secondary = IntPtr.Zero;
-        while ((secondary = FindWindowEx(IntPtr.Zero, secondary, null, SecondaryClass)) != IntPtr.Zero)
+        while ((secondary = FindWindowEx(IntPtr.Zero, secondary, SecondaryClass, null)) != IntPtr.Zero)
         {
             found.Add(secondary);
         }
