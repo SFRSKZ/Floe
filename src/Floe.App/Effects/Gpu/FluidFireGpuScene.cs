@@ -289,25 +289,52 @@ public sealed class FluidFireGpuScene : IGpuScene
         float widthDip = _pixelW / _pixelsPerDip;
         float heightDip = _pixelH / _pixelsPerDip;
 
-        // The demo's sideways push crosses its 680 DIP strip in a fifth of a second; on a wider strip the
-        // same texel speed would barely show, so the sideways components keep that pace across the width.
-        float stretch = _columns / 8f;
         float push = Side * k60 * .1f;
 
         // The fire streams out of the whole ring at once, along its outward normal: straight up over the dock,
-        // slanting out round the tips and straight out of their points. The sim cells are square in DIP, so the
-        // ring and its normals are worked out in DIP.
+        // and all the way round each rounded point, its lower half too, so the points fan out in many tongues
+        // instead of one jet. Each tongue wavers a little on its own, which keeps them from merging. The sim cells
+        // are square in DIP, so the ring and its normals are worked out in DIP.
         var eye = Eye();
-        float cap = Math.Max(1, (eye.Straight * 2) + (MathF.PI * .5f * (eye.Tip + eye.Half) * 2));
-        int count = Math.Clamp((int)(cap / SourceDip), 12, 220);
-        for (int k = 0; k < count; k++)
+        float capArc = MathF.PI * .25f * (eye.Tip + eye.Half);
+        float top = (capArc * 2) + (eye.Straight * 2);
+        int count = Math.Clamp((int)(top / SourceDip), 12, 220);
+        int lower = Math.Max(3, (int)(capArc / SourceDip));
+        float lift = kick ? 2.2f : 1;
+        for (int k = 0; k < count + (2 * lower); k++)
         {
-            // walk the ring's upper half from the left point to the right one: cap, straight top, cap
-            float s = (k + .5f) / count;
+            float s;
+            bool under = k >= count;
+            if (!under)
+            {
+                // the ring's upper half, from the left point to the right one: cap, straight top, cap
+                s = (k + .5f) / count;
+            }
+            else
+            {
+                // the lower quarter of each point, mirrored below the middle
+                int j = k - count;
+                float t = ((j % lower) + .5f) / lower * capArc / top;
+                s = j < lower ? t : 1 - t;
+            }
+
             var (x, y, nx, ny, tip) = RingPoint(eye, s);
+            if (under)
+            {
+                y = (2 * eye.Y) - y;
+                ny = -ny;
+            }
+
+            // round the points the tongues fan out, up and down, rather than all leaving sideways
+            float spread = 1 + tip;
+            (nx, ny) = (nx, ny * spread);
+            float length = MathF.Sqrt((nx * nx) + (ny * ny));
+            (nx, ny) = (nx / length, ny / length);
+            float sway = (.3f + (.3f * tip)) * MathF.Sin((k * 2.3f) + (_sootPhase * (3 + (k % 5))));
+            (nx, ny) = ((nx * MathF.Cos(sway)) - (ny * MathF.Sin(sway)), (nx * MathF.Sin(sway)) + (ny * MathF.Cos(sway)));
             float band = Band(1 - MathF.Abs((s * 2) - 1));
-            float heat = (.16f + (tip * .3f) + (.25f * _bands[0]) + (band * band * 1.1f)) * k60;
-            float force = push * (.35f + band + (tip * (.6f + (1.4f * _beat))));
+            float heat = (.18f + (.25f * _bands[0]) + (band * band * 1.1f) + (kick ? .35f : 0)) * k60;
+            float force = push * (.4f + band + _beat) * lift;
 
             // the dark of the eye: bands of soot drift round the ring and ride out on the fire as black waves
             float wave = MathF.Sin((s * 70) - (_sootPhase * 2.2f)) + (.6f * MathF.Sin((s * 160) + (_sootPhase * 1.4f)));
@@ -316,26 +343,7 @@ public sealed class FluidFireGpuScene : IGpuScene
             float u = (x + (nx * 3)) / widthDip, v = (y + (ny * 3)) / heightDip;
             SplatDye(context, aspect, u, v, heat, .0009f);
             if (soot > 0) SplatDye(context, aspect, u + (nx * 3 / widthDip), v + (ny * 3 / heightDip), 0, .0009f, soot);
-            SplatVelocity(context, aspect, u + (nx * 3 / widthDip), v + (ny * 3 / heightDip), nx * force * stretch, ny * force, .0012f);
-        }
-
-        // the kick: the whole ring flares at once, out of the points and up off the top
-        if (kick)
-        {
-            for (int side = -1; side <= 1; side += 2)
-            {
-                float u = (eye.X + (side * (eye.Straight + eye.Tip))) / widthDip;
-                float v = eye.Y / heightDip;
-                SplatVelocity(context, aspect, u + (side * 20 / widthDip), v, side * Side * 3 * stretch, Side * .3f, .008f);
-                SplatDye(context, aspect, u, v, 1.4f, .006f);
-            }
-
-            for (int k = 0; k < 7; k++)
-            {
-                float x = eye.X + (((k / 3f) - 1) * eye.Straight);
-                SplatVelocity(context, aspect, x / widthDip, (eye.Y + eye.Half + 4) / heightDip, 0, Side * .9f, .004f);
-                SplatDye(context, aspect, x / widthDip, (eye.Y + eye.Half + 3) / heightDip, .8f, .002f);
-            }
+            SplatVelocity(context, aspect, u + (nx * 3 / widthDip), v + (ny * 3 / heightDip), nx * force, ny * force, .0012f);
         }
     }
 
