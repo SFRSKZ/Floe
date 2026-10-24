@@ -16,18 +16,19 @@ namespace Floe.App.Effects.Gpu;
 /// the beat) and dims it, then draws the music's own waveform on top: the warp smears every trace into
 /// tunnels, rivers and spirals that move with the song. That runs on the GPU at three samples per panel pixel;
 /// a second pass averages each panel pixel's samples into a few grey levels, and the last one draws the cells
-/// as rounded dots with a faint glow. Five presets take turns every <see cref="CycleSeconds"/>, blending
-/// their warps over two seconds and changing on a kick; a Tron theme lights the dots in its colours and adds a
-/// sixth preset, the grid floor, which plays alone when the theme comes on.
+/// as rounded dots with a faint glow. The presets take turns every <see cref="CycleSeconds"/>, changing on a
+/// kick: five bend the waveform into shapes (0..4), five draw something else (6..10: spectrum bars, sonar rings,
+/// a starfield, rain and plasma blobs). A Tron theme lights the dots in its colours and adds the grid floor (5),
+/// which plays alone when the theme comes on.
 /// </para>
 /// </summary>
 public sealed class OledGpuScene : IGpuScene
 {
     private const int Bands = 24;
-    private const int Presets = 5;
+    private const int Presets = 11;
 
-    // the sixth preset: the grid floor, which only joins the cycle while a Tron theme runs
-    private const int GridPreset = Presets;
+    // the grid floor, which only joins the cycle while a Tron theme runs
+    private const int GridPreset = 5;
     private const float GridSeconds = 20;
 
     // one panel pixel every 3 DIP, as chunky as the little screens; the feedback runs at 3x3 samples per pixel
@@ -323,8 +324,7 @@ public sealed class OledGpuScene : IGpuScene
     {
         _blend = MathF.Min(1, _blend + (dt / BlendSeconds));
         _presetTime += dt;
-        int count = tron ? Presets + 1 : Presets;
-        if (_preset >= count)
+        if (!tron && _preset == GridPreset && ForcedEffect != GridPreset)
         {
             // the grid leaves with its theme; the blend still draws it on its way out
             _previous = _blend < 1 ? _previous : _preset;
@@ -336,7 +336,7 @@ public sealed class OledGpuScene : IGpuScene
         int wanted = _preset;
         if (ForcedEffect is int forced)
         {
-            wanted = Math.Clamp(forced, 0, Presets);
+            wanted = Math.Clamp(forced, 0, Presets - 1);
         }
         else if (tron && _tronTime < GridSeconds)
         {
@@ -344,7 +344,9 @@ public sealed class OledGpuScene : IGpuScene
         }
         else if (_presetTime >= CycleSeconds && (kick || _presetTime >= CycleSeconds + 4))
         {
-            wanted = (_preset + 1 + _random.Next(count - 1)) % count;
+            // any other preset; the grid floor only with its theme
+            do wanted = _random.Next(Presets);
+            while (wanted == _preset || (!tron && wanted == GridPreset));
         }
 
         if (wanted == _preset) return;
@@ -505,9 +507,38 @@ public sealed class OledGpuScene : IGpuScene
             return float2((c * q.x) - (s * q.y), (s * q.x) + (c * q.y));
         }
 
+        float Hash(float2 c)
+        {
+            return frac(sin(dot(c, float2(12.9898, 78.233))) * 43758.5453);
+        }
+
+        // the sonar's three centres along the strip, and the one nearest p
+        float2 SonarCentre(float2 p)
+        {
+            float gap = Aspect / 3;
+            return float2(clamp(round(p.x / gap), -1, 1) * gap, 0);
+        }
+
+        // the sonar's rings are ellipses four times wider than tall, so they run out along the strip
+        static const float2 SonarShape = float2(.25, 1);
+
+        // one panel pixel, in strip heights
+        float CellSize()
+        {
+            return SamplesPerCell / Size.y;
+        }
+
         float2 Source(int preset, float2 p)
         {
             float k = Step;
+            if (preset == 6)
+            {
+                // spectrum: what the bars leave above them sinks slowly, so the peaks fall
+                return p + float2(0, .005 * k);
+            }
+
+            // the sonar, the starfield, the rain and the plasma draw themselves whole every frame
+            if (preset >= 7) return p;
             if (preset == 0)
             {
                 // tunnel: everything streams out of the middle, bursting on the beat
@@ -603,6 +634,97 @@ public sealed class OledGpuScene : IGpuScene
                 return max(bars, .5 * Line(p.y + .15 - (amp * .6 * Wave(mirror)), width));
             }
 
+            if (preset == 6)
+            {
+                // spectrum: LED bars standing on the bottom edge, the bass in the middle, the highs out at the ends
+                const float bars = 56;
+                float x = ((p.x / Aspect) + .5) * bars;
+                float band = abs(floor(x) - ((bars / 2) - .5)) / (bars / 2);
+                float h = .04 + (.92 * saturate(pow(Band(band), .9) * (1.1 + (.8 * Level))));
+                float bottom = p.y + .5;
+                float lit = step(bottom, h) * step(frac(x), .78) * step(frac(bottom * 14), .72);
+                return lit * (bottom > h - (1.0 / 14) ? 1 : .7);
+            }
+
+            if (preset == 7)
+            {
+                // sonar: three centres keep sending rings out along the strip, quicker with the music; each ring
+                // thins and dims as it spreads, and the beat lights them all up
+                float2 c = SonarCentre(p);
+                float r = length((p - c) * SonarShape);
+                float run = (Time * .22) + (Phase * .12) + (c.x * .05);
+                float rings = 0;
+                [unroll] for (int j = 0; j < 4; j++)
+                {
+                    float age = frac(run + (j * .25));
+                    float reach = age * 1.15;
+                    rings = max(rings, Line(r - reach, width * (1.6 - age)) * pow(1 - age, 1.3));
+                }
+
+                float core = step(length(p - c), .04 + (.05 * Bass));
+                return max(rings * (.55 + (.45 * saturate(Beat + Level))), core * .9);
+            }
+
+            if (preset == 8)
+            {
+                // starfield at warp: stars streak out from the middle to both ends, speeding up as they go,
+                // their tails longer and the whole rush faster the louder the music
+                float cell = CellSize();
+                float row = floor(p.y / cell);
+                float half = Aspect * .5;
+                float lit = 0;
+                [unroll] for (int i = 0; i < 4; i++)
+                {
+                    float h = Hash(float2(row, i));
+                    float side = Hash(float2(row, i + 7)) > .5 ? 1 : -1;
+                    float run = frac((h * 7.3) + (Time * (.05 + (.1 * h))) + (Phase * .05 * (.5 + h)));
+                    float head = run * run * half;
+                    float tail = (.2 + (run * 3)) * (.5 + Level + Beat);
+                    float back = head - (p.x * side);
+                    float along = step(0, back) * saturate(1 - (back / tail));
+                    lit = max(lit, along * along * (.3 + (.7 * run)));
+                }
+
+                return lit;
+            }
+
+            if (preset == 9)
+            {
+                // rain: a drop falls down every other column with a fading trail, faster and brighter where
+                // that column's band is loud
+                float cell = CellSize();
+                float column = floor(p.x / cell);
+                if (fmod(abs(column), 2) >= 1) return 0;
+                float band = Band(abs(((column * cell) / Aspect) * 2));
+                float h = Hash(float2(column, 3));
+                float fall = frac((h * 13.7) + (Time * (.35 + (.5 * h))) + (Phase * (.08 + (.1 * h))));
+                float head = .7 - (fall * 1.6);
+                float tail = .25 + (.35 * h);
+                float back = p.y - head;
+                float trail = step(0, back) * pow(saturate(1 - (back / tail)), 1.5);
+                return trail * (.35 + (.65 * saturate(band * 1.5 + Beat)));
+            }
+
+            if (preset == 10)
+            {
+                // plasma: five blobs drift and swell with the bass, melting together where they meet,
+                // outlined, ringed inside and filled with a dim glow
+                float field = 0;
+                float swell = .3 + (.12 * Bass) + (.15 * Beat);
+                [unroll] for (int i = 0; i < 6; i++)
+                {
+                    float2 c = float2(sin((Time * (.09 + (.04 * i))) + (i * 2.1) + (Phase * .3)) * Aspect * .4,
+                        sin((Time * (.6 + (.17 * i))) + (i * 1.3)) * .3);
+                    float2 d = p - c;
+                    field += (swell * swell) / max(dot(d, d), 1e-4);
+                }
+
+                float edge = max(fwidth(field), 1e-4);
+                float outline = saturate(1.5 - (abs(field - 1) / (edge * 1.5)));
+                float inner = saturate(1.5 - (abs(field - 2.5) / (edge * 1.5))) * .6;
+                return max(max(outline, inner), step(1, field) * .3);
+            }
+
             if (preset == 5)
             {
                 // The Tron floor in perspective: the horizon just above the middle, rows rushing at the viewer with
@@ -665,11 +787,6 @@ public sealed class OledGpuScene : IGpuScene
             return max(Line(abs(p.y) - (.3 + (amp * .5 * w)), width), Line(p.y, width * .8) * Flash);
         }
 
-        float Hash(float2 c)
-        {
-            return frac(sin(dot(c, float2(12.9898, 78.233))) * 43758.5453);
-        }
-
         float main(float4 position : SV_Position) : SV_Target
         {
             float2 uv = position.xy / Size;
@@ -683,7 +800,10 @@ public sealed class OledGpuScene : IGpuScene
             float2 s = second ? b : a;
             float through = 1 - abs((2 * Blend) - 1);
             float old = Previous.SampleLevel(Linear, float2((s.x / Aspect) + .5, .5 - s.y), 0);
-            float v = max(0, (old * Decay * (1 - (.25 * through))) - .012);
+            // rain and stars keep long trails, the plasma almost none
+            int now = second ? (int)PresetB : (int)PresetA;
+            float keep = now >= 7 ? .5 : 1;
+            float v = saturate(max(0, (old * Decay * keep * (1 - (.25 * through))) - .012));
 
             float drawn = (second ? Draw((int)PresetB, p, position.xy) : Draw((int)PresetA, p, position.xy)) * (1 - through);
             v = max(v, drawn * (.85 + (.3 * Flash)) * Activity);

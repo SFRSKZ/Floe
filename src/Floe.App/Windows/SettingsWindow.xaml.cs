@@ -395,12 +395,17 @@ public partial class SettingsWindow : Window
         }
 
         ShowLookOptions();
-        var oledEffects = new[] { OledEffectCycle, OledEffectTunnel, OledEffectRiver, OledEffectWhirl, OledEffectSmoke, OledEffectEcho, OledEffectGrid };
-        for (var i = 0; i < oledEffects.Length; i++)
+        // the buttons in the order they show, each with the panel preset it plays (-1 takes turns)
+        var oledEffects = new[]
         {
-            var effect = i - 1;
-            oledEffects[i].IsChecked = GlassSettings.OledEffect == effect;
-            oledEffects[i].Checked += (_, _) => GlassSettings.SetOledEffect(effect);
+            (OledEffectCycle, -1), (OledEffectSpectrum, 6), (OledEffectSonar, 7), (OledEffectStars, 8), (OledEffectRain, 9),
+            (OledEffectPlasma, 10), (OledEffectTunnel, 0), (OledEffectRiver, 1), (OledEffectWhirl, 2), (OledEffectSmoke, 3),
+            (OledEffectEcho, 4), (OledEffectGrid, 5),
+        };
+        foreach (var (button, effect) in oledEffects)
+        {
+            button.IsChecked = GlassSettings.OledEffect == effect;
+            button.Checked += (_, _) => GlassSettings.SetOledEffect(effect);
         }
 
         CubeSizeSlider.Value = GlassSettings.CubeSize;

@@ -452,6 +452,11 @@
                     <TextBlock Text="OLED efekti" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
                     <WrapPanel>
                         <RadioButton x:Name="OledEffectCycle" GroupName="OledEffect" Style="{StaticResource ModeToggle}" Content="Sırayla" ToolTip="Efektler 20 saniyede bir değişir" />
+                        <RadioButton x:Name="OledEffectSpectrum" GroupName="OledEffect" Style="{StaticResource ModeToggle}" Content="Spektrum" />
+                        <RadioButton x:Name="OledEffectSonar" GroupName="OledEffect" Style="{StaticResource ModeToggle}" Content="Sonar" />
+                        <RadioButton x:Name="OledEffectStars" GroupName="OledEffect" Style="{StaticResource ModeToggle}" Content="Yıldızlar" />
+                        <RadioButton x:Name="OledEffectRain" GroupName="OledEffect" Style="{StaticResource ModeToggle}" Content="Yağmur" />
+                        <RadioButton x:Name="OledEffectPlasma" GroupName="OledEffect" Style="{StaticResource ModeToggle}" Content="Plazma" />
                         <RadioButton x:Name="OledEffectTunnel" GroupName="OledEffect" Style="{StaticResource ModeToggle}" Content="Tünel" />
                         <RadioButton x:Name="OledEffectRiver" GroupName="OledEffect" Style="{StaticResource ModeToggle}" Content="Nehir" />
                         <RadioButton x:Name="OledEffectWhirl" GroupName="OledEffect" Style="{StaticResource ModeToggle}" Content="Girdap" />

@@ -106,7 +106,10 @@ public static class GlassSettings
 
     public static NowPlayingIntro Intro { get; private set; } = NowPlayingIntro.Drop;
 
-    /// <summary>The OLED panel's one preset (0 tunnel .. 4 echo, 5 the grid floor), or -1 to take turns.</summary>
+    /// <summary>
+    /// The OLED panel's one preset, or -1 to take turns: 0 tunnel, 1 river, 2 whirlpools, 3 smoke, 4 echo, 5 the grid
+    /// floor, 6 spectrum, 7 sonar, 8 starfield, 9 rain, 10 plasma.
+    /// </summary>
     public static int OledEffect { get; private set; } = -1;
 
     public static DustPalette DustColors { get; private set; } = DustPalette.Tint;
@@ -152,7 +155,7 @@ public static class GlassSettings
                 : Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
             HologramTint = Enum.TryParse<HologramColor>(model.HologramTint, true, out var tint) ? tint : HologramColor.Blue;
             Intro = Enum.TryParse<NowPlayingIntro>(model.Intro, true, out var intro) ? intro : NowPlayingIntro.Drop;
-            OledEffect = Math.Clamp(model.OledEffect, -1, 5);
+            OledEffect = Math.Clamp(model.OledEffect, -1, 10);
             DustColors = Enum.TryParse<DustPalette>(model.DustColors, true, out var dust) ? dust : DustPalette.Tint;
             if (TryParseColor(model.CustomTint, out var custom)) CustomTint = custom;
             for (int i = 0; i < CustomPalette.Length && i < (model.CustomPalette?.Length ?? 0); i++)
@@ -291,7 +294,7 @@ public static class GlassSettings
 
     public static void SetOledEffect(int effect)
     {
-        effect = Math.Clamp(effect, -1, 5);
+        effect = Math.Clamp(effect, -1, 10);
         if (OledEffect == effect)
         {
             return;
