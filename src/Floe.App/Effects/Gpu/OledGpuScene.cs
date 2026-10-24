@@ -40,7 +40,8 @@ public sealed class OledGpuScene : IGpuScene
 
     // the trails: how much of the last frame survives, per 60 fps frame
     private const float Decay = .9f;
-    private const float BlendSeconds = 2;
+    // a change of preset dims the old one out, then brings the new one up: they never draw over each other
+    private const float BlendSeconds = 1.2f;
 
     private readonly float[] _bands = new float[Bands];
     private float _beat, _flash, _level, _bass, _mid, _treble, _hat;
@@ -97,7 +98,7 @@ public sealed class OledGpuScene : IGpuScene
     /// <summary>How long each preset plays before the next one blends in.</summary>
     public float CycleSeconds { get; set; } = 20;
 
-    /// <summary>Preview only: plays one preset for good instead of taking turns.</summary>
+    /// <summary>Plays one preset for good instead of taking turns (0..5, the last the grid floor); null takes turns.</summary>
     public int? ForcedEffect { get; set; }
 
     /// <summary>Whether music plays: the panel stays on without it, the show rests and the robot comes out.</summary>
@@ -676,11 +677,15 @@ public sealed class OledGpuScene : IGpuScene
 
             float2 a = Source((int)PresetA, p);
             float2 b = Source((int)PresetB, p);
-            float2 s = lerp(a, b, Blend);
+            // the old preset warps and draws alone for the first half of a change, the new one for the second;
+            // the trace dims to nothing at the hand-over and the light left over fades fast through it
+            bool second = Blend >= .5;
+            float2 s = second ? b : a;
+            float through = 1 - abs((2 * Blend) - 1);
             float old = Previous.SampleLevel(Linear, float2((s.x / Aspect) + .5, .5 - s.y), 0);
-            float v = max(0, (old * Decay) - .012);
+            float v = max(0, (old * Decay * (1 - (.25 * through))) - .012);
 
-            float drawn = lerp(Draw((int)PresetA, p, position.xy), Draw((int)PresetB, p, position.xy), Blend);
+            float drawn = (second ? Draw((int)PresetB, p, position.xy) : Draw((int)PresetA, p, position.xy)) * (1 - through);
             v = max(v, drawn * (.85 + (.3 * Flash)) * Activity);
 
             // the hats sparkle single pixels anywhere on the panel

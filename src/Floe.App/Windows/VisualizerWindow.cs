@@ -148,7 +148,7 @@ internal sealed class VisualizerWindow : Window
         bool flame = running && look == VisualizerStyle.EyeFlame && Layer(ref _flame, () => _fire = new FluidFireGpuScene());
         PlaceFire(_bounds);
         bool oled = running && look == VisualizerStyle.Oled && Layer(ref _oled, () => _panel = new OledGpuScene { Theme = GlassSettings.Theme }, capturable: true);
-        if (_panel is not null) _panel.Theme = GlassSettings.Theme;
+        ApplyPanelSettings();
         bool dust = running && GlassSettings.GpuVisualizer && look is VisualizerStyle.Stardust or VisualizerStyle.DustWave
             && Layer(ref _gpu, () => new StardustGpuScene());
         if (_gpu is not null)
@@ -261,7 +261,14 @@ internal sealed class VisualizerWindow : Window
             return;
         }
 
-        if (_panel is not null) _panel.Theme = GlassSettings.Theme;
+        ApplyPanelSettings();
+    }
+
+    private void ApplyPanelSettings()
+    {
+        if (_panel is null) return;
+        _panel.Theme = GlassSettings.Theme;
+        _panel.ForcedEffect = GlassSettings.OledEffect >= 0 ? GlassSettings.OledEffect : null;
     }
 
     private bool Layer(ref GpuLayerWindow? layer, Func<IGpuScene> scene, bool capturable = false)

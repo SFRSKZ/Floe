@@ -380,6 +380,29 @@ public partial class SettingsWindow : Window
         VisualizerLookEyeFlame.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.EyeFlame);
         VisualizerLookOled.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Oled;
         VisualizerLookOled.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Oled);
+
+        // the OLED panel has its own effects and none of the colour settings: each look shows only what it uses
+        void ShowLookOptions()
+        {
+            var oled = VisualizerLookOled.IsChecked == true;
+            OledOptions.Visibility = oled ? Visibility.Visible : Visibility.Collapsed;
+            LookOptions.Visibility = oled ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        foreach (var look in new[] { VisualizerLookGlow, VisualizerLookHologram, VisualizerLookCubes, VisualizerLookStardust, VisualizerLookDustWave, VisualizerLookSilkContour, VisualizerLookEyeFlame, VisualizerLookOled })
+        {
+            look.Checked += (_, _) => ShowLookOptions();
+        }
+
+        ShowLookOptions();
+        var oledEffects = new[] { OledEffectCycle, OledEffectTunnel, OledEffectRiver, OledEffectWhirl, OledEffectSmoke, OledEffectEcho, OledEffectGrid };
+        for (var i = 0; i < oledEffects.Length; i++)
+        {
+            var effect = i - 1;
+            oledEffects[i].IsChecked = GlassSettings.OledEffect == effect;
+            oledEffects[i].Checked += (_, _) => GlassSettings.SetOledEffect(effect);
+        }
+
         CubeSizeSlider.Value = GlassSettings.CubeSize;
         CubeSizeValue.Text = GlassSettings.CubeSize.ToString("0") + " px";
         CubeSizeSlider.ValueChanged += (_, e) =>
