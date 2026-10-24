@@ -360,13 +360,12 @@ public partial class DockWindow
         _shapePoints.Clear();
         var points = _shapePoints;
 
+        // Tron's glass stays flat: its bulge is the cube mound TronCubes draws on top
         double TopAt(double localX)
-            => Math.Max(0, RestTop - (EffectiveBulge * BulgeProfile(localX - (_currentHoverX - offset))));
+            => GlassSettings.Tron ? RestTop : Math.Max(0, RestTop - (EffectiveBulge * BulgeProfile(localX - (_currentHoverX - offset))));
 
-        if (GlassSettings.Tron) BuildCubeColumns(_tronColumns, false);
-        var stepped = GlassSettings.Tron && _tronColumns.Count > 0;
-        var y0 = stepped ? _tronColumns[^1].Top : TopAt(r);
-        var y1 = stepped ? _tronColumns[0].Top : TopAt(width - r);
+        var y0 = TopAt(r);
+        var y1 = TopAt(width - r);
 
         AddArc(points, offset + r, Bottom - r, r, 180, 90, 6);
         points.Add(new Point(offset + width - r, Bottom));
@@ -374,23 +373,11 @@ public partial class DockWindow
         points.Add(new Point(offset + width, y1 + r));
         AddArc(points, offset + width - r, y1 + r, r, 0, -90, 6);
 
-        if (stepped)
+        var steps = Math.Max(16, (int)(width / 3));
+        for (var i = 0; i <= steps; i++)
         {
-            // whole cubes: two points per column, leaving a vertical riser where the step changes
-            foreach (var column in _tronColumns)
-            {
-                points.Add(new Point(column.Left + column.Width, column.Top));
-                points.Add(new Point(column.Left, column.Top));
-            }
-        }
-        else
-        {
-            var steps = Math.Max(16, (int)(width / 3));
-            for (var i = 0; i <= steps; i++)
-            {
-                var localX = (width - r) - ((width - (2 * r)) * i / steps);
-                points.Add(new Point(offset + localX, TopAt(localX)));
-            }
+            var localX = (width - r) - ((width - (2 * r)) * i / steps);
+            points.Add(new Point(offset + localX, TopAt(localX)));
         }
 
         AddArc(points, offset + r, y0 + r, r, -90, -180, 6);
@@ -400,8 +387,8 @@ public partial class DockWindow
         return points;
     }
 
-    // Tron's top edge as whole cubes, right to left. The loose cubes get the side stretch too, since
-    // the shape's own points carry it once BuildShape hands them to ApplySideStretch.
+    // Tron's cube mound, one column per cube width, right to left, each standing on the flat glass.
+    // The columns get the side stretch too, so they stay over the glass the shape's points stretch.
     private void BuildCubeColumns(List<TronCubes.Column> target, bool stretch)
     {
         target.Clear();
@@ -418,7 +405,8 @@ public partial class DockWindow
         for (var right = width - r; right > r + .01; right -= TronCubes.Cube)
         {
             var left = Math.Max(r, right - TronCubes.Cube);
-            var cubes = (bulge * BulgeProfile(((right + left) / 2) - hover)) / TronCubes.Cube;
+            // the mound stands taller than the glass bulge would, so it rises clear of the magnified icons
+            var cubes = (bulge * 1.8 * BulgeProfile(((right + left) / 2) - hover)) / TronCubes.Cube;
             var whole = Math.Floor(cubes);
             var x0 = offset + left;
             var x1 = offset + right;
@@ -428,11 +416,11 @@ public partial class DockWindow
                 if (x1 < mid) x1 -= leftShift; else x1 += rightShift;
             }
 
-            target.Add(new TronCubes.Column(x0, RestTop - (whole * TronCubes.Cube), x1 - x0, whole * TronCubes.Cube, cubes - whole));
+            target.Add(new TronCubes.Column(x0, RestTop, x1 - x0, whole * TronCubes.Cube, cubes - whole));
         }
     }
 
-    // feed the loose cubes once per frame: the columns plus the frame time that drives the scatter
+    // feed the cube mound once per frame: the columns plus the frame time that drives its flow and scatter
     private void UpdateTronCubes(double dt)
     {
         if (GlassSettings.Tron) BuildCubeColumns(_tronColumns, true);

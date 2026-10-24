@@ -7,39 +7,28 @@ using Floe.App.Services;
 namespace Floe.App.Windows;
 
 /// <summary>
-/// The loose cubes of a Tron bulge: the next cube of a column floats down onto its step while a cube the
-/// step loses drifts up and fades. The dock feeds it the stepped columns once per frame; it keeps no clock.
+/// The Tron bulge, made of cubes: under the hovered icon the flat glass grows a mound of whole cubes that never
+/// sits still. Every column flows upward, a new cube rising out of the glass at its foot while the one on top breaks
+/// off and scatters, fading as it flies. When the mound sinks, the cubes it loses scatter too.
+/// The dock feeds it the columns once per frame; it keeps no clock of its own.
 /// </summary>
 public sealed class TronCubes : FrameworkElement
 {
-    /// <summary>Edge of one cube of the stepped bulge, in DIP: the step height and the column width.</summary>
-    public const double Cube = 7;
+    /// <summary>Edge of one cube of the mound, in DIP: a column's width and a step's height.</summary>
+    public const double Cube = 6;
 
-    private const double Face = Cube - 2;
-    private const int MaxParticles = 80;
-    private const double FadeSeconds = .6;
-    private const double RiseMin = 40;
-    private const double RiseMax = 90;
-    private const double Drift = 30;
+    private const double Face = Cube - 1.5;
+    private const int MaxParticles = 320;
+    private const double FadeSeconds = .85;
+    // cubes a second each column carries up and throws off its top
+    private const double Flow = 2.2;
+    private const double RiseMin = 25;
+    private const double RiseMax = 85;
+    private const double Spread = 70;
+    private const double Gravity = 60;
 
-    /// <summary>One column of the stepped top edge, in this element's coordinates.</summary>
+    /// <summary>One column of the mound, in this element's coordinates: its foot (Top), and its height.</summary>
     public readonly record struct Column(double Left, double Top, double Width, double Height, double Fraction);
-
-    private readonly struct Loose
-    {
-        public Loose(double x, double y, double opacity)
-        {
-            X = x;
-            Y = y;
-            Opacity = opacity;
-        }
-
-        public double X { get; }
-
-        public double Y { get; }
-
-        public double Opacity { get; }
-    }
 
     private struct Particle
     {
@@ -50,10 +39,10 @@ public sealed class TronCubes : FrameworkElement
         public double Age;
     }
 
-    private readonly List<Loose> _assembling = new();
-    private readonly List<Particle> _particles = new();
+    private readonly List<Column> _columns = new();
+    private readonly List<double> _phases = new();
     private readonly List<double> _heights = new();
-    private readonly List<double> _lefts = new();
+    private readonly List<Particle> _particles = new();
     private readonly Random _random = new(20261024);
     private Brush _face = Brushes.Black;
     private Pen _edge = new(Brushes.Black, 1);
@@ -61,6 +50,7 @@ public sealed class TronCubes : FrameworkElement
     private Color _line;
     private Color _hot;
     private bool _tinted;
+    private bool _flowing;
 
     public TronCubes()
     {
@@ -68,14 +58,18 @@ public sealed class TronCubes : FrameworkElement
         Visibility = Visibility.Collapsed;
     }
 
-    /// <summary>True while a scattered cube is still in the air, so the dock keeps its frames coming.</summary>
-    public bool Busy => _particles.Count > 0;
+    /// <summary>True while the mound flows or a scattered cube is still in the air, so the dock keeps its frames coming.</summary>
+    public bool Busy => _flowing || _particles.Count > 0;
 
-    /// <summary>Draws one frame of the stepped columns; <paramref name="dt"/> only drives the scatter.</summary>
+    /// <summary>
+    /// One frame: <paramref name="columns"/> stand on the glass's top edge (Top) and want Height / Cube plus
+    /// Fraction cubes of mound; <paramref name="dt"/> drives the flow and the scatter.
+    /// </summary>
     public void Frame(IReadOnlyList<Column> columns, double hoverX, double dt)
     {
-        _assembling.Clear();
-        if (!GlassSettings.Tron || Visibility != Visibility.Visible || columns.Count == 0)
+        _columns.Clear();
+        _flowing = false;
+        if (!GlassSettings.Tron || Visibility != Visibility.Visible)
         {
             if (_particles.Count > 0 || _heights.Count > 0) Clear();
             return;
@@ -84,43 +78,44 @@ public sealed class TronCubes : FrameworkElement
         for (var i = 0; i < columns.Count; i++)
         {
             var column = columns[i];
-            var fraction = column.Fraction;
-
-            // the next cube floats down onto the step, offset by what is still missing
-            if (fraction > .02)
+            _columns.Add(column);
+            var cubes = (column.Height / Cube) + column.Fraction;
+            if (i >= _phases.Count)
             {
-                _assembling.Add(new Loose(
-                    column.Left + (column.Width / 2) - (Face / 2),
-                    column.Top - Face - ((1 - fraction) * Cube * 1.6),
-                    fraction));
+                // columns start out of step, so the mound shimmers instead of pumping as one
+                _phases.Add(_random.NextDouble());
+                _heights.Add(cubes);
             }
 
-            // a lost cube leaves from where its step used to be; a column that moved is a fresh one
-            var last = i < _heights.Count ? _heights[i] : column.Height;
-            var held = i < _lefts.Count && Math.Abs(_lefts[i] - column.Left) < Cube;
-            if (held && last > column.Height + .01)
+            var middle = column.Left + (column.Width / 2);
+            if (cubes >= 1)
             {
-                var middle = column.Left + (column.Width / 2);
-                var lost = Math.Min(MaxParticles, (int)Math.Round((last - column.Height) / Cube));
-                for (var k = 0; k < lost; k++) Scatter(new Point(middle, column.Top + (k * Cube) + (Cube / 2)), hoverX);
+                _flowing = true;
+                var phase = _phases[i] + (dt * Flow * (.8 + (.4 * Math.Abs(Math.Sin(i * 1.7)))));
+                if (phase >= 1)
+                {
+                    // the top cube breaks off and flies, and the stack moves up a place
+                    phase -= 1;
+                    Scatter(new Point(middle, column.Top - (Math.Floor(cubes) * Cube)), hoverX);
+                }
+
+                _phases[i] = phase;
             }
 
-            if (i < _heights.Count)
+            // a sinking mound throws off the cubes it no longer holds
+            var lost = (int)Math.Floor(_heights[i]) - (int)Math.Floor(cubes);
+            for (var k = 0; k < Math.Min(lost, 6); k++)
             {
-                _heights[i] = column.Height;
-                _lefts[i] = column.Left;
+                Scatter(new Point(middle + ((_random.NextDouble() - .5) * Cube), column.Top - ((Math.Floor(cubes) + k + .5) * Cube)), hoverX);
             }
-            else
-            {
-                _heights.Add(column.Height);
-                _lefts.Add(column.Left);
-            }
+
+            _heights[i] = cubes;
         }
 
-        if (_heights.Count > columns.Count)
+        if (_phases.Count > columns.Count)
         {
+            _phases.RemoveRange(columns.Count, _phases.Count - columns.Count);
             _heights.RemoveRange(columns.Count, _heights.Count - columns.Count);
-            _lefts.RemoveRange(columns.Count, _lefts.Count - columns.Count);
         }
 
         for (var i = _particles.Count - 1; i >= 0; i--)
@@ -135,6 +130,7 @@ public sealed class TronCubes : FrameworkElement
 
             p.X += p.Vx * dt;
             p.Y += p.Vy * dt;
+            p.Vy += Gravity * dt;
             _particles[i] = p;
         }
 
@@ -143,11 +139,25 @@ public sealed class TronCubes : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
-        if (_assembling.Count == 0 && _particles.Count == 0) return;
+        if (_columns.Count == 0 && _particles.Count == 0) return;
         EnsureBrushes();
-        foreach (var cube in _assembling)
+        for (var i = 0; i < _columns.Count; i++)
         {
-            Draw(dc, new Rect(cube.X, cube.Y, Face, Face), cube.Opacity);
+            var column = _columns[i];
+            var cubes = (column.Height / Cube) + column.Fraction;
+            if (cubes < 1) continue;
+            var phase = i < _phases.Count ? _phases[i] : 0;
+            var x = column.Left + ((column.Width - Face) / 2);
+            var whole = (int)Math.Floor(cubes);
+
+            // the stack rides up by its phase: the bottom cube is still coming out of the glass, the top one
+            // is about to leave
+            for (var k = 0; k < whole; k++)
+            {
+                var y = column.Top - ((k + phase + 1) * Cube) + ((Cube - Face) / 2);
+                var opacity = k == 0 ? phase : 1;
+                Draw(dc, new Rect(x, y, Face, Face), opacity);
+            }
         }
 
         for (var i = 0; i < _particles.Count; i++)
@@ -157,16 +167,16 @@ public sealed class TronCubes : FrameworkElement
         }
     }
 
+    // a cube breaks loose: out to the side away from the hover and up, then falling a little as it fades
     private void Scatter(Point at, double hoverX)
     {
         if (_particles.Count >= MaxParticles) _particles.RemoveAt(0);
-        // away from the hover, never straight up
         var away = at.X < hoverX ? -1 : at.X > hoverX ? 1 : _random.Next(2) == 0 ? -1 : 1;
         _particles.Add(new Particle
         {
             X = at.X - (Face / 2),
             Y = at.Y - (Face / 2),
-            Vx = away * _random.NextDouble() * Drift,
+            Vx = away * (.25 + (.75 * _random.NextDouble())) * Spread,
             Vy = -(RiseMin + (_random.NextDouble() * (RiseMax - RiseMin))),
         });
     }
@@ -204,8 +214,9 @@ public sealed class TronCubes : FrameworkElement
     private void Clear()
     {
         _particles.Clear();
+        _phases.Clear();
         _heights.Clear();
-        _lefts.Clear();
+        _columns.Clear();
         InvalidateVisual();
     }
 }
