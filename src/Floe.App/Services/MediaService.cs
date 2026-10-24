@@ -5,7 +5,14 @@ using Windows.Media.Control;
 
 namespace Floe.App.Services;
 
-public sealed record MediaInfo(string Title, string Artist, double Progress, ImageSource? Artwork);
+public sealed record MediaInfo(string Title, string Artist, double Progress, ImageSource? Artwork)
+{
+    /// <summary>Where the track is and how long it runs, in seconds; 0 when the player does not say.</summary>
+    public double Position { get; init; }
+    public double Duration { get; init; }
+
+    public bool Playing { get; init; }
+}
 
 public static class MediaService
 {
@@ -33,13 +40,21 @@ public static class MediaService
             }
 
             var progress = 0.0;
+            double position = 0, duration = 0;
             try
             {
                 var timeline = session.GetTimelineProperties();
                 var total = (timeline.EndTime - timeline.StartTime).TotalSeconds;
                 if (total > 0)
                 {
-                    progress = Math.Clamp((timeline.Position - timeline.StartTime).TotalSeconds / total, 0, 1);
+                    // the player reports its position only now and then; carry it on to now while it plays
+                    var since = session.GetPlaybackInfo()?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
+                        ? Math.Max(0, (DateTimeOffset.Now - timeline.LastUpdatedTime).TotalSeconds)
+                        : 0;
+                    if (since > total) since = 0;
+                    position = Math.Clamp((timeline.Position - timeline.StartTime).TotalSeconds + since, 0, total);
+                    duration = total;
+                    progress = position / total;
                 }
             }
             catch
@@ -49,11 +64,26 @@ public static class MediaService
 
             var title = properties.Title ?? string.Empty;
             var artist = properties.Artist ?? string.Empty;
+            bool playing = false;
+            try
+            {
+                playing = session.GetPlaybackInfo()?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+            }
+            catch
+            {
+                // playback info may be unavailable
+            }
+
             return new MediaInfo(
                 title,
                 artist,
                 progress,
-                await ReadArtworkAsync(properties, title, artist));
+                await ReadArtworkAsync(properties, title, artist))
+            {
+                Position = position,
+                Duration = duration,
+                Playing = playing,
+            };
         }
         catch
         {

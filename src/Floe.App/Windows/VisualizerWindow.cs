@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Floe.App.Effects.Gpu;
 using Floe.App.Effects.Visualizer;
@@ -30,6 +31,9 @@ internal sealed class VisualizerWindow : Window
     private GpuLayerWindow? _flame;
     private GpuLayerWindow? _oled;
     private FluidFireGpuScene? _fire;
+    private OledGpuScene? _panel;
+    private ImageSource? _coverSource;
+    private byte[]? _cover;
     private Rect _dockRect;
     private bool _gpuFailed;
     private IntPtr _hwnd;
@@ -141,7 +145,7 @@ internal sealed class VisualizerWindow : Window
         // the eye flame only exists on the GPU; the dust looks move there when the setting asks for it
         bool flame = running && look == VisualizerStyle.EyeFlame && Layer(ref _flame, () => _fire = new FluidFireGpuScene());
         PlaceFire(_bounds);
-        bool oled = running && look == VisualizerStyle.Oled && Layer(ref _oled, () => new OledGpuScene(), capturable: true);
+        bool oled = running && look == VisualizerStyle.Oled && Layer(ref _oled, () => _panel = new OledGpuScene(), capturable: true);
         bool dust = running && GlassSettings.GpuVisualizer && look is VisualizerStyle.Stardust or VisualizerStyle.DustWave
             && Layer(ref _gpu, () => new StardustGpuScene());
         if (_gpu is not null)
@@ -188,8 +192,55 @@ internal sealed class VisualizerWindow : Window
         }
     }
 
+    /// <summary>What plays, for the OLED panel: whether it plays, and the song for its left wing.</summary>
+    public void SetMusic(bool playing, MediaInfo? media)
+    {
+        if (_panel is null) return;
+        _panel.MusicPlaying = playing;
+        if (media is null || string.IsNullOrWhiteSpace(media.Title))
+        {
+            _panel.SetMedia(string.Empty, string.Empty, 0, 0, false, null);
+            return;
+        }
+
+        if (!ReferenceEquals(media.Artwork, _coverSource))
+        {
+            _coverSource = media.Artwork;
+            _cover = CoverPixels(media.Artwork as BitmapSource);
+        }
+
+        _panel.SetMedia(media.Title, media.Artist, media.Position, media.Duration, media.Playing, _cover);
+    }
+
+    // the cover, squared and scaled down to what the panel converts it from, as BGRA bytes
+    private static byte[]? CoverPixels(BitmapSource? source)
+    {
+        if (source is null || source.PixelWidth <= 0 || source.PixelHeight <= 0) return null;
+        try
+        {
+            int size = OledOverlay.CoverPixels;
+            int side = Math.Min(source.PixelWidth, source.PixelHeight);
+            var square = new CroppedBitmap(source, new Int32Rect((source.PixelWidth - side) / 2, (source.PixelHeight - side) / 2, side, side));
+            var scaled = new TransformedBitmap(square, new ScaleTransform(size / (double)side, size / (double)side));
+            var bgra = new FormatConvertedBitmap(scaled, PixelFormats.Bgra32, null, 0);
+            if (bgra.PixelWidth != size || bgra.PixelHeight != size) return null;
+            var pixels = new byte[size * size * 4];
+            bgra.CopyPixels(pixels, size * 4, 0);
+            return pixels;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private void PlaceFire(Rect bounds)
     {
+        if (_panel is not null && bounds.Width > 0 && !_dockRect.IsEmpty)
+        {
+            _panel.SetDock((float)((_dockRect.Left - bounds.Left) / bounds.Width), (float)((_dockRect.Right - bounds.Left) / bounds.Width));
+        }
+
         if (_fire is null || bounds.Width <= 0 || bounds.Height <= 0 || _dockRect.IsEmpty) return;
         _fire.SetDock(
             (float)((_dockRect.Left - bounds.Left) / bounds.Width),

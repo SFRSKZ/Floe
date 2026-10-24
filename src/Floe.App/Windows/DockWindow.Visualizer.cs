@@ -37,8 +37,14 @@ public partial class DockWindow
             try
             {
                 var playing = await VisualizerGlow.ShouldRunAsync();
-                _visualizerRunning = GlassSettings.Visualizer && IsVisible && _shown && !_fullscreenHidden && playing;
+                // the OLED panel stays on without music: its robot comes out when nothing plays
+                bool panel = GlassSettings.VisualizerLook == VisualizerStyle.Oled;
+                _visualizerRunning = GlassSettings.Visualizer && IsVisible && _shown && !_fullscreenHidden && (playing || panel);
                 ApplyVisualizerState();
+                if (panel && _visualizerWindow is not null)
+                {
+                    _visualizerWindow.SetMusic(playing, await MediaService.GetAsync());
+                }
             }
             finally
             {

@@ -54,6 +54,13 @@ public sealed class OledGpuScene : IGpuScene
     private Target? _feedback0, _feedback1, _cells;
     private ID3D11Texture2D? _audioTexture;
     private ID3D11ShaderResourceView? _audioView;
+    private ID3D11Texture2D? _overlayTexture;
+    private ID3D11ShaderResourceView? _overlayView;
+
+    // the song and the robot, drawn into the cells on top of the show
+    private readonly OledOverlay _overlay = new();
+    private float[] _overlayValue = Array.Empty<float>(), _overlayMask = Array.Empty<float>(), _overlayPacked = Array.Empty<float>();
+    private float _activity;
     private bool _needClear;
     private int _ping;
 
@@ -80,6 +87,16 @@ public sealed class OledGpuScene : IGpuScene
 
     /// <summary>Preview only: plays one preset for good instead of taking turns.</summary>
     public int? ForcedEffect { get; set; }
+
+    /// <summary>Whether music plays: the panel stays on without it, the show rests and the robot comes out.</summary>
+    public bool MusicPlaying { get; set; }
+
+    /// <summary>The song for the left wing; cover is <see cref="OledOverlay.CoverPixels"/> square BGRA, or null.</summary>
+    public void SetMedia(string title, string artist, double position, double duration, bool playing, byte[]? cover) =>
+        _overlay.SetMedia(title, artist, position, duration, playing, cover);
+
+    /// <summary>The dock's capsule across the strip, 0..1 from the left; the media keeps to the left of it.</summary>
+    public void SetDock(float left, float right) => _overlay.SetDock(left, right);
 
     // ---- lifecycle --------------------------------------------------------------------------------
 
@@ -140,6 +157,12 @@ public sealed class OledGpuScene : IGpuScene
         _feedback0 = new Target(_device, _cols * Samples, _rows * Samples);
         _feedback1 = new Target(_device, _cols * Samples, _rows * Samples);
         _cells = new Target(_device, _cols, _rows);
+        _overlayTexture = _device.CreateTexture2D(new Texture2DDescription(Format.R32G32_Float, (uint)_cols, (uint)_rows, 1, 1,
+            BindFlags.ShaderResource, ResourceUsage.Default, CpuAccessFlags.None, 1, 0, ResourceOptionFlags.None));
+        _overlayView = _device.CreateShaderResourceView(_overlayTexture, null);
+        _overlayValue = new float[_cols * _rows];
+        _overlayMask = new float[_cols * _rows];
+        _overlayPacked = new float[_cols * _rows * 2];
         _feedbackViewport = new[] { new Viewport(0, 0, _cols * Samples, _rows * Samples, 0, 1) };
         _cellViewport = new[] { new Viewport(0, 0, _cols, _rows, 0, 1) };
         _viewport = new[] { new Viewport(0, 0, width, height, 0, 1) };
@@ -151,6 +174,8 @@ public sealed class OledGpuScene : IGpuScene
         _feedback0?.Dispose(); _feedback0 = null;
         _feedback1?.Dispose(); _feedback1 = null;
         _cells?.Dispose(); _cells = null;
+        _overlayView?.Dispose(); _overlayView = null;
+        _overlayTexture?.Dispose(); _overlayTexture = null;
         _pixelW = _pixelH = 0;
     }
 
@@ -172,6 +197,14 @@ public sealed class OledGpuScene : IGpuScene
         float dt = Math.Clamp(frame.Dt, 0, .05f);
         bool kick = UpdateAudio(dt, frame.Audio);
         Advance(dt, kick);
+        _activity += ((MusicPlaying ? 1 : 0) - _activity) * (1 - MathF.Exp(-dt * 2));
+
+        _overlay.Draw(_overlayValue, _overlayMask, _cols, _rows, dt, _time);
+        for (int i = 0; i < _overlayValue.Length; i++)
+        {
+            _overlayPacked[2 * i] = _overlayValue[i];
+            _overlayPacked[(2 * i) + 1] = _overlayMask[i];
+        }
 
         context.RSSetState(_raster);
         context.OMSetDepthStencilState(_noDepth, 0);
@@ -207,11 +240,13 @@ public sealed class OledGpuScene : IGpuScene
         _warpCb[8] = _bass; _warpCb[9] = _mid; _warpCb[10] = _treble; _warpCb[11] = _beat;
         _warpCb[12] = _level; _warpCb[13] = _phase; _warpCb[14] = _flash; _warpCb[15] = _hat;
         _warpCb[16] = _time; _warpCb[17] = Samples;
-        _warpCb[18] = _warpCb[19] = 0;
+        _warpCb[18] = _activity;
+        _warpCb[19] = 0;
         Pass(context, _warpPs, to.View, _feedbackViewport, _warpConstants!, _warpCb, from.Srv, _audioView);
 
         // 2: every panel pixel, the average of its samples, in a few grey levels
-        Pass(context, _cellPs!, _cells.View, _cellViewport, _warpConstants!, _warpCb, to.Srv, null);
+        context.UpdateSubresource(new ReadOnlySpan<float>(_overlayPacked), _overlayTexture!, 0, (uint)(_cols * 2 * sizeof(float)));
+        Pass(context, _cellPs!, _cells.View, _cellViewport, _warpConstants!, _warpCb, to.Srv, _overlayView);
 
         // 3: the cells as dots on the black glass
         _panelCb[0] = _pixelW; _panelCb[1] = _pixelH;
@@ -374,6 +409,7 @@ public sealed class OledGpuScene : IGpuScene
             float Hat;
             float Time;
             float SamplesPerCell;
+            float Activity;
         };
         """;
 
@@ -508,11 +544,11 @@ public sealed class OledGpuScene : IGpuScene
             float v = max(0, (old * Decay) - .012);
 
             float drawn = lerp(Draw((int)PresetA, p, position.xy), Draw((int)PresetB, p, position.xy), Blend);
-            v = max(v, drawn * (.85 + (.3 * Flash)));
+            v = max(v, drawn * (.85 + (.3 * Flash)) * Activity);
 
             // the hats sparkle single pixels anywhere on the panel
             float2 cell = floor(position.xy / SamplesPerCell);
-            if (Hash(cell + floor(Time * 30) * float2(7.13, 3.71)) < Hat * .0015) v = 1;
+            if (Hash(cell + floor(Time * 30) * float2(7.13, 3.71)) < Hat * Activity * .0015) v = 1;
             return v;
         }
         """;
@@ -521,6 +557,7 @@ public sealed class OledGpuScene : IGpuScene
     private const string CellPs = WarpConstants + """
 
         Texture2D<float> Feedback : register(t0);
+        Texture2D<float2> Overlay : register(t1);
 
         float main(float4 position : SV_Position) : SV_Target
         {
@@ -536,7 +573,8 @@ public sealed class OledGpuScene : IGpuScene
             }
 
             float v = saturate(sum / (n * n));
-            return floor((v * 4) + .15) / 4;
+            float2 overlay = Overlay.Load(int3(position.xy, 0));
+            return lerp(floor((v * 4) + .15) / 4, overlay.x, overlay.y);
         }
         """;
 
