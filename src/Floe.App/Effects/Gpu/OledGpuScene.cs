@@ -28,8 +28,8 @@ public sealed class OledGpuScene : IGpuScene
     private const float PitchDip = 3;
 
     // the bezel along the top and the sides, and how round its top corners are
-    private const float BezelDip = 5;
-    private const float CornerDip = 8;
+    private const float BezelDip = 8;
+    private const float CornerDip = 12;
     private const int Samples = 3;
 
     // the trails: how much of the last frame survives, per 60 fps frame
@@ -608,9 +608,12 @@ public sealed class OledGpuScene : IGpuScene
             float inner = Box(position.xy, Bezel, Bezel, Size.x - Bezel, max(1, Corner - Bezel));
             float shape = saturate(.5 - outer);
             float glass = saturate(.5 - inner);
-            float3 frame = lerp(float3(.105, .11, .12), float3(.05, .052, .058), saturate(position.y / (Bezel * 3)));
-            frame += float3(.16, .165, .175) * saturate(1 - abs(outer + (.5 * PixelsPerDip)) / PixelsPerDip);
-            frame *= lerp(.35, 1, saturate(-inner / PixelsPerDip));
+            // a bevel: light graphite at the outer edge, darker towards the glass, a bright rim catching the light
+            float depth = saturate(-outer / max(1, Bezel));
+            float3 frame = lerp(float3(.36, .37, .40), float3(.15, .155, .17), sqrt(depth));
+            frame *= lerp(1.1, .8, saturate(position.y / Size.y));
+            frame += float3(.30, .31, .33) * saturate(1 - abs(outer + (.6 * PixelsPerDip)) / PixelsPerDip);
+            frame *= lerp(.25, 1, saturate(inner / (1.5 * PixelsPerDip)));
             c = lerp(frame, c, glass);
 
             float a = .95 * Fade * shape;
