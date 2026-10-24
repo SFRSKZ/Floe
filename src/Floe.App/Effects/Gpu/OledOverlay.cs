@@ -235,7 +235,7 @@ internal sealed class OledOverlay
 
     /// <summary>
     /// A 16-bit style character: an old TV for a head (seen from three quarters, two crescent eyes on its screen),
-    /// a hoodie with its hands in the pocket, baggy trousers and sneakers. While nothing plays he walks the panel,
+    /// a hoodie with his hands in its pocket, baggy trousers and sneakers. While nothing plays he walks the panel,
     /// stops to look around, blinks and waves; while music plays he stands at the right end and dances to it.
     /// He is drawn with a black outline, so the show behind him never runs through him.
     /// </summary>
@@ -261,22 +261,22 @@ internal sealed class OledOverlay
 
         private static readonly string[] Hoodie =
         {
-            "....12333321....",
-            "..233252252332..",
-            ".23322522522332.",
-            ".23222522522232.",
-            ".23122422422132.",
-            ".23124444442132.",
-            ".23142222224132.",
-            ".33342222224333.",
-            "..214444444412..",
-            "..132323232323..",
+            "....32333323....",
+            "..333252252333..",
+            ".33322522522333.",
+            "3331225225221333",
+            "3331224224221333",
+            "3321222222221233",
+            "3321344444431233",
+            "3233422222243323",
+            ".32342222224323.",
+            "..324444444423..",
+            "..332323232323..",
+            "..322223322223..",
         };
 
-        private const string Waist = "...2222222222...";
-
-        private static readonly string[] Leg = { "2221", "2321", "3221", "2321", "2221" };
-        private static readonly string[] Shoe = { ".4554", "55555", "33333" };
+        private static readonly string[] Leg = { "32323", "33223", "32233", "32223", "32323" };
+        private static readonly string[] Shoe = { ".3545.", "345555", "455554" };
         private static readonly string[] Eye = { ".55", "55.", "5..", "55.", ".55" };
         private static readonly string[] HappyEye = { "...", ".5.", "5.5", "...", "..." };
 
@@ -391,8 +391,7 @@ internal sealed class OledOverlay
             int hop = (walking && MathF.Sin(_step * 2) > .3f) || (dancing && _beat > .5f) ? 1 : 0;
             int shoeTop = rows - Shoe.Length - hop;
             int legTop = shoeTop - Leg.Length;
-            int waistY = legTop - 1;
-            int hoodieTop = waistY - Hoodie.Length;
+            int hoodieTop = legTop - Hoodie.Length;
             int headTop = hoodieTop - Head.Length;
 
             for (int i = 0; i < 2; i++)
@@ -400,7 +399,7 @@ internal sealed class OledOverlay
                 // the near leg strides forward while the far one goes back; dancing, one foot taps per beat
                 float stride = walking ? MathF.Sin(_step) * (i == 0 ? 1 : -1) : 0;
                 bool lifted = (walking && stride > .3f) || (dancing && _beat > .3f && (_beats & 1) == i);
-                int local = i == 0 ? 3 : 9;
+                int local = i == 0 ? 2 : 9;
                 int lx = bodyX + (flip ? BodyWidth - local - Leg[0].Length : local);
                 int dx = (int)MathF.Round(stride) * (flip ? -1 : 1);
                 for (int r = 0; r < Leg.Length; r++)
@@ -408,14 +407,15 @@ internal sealed class OledOverlay
                     Row(value, mask, cols, rows, Leg[r], lx + (r >= 2 ? dx : 0), legTop + r, (i == 1) != flip);
                 }
 
-                int sx = lx + (int)MathF.Round(stride * 2 * (flip ? -1 : 1));
+                // the sneaker sits a cell behind the leg and its toe points ahead
+                int shoe = local - 1;
+                int sx = bodyX + (flip ? BodyWidth - shoe - Shoe[0].Length : shoe) + (int)MathF.Round(stride * 2 * (flip ? -1 : 1));
                 for (int r = 0; r < Shoe.Length; r++)
                 {
                     Row(value, mask, cols, rows, Shoe[r], sx, shoeTop + r - (lifted ? 1 : 0), flip);
                 }
             }
 
-            Row(value, mask, cols, rows, Waist, bodyX, waistY, flip);
             for (int r = 0; r < Hoodie.Length; r++) Row(value, mask, cols, rows, Hoodie[r], bodyX, hoodieTop + r, flip);
 
             // the head: the set's depth stays behind him, and it nods side to side when he dances
@@ -461,7 +461,7 @@ internal sealed class OledOverlay
         private void Arm(float[] value, float[] mask, int cols, int rows, int bodyX, int hoodieTop, bool front, bool flip, float time)
         {
             // the hand leaves the pocket: the sleeve's cuff takes its place
-            int cuff = front ? 12 : 1;
+            int cuff = front ? 11 : 2;
             for (int c = 0; c < 3; c++) Put(value, mask, cols, rows, bodyX + Col(cuff + c, BodyWidth, flip), hoodieTop + 7, Shade('2'));
 
             int wave = front && _mode == Mode.Wave ? (int)MathF.Round(MathF.Sin(time * 12)) : 0;
