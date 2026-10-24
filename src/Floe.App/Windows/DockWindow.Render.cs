@@ -405,8 +405,9 @@ public partial class DockWindow
         for (var right = width - r; right > r + .01; right -= TronCubes.Cube)
         {
             var left = Math.Max(r, right - TronCubes.Cube);
-            // the mound stands taller than the glass bulge would, so it rises clear of the magnified icons
-            var cubes = (bulge * 1.5 * BulgeProfile(((right + left) / 2) - hover)) / TronCubes.Cube;
+            // the mound stands taller and narrower than the glass bulge would: it rises clear of the magnified
+            // icons but keeps its foot under the hovered one and its neighbours
+            var cubes = (bulge * 1.5 * BulgeProfile((((right + left) / 2) - hover) * 1.8)) / TronCubes.Cube;
             var whole = Math.Floor(cubes);
             var x0 = offset + left;
             var x1 = offset + right;
