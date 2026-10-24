@@ -22,6 +22,14 @@ public sealed class SpectrumFrame
     public float Kick { get; set; }
     public float Snare { get; set; }
     public float Hat { get; set; }
+
+    /// <summary>
+    /// The newest <see cref="WaveLength"/> samples as an oscilloscope shows them: mono, starting on a rising zero
+    /// crossing so the trace stands still, scaled against its own recent loudest to -1..1; all 0 in silence.
+    /// </summary>
+    public float[] Wave { get; } = new float[WaveLength];
+
+    public const int WaveLength = 512;
 }
 
 /// <summary>
@@ -60,6 +68,8 @@ public sealed class AudioSpectrum : IDisposable
     private readonly double[] _sinceOnset = { 1, 1, 1 };
     private int _fluxAt;
     private long _lastReceived;
+    private readonly float[] _scope = new float[SpectrumFrame.WaveLength * 2];
+    private float _wavePeak;
 
     public AudioSpectrum()
     {
@@ -80,6 +90,8 @@ public sealed class AudioSpectrum : IDisposable
         {
             int start = (_write - FftSize + Ring) % Ring;
             for (int i = 0; i < FftSize; i++) _re[i] = _ring[(start + i) % Ring] * _window[i];
+            int scopeStart = (_write - _scope.Length + Ring) % Ring;
+            for (int i = 0; i < _scope.Length; i++) _scope[i] = _ring[(scopeStart + i) % Ring];
             rate = _sampleRate;
             received = _received;
         }
@@ -138,8 +150,38 @@ public sealed class AudioSpectrum : IDisposable
 
         frame.Snare = Onset(1, 150, 2500, hzPerBin, dt, .12, silent);
         frame.Hat = Onset(2, 6000, 16000, hzPerBin, dt, .07, silent);
+        ReadWave(frame.Wave, dt, silent);
         _fluxAt = (_fluxAt + 1) % FluxHistory;
         Array.Copy(_magnitude, _previous, bins);
+    }
+
+    // The newest half of the scope buffer, from the last rising zero crossing that still leaves a full trace.
+    private void ReadWave(float[] wave, double dt, bool silent)
+    {
+        int n = wave.Length;
+        if (silent)
+        {
+            Array.Clear(wave);
+            _wavePeak = 0;
+            return;
+        }
+
+        int from = n;
+        for (int i = n; i > 0; i--)
+        {
+            if (_scope[i - 1] < 0 && _scope[i] >= 0)
+            {
+                from = i;
+                break;
+            }
+        }
+
+        float peak = 0;
+        for (int i = 0; i < n; i++) peak = Math.Max(peak, Math.Abs(_scope[from + i]));
+        // quick to rise, slow to fall, so quiet passages still show a trace without loud ones clipping long
+        _wavePeak = Math.Max(peak, _wavePeak * (float)Math.Exp(-dt * 1.2));
+        float gain = 1 / Math.Max(_wavePeak, .02f);
+        for (int i = 0; i < n; i++) wave[i] = Math.Clamp(_scope[from + i] * gain, -1, 1);
     }
 
     private float Group(float loHz, float hiHz, float hzPerBin)

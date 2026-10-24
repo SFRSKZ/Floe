@@ -9,92 +9,72 @@ namespace Floe.App.Effects.Gpu;
 
 /// <summary>
 /// The OLED visualizer: the whole strip, edge to edge, becomes one long black monochrome panel like the
-/// SSD1306 screens on ESP32 boards, its chunky white pixels playing music-driven pixel animations.
+/// SSD1306 screens on ESP32 boards, playing a MilkDrop-style feedback show on its chunky white pixels.
 /// <para>
-/// The animations run on the CPU on the panel's cell grid (a few thousand cells), into one brightness per
-/// cell that fades like an OLED's afterglow; the GPU only draws the cells as rounded dots with a faint glow.
-/// Three effects take turns, each for <see cref="CycleSeconds"/>, changing over through a pixel dissolve:
-/// fireworks bursts, a Matrix-like rain, and Conway's Game of Life.
+/// Each frame takes the last one, warps it a little (zoom, flow, whirl, each driven by the bass, the mids and
+/// the beat) and dims it, then draws the music's own waveform on top: the warp smears every trace into
+/// tunnels, rivers and spirals that move with the song. That runs on the GPU at three samples per panel pixel;
+/// a second pass averages each panel pixel's samples into a few grey levels, and the last one draws the cells
+/// as rounded dots with a faint glow. Five presets take turns every <see cref="CycleSeconds"/>, blending
+/// their warps over two seconds and changing on a kick.
 /// </para>
 /// </summary>
 public sealed class OledGpuScene : IGpuScene
 {
     private const int Bands = 24;
-    private const int Effects = 3;
+    private const int Presets = 5;
 
-    // one panel pixel every 3 DIP, as chunky as the little screens
+    // one panel pixel every 3 DIP, as chunky as the little screens; the feedback runs at 3x3 samples per pixel
     private const float PitchDip = 3;
+    private const int Samples = 3;
 
-    // OLED afterglow per 60 fps frame, and the change-over between effects
-    private const float Afterglow = .80f;
-    private const float Dissolve = .6f;
-
-    private const int MaxParticles = 3000;
+    // the trails: how much of the last frame survives, per 60 fps frame
+    private const float Decay = .9f;
+    private const float BlendSeconds = 2;
 
     private readonly float[] _bands = new float[Bands];
-    private float _beat;
+    private float _beat, _flash, _level, _bass, _mid, _treble, _hat;
+    private float _phase, _time;
     private bool _kickArmed = true;
     private float _kickCooldown;
     private readonly Random _random = new(1);
 
     private ID3D11Device? _device;
     private ID3D11VertexShader? _vertexShader;
-    private ID3D11PixelShader? _panelPs;
-    private ID3D11Buffer? _constants;
+    private ID3D11PixelShader? _warpPs, _cellPs, _panelPs;
+    private ID3D11Buffer? _warpConstants, _panelConstants;
     private ID3D11BlendState? _opaque;
     private ID3D11RasterizerState? _raster;
     private ID3D11DepthStencilState? _noDepth;
-    private ID3D11Texture2D? _cellTexture;
-    private ID3D11ShaderResourceView? _cellView;
+    private ID3D11SamplerState? _linear;
+    private Target? _feedback0, _feedback1, _cells;
+    private ID3D11Texture2D? _audioTexture;
+    private ID3D11ShaderResourceView? _audioView;
+    private bool _needClear;
+    private int _ping;
 
     private readonly ID3D11Buffer[] _constantBuffer = new ID3D11Buffer[1];
-    private readonly ID3D11ShaderResourceView[] _inputs = new ID3D11ShaderResourceView[1];
-    private readonly float[] _cb = new float[8];
-    private Viewport[] _viewport = Array.Empty<Viewport>();
+    private readonly ID3D11SamplerState[] _sampler = new ID3D11SamplerState[1];
+    private readonly ID3D11ShaderResourceView[] _inputs = new ID3D11ShaderResourceView[2];
+    private readonly ID3D11ShaderResourceView[] _noInputs = new ID3D11ShaderResourceView[2];
+    private readonly float[] _warpCb = new float[20];
+    private readonly float[] _panelCb = new float[8];
+    // row 0: the waveform; row 1: the bands
+    private readonly float[] _audio = new float[SpectrumFrame.WaveLength * 2];
+    private Viewport[] _feedbackViewport = Array.Empty<Viewport>(), _cellViewport = Array.Empty<Viewport>(), _viewport = Array.Empty<Viewport>();
 
     private int _pixelW, _pixelH;
     private float _pixelsPerDip = 1;
     private float _pitch;
     private int _cols, _rows;
 
-    // the panel: what the effects draw, what was on screen when the effects changed over, and what goes up
-    private float[] _lum = Array.Empty<float>();
-    private float[] _old = Array.Empty<float>();
-    private float[] _shown = Array.Empty<float>();
-    private byte[] _dissolveOrder = Array.Empty<byte>();
+    private int _preset, _previous;
+    private float _presetTime, _blend = 1;
 
-    private int _effect;
-    private float _effectTime;
-    private float _transition;
+    /// <summary>How long each preset plays before the next one blends in.</summary>
+    public float CycleSeconds { get; set; } = 20;
 
-    // burst
-    private readonly float[] _px = new float[MaxParticles], _py = new float[MaxParticles];
-    private readonly float[] _vx = new float[MaxParticles], _vy = new float[MaxParticles];
-    private readonly float[] _life = new float[MaxParticles], _maxLife = new float[MaxParticles];
-    private readonly bool[] _bounced = new bool[MaxParticles];
-    private int _particles;
-    private float _sparkDebt;
-
-    // rain: one streak per column
-    private float[] _head = Array.Empty<float>(), _speed = Array.Empty<float>(), _tail = Array.Empty<float>();
-    private bool[] _falling = Array.Empty<bool>();
-
-    // life
-    private byte[] _cells = Array.Empty<byte>(), _next = Array.Empty<byte>();
-    private float _stepDebt, _seedDebt;
-
-    // the R-pentomino, the glider and the acorn: small seeds that grow for a long while
-    private static readonly sbyte[][] Seeds =
-    {
-        new sbyte[] { 1, 0, 2, 0, 0, 1, 1, 1, 1, 2 },
-        new sbyte[] { 1, 0, 2, 1, 0, 2, 1, 2, 2, 2 },
-        new sbyte[] { 1, 0, 3, 1, 0, 2, 1, 2, 4, 2, 5, 2, 6, 2 },
-    };
-
-    /// <summary>How long each effect plays before the next one dissolves in.</summary>
-    public float CycleSeconds { get; set; } = 24;
-
-    /// <summary>Preview only: plays one effect for good instead of taking turns.</summary>
+    /// <summary>Preview only: plays one preset for good instead of taking turns.</summary>
     public int? ForcedEffect { get; set; }
 
     // ---- lifecycle --------------------------------------------------------------------------------
@@ -103,26 +83,39 @@ public sealed class OledGpuScene : IGpuScene
     {
         _device = device;
         _vertexShader = device.CreateVertexShader(Compile("vs_4_0", FullscreenVs).Span, null);
+        _warpPs = device.CreatePixelShader(Compile("ps_4_0", WarpPs).Span, null);
+        _cellPs = device.CreatePixelShader(Compile("ps_4_0", CellPs).Span, null);
         _panelPs = device.CreatePixelShader(Compile("ps_4_0", PanelPs).Span, null);
-        _constants = device.CreateBuffer(new BufferDescription(32, BindFlags.ConstantBuffer, ResourceUsage.Default, CpuAccessFlags.None, ResourceOptionFlags.None, 0));
-        _constantBuffer[0] = _constants;
+        _warpConstants = device.CreateBuffer(new BufferDescription((uint)(_warpCb.Length * 4), BindFlags.ConstantBuffer, ResourceUsage.Default, CpuAccessFlags.None, ResourceOptionFlags.None, 0));
+        _panelConstants = device.CreateBuffer(new BufferDescription((uint)(_panelCb.Length * 4), BindFlags.ConstantBuffer, ResourceUsage.Default, CpuAccessFlags.None, ResourceOptionFlags.None, 0));
         _opaque = device.CreateBlendState(BlendDescription.Opaque);
         _raster = device.CreateRasterizerState(RasterizerDescription.CullNone);
         _noDepth = device.CreateDepthStencilState(DepthStencilDescription.None);
+        _linear = device.CreateSamplerState(new SamplerDescription(Filter.MinMagMipLinear, TextureAddressMode.Clamp, 0, 1, ComparisonFunction.Never, 0, float.MaxValue));
+        _sampler[0] = _linear;
+        _audioTexture = device.CreateTexture2D(new Texture2DDescription(Format.R32_Float, SpectrumFrame.WaveLength, 2, 1, 1,
+            BindFlags.ShaderResource, ResourceUsage.Default, CpuAccessFlags.None, 1, 0, ResourceOptionFlags.None));
+        _audioView = device.CreateShaderResourceView(_audioTexture, null);
     }
 
     public void Resize(int width, int height) => Build(width, height, _pixelsPerDip);
 
-    /// <summary>Drops the GPU objects; the panel and its animations carry on with a new device.</summary>
+    /// <summary>Drops the GPU objects; the show starts over from black with a new device.</summary>
     public void ReleaseDevice()
     {
         ReleaseSized();
         _vertexShader?.Dispose(); _vertexShader = null;
+        _warpPs?.Dispose(); _warpPs = null;
+        _cellPs?.Dispose(); _cellPs = null;
         _panelPs?.Dispose(); _panelPs = null;
-        _constants?.Dispose(); _constants = null;
+        _warpConstants?.Dispose(); _warpConstants = null;
+        _panelConstants?.Dispose(); _panelConstants = null;
         _constantBuffer[0] = null!;
-        _opaque?.Dispose(); _raster?.Dispose(); _noDepth?.Dispose();
-        _opaque = null; _raster = null; _noDepth = null;
+        _opaque?.Dispose(); _raster?.Dispose(); _noDepth?.Dispose(); _linear?.Dispose();
+        _opaque = null; _raster = null; _noDepth = null; _linear = null;
+        _sampler[0] = null!;
+        _audioView?.Dispose(); _audioView = null;
+        _audioTexture?.Dispose(); _audioTexture = null;
         _device = null;
     }
 
@@ -136,38 +129,23 @@ public sealed class OledGpuScene : IGpuScene
         _pixelH = height;
         _pixelsPerDip = pixelsPerDip > 0 ? pixelsPerDip : 1;
         _pitch = PitchDip * _pixelsPerDip;
+        _cols = Math.Max(8, (int)(width / _pitch));
+        _rows = Math.Max(4, (int)(height / _pitch));
 
-        int cols = Math.Max(8, (int)(width / _pitch));
-        int rows = Math.Max(4, (int)(height / _pitch));
-        if (cols != _cols || rows != _rows)
-        {
-            _cols = cols;
-            _rows = rows;
-            int n = cols * rows;
-            _lum = new float[n];
-            _old = new float[n];
-            _shown = new float[n];
-            _dissolveOrder = new byte[n];
-            _random.NextBytes(_dissolveOrder);
-            _head = new float[cols];
-            _speed = new float[cols];
-            _tail = new float[cols];
-            _falling = new bool[cols];
-            _cells = new byte[n];
-            _next = new byte[n];
-            _particles = 0;
-        }
-
-        _cellTexture = _device.CreateTexture2D(new Texture2DDescription(Format.R32_Float, (uint)_cols, (uint)_rows, 1, 1,
-            BindFlags.ShaderResource, ResourceUsage.Default, CpuAccessFlags.None, 1, 0, ResourceOptionFlags.None));
-        _cellView = _device.CreateShaderResourceView(_cellTexture, null);
+        _feedback0 = new Target(_device, _cols * Samples, _rows * Samples);
+        _feedback1 = new Target(_device, _cols * Samples, _rows * Samples);
+        _cells = new Target(_device, _cols, _rows);
+        _feedbackViewport = new[] { new Viewport(0, 0, _cols * Samples, _rows * Samples, 0, 1) };
+        _cellViewport = new[] { new Viewport(0, 0, _cols, _rows, 0, 1) };
         _viewport = new[] { new Viewport(0, 0, width, height, 0, 1) };
+        _needClear = true;
     }
 
     private void ReleaseSized()
     {
-        _cellView?.Dispose(); _cellView = null;
-        _cellTexture?.Dispose(); _cellTexture = null;
+        _feedback0?.Dispose(); _feedback0 = null;
+        _feedback1?.Dispose(); _feedback1 = null;
+        _cells?.Dispose(); _cells = null;
         _pixelW = _pixelH = 0;
     }
 
@@ -175,7 +153,7 @@ public sealed class OledGpuScene : IGpuScene
 
     public void Render(ID3D11DeviceContext context, ID3D11RenderTargetView target, GpuFrame frame)
     {
-        if (_device is null || _panelPs is null || frame.Width < 2 || frame.Height < 2) return;
+        if (_device is null || _warpPs is null || frame.Width < 2 || frame.Height < 2) return;
 
         // the host knows the DPI only with the frame, so the grid is built here the first time
         var ppd = frame.PixelsPerDip > 0 ? frame.PixelsPerDip : 1;
@@ -184,285 +162,103 @@ public sealed class OledGpuScene : IGpuScene
             Build(frame.Width, frame.Height, ppd);
         }
 
-        if (_cellTexture is null || _cellView is null) return;
+        if (_feedback0 is null || _feedback1 is null || _cells is null) return;
 
         float dt = Math.Clamp(frame.Dt, 0, .05f);
         bool kick = UpdateAudio(dt, frame.Audio);
-        Advance(dt);
-
-        float glow = MathF.Pow(Afterglow, dt * 60);
-        for (int i = 0; i < _lum.Length; i++) _lum[i] *= glow;
-
-        switch (_effect)
-        {
-            case 0: Burst(dt, kick); break;
-            case 1: Rain(dt, kick); break;
-            default: Life(dt, kick); break;
-        }
-
-        Compose();
-        context.UpdateSubresource(new ReadOnlySpan<float>(_shown), _cellTexture, 0, (uint)(_cols * sizeof(float)));
-
-        _cb[0] = _pixelW; _cb[1] = _pixelH;
-        _cb[2] = _cols; _cb[3] = _rows;
-        _cb[4] = (_pixelW - (_cols * _pitch)) * .5f;
-        _cb[5] = _pixelH - (_rows * _pitch);
-        _cb[6] = _pitch;
-        _cb[7] = Math.Clamp(frame.Fade, 0, 1);
+        Advance(dt, kick);
 
         context.RSSetState(_raster);
         context.OMSetDepthStencilState(_noDepth, 0);
         context.OMSetBlendState(_opaque);
-        context.RSSetViewports(_viewport);
-        context.OMSetRenderTargets(target, null);
         context.IASetInputLayout(null);
         context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
         context.VSSetShader(_vertexShader);
-        context.PSSetShader(_panelPs);
+        context.PSSetSamplers(0, _sampler);
+
+        if (_needClear)
+        {
+            var empty = new Color4(0, 0, 0, 0);
+            context.ClearRenderTargetView(_feedback0.View, empty);
+            context.ClearRenderTargetView(_feedback1.View, empty);
+            _needClear = false;
+        }
+
+        // the music, for the shader to draw: the scope trace and the bands
+        Array.Copy(frame.Audio.Wave, _audio, SpectrumFrame.WaveLength);
+        Array.Copy(_bands, 0, _audio, SpectrumFrame.WaveLength, Bands);
+        context.UpdateSubresource(new ReadOnlySpan<float>(_audio), _audioTexture!, 0, SpectrumFrame.WaveLength * sizeof(float));
+
+        // 1: last frame, warped and dimmed, with the waveform drawn on top
+        var from = _ping == 0 ? _feedback0 : _feedback1;
+        var to = _ping == 0 ? _feedback1 : _feedback0;
+        _ping ^= 1;
+        _warpCb[0] = from.Width; _warpCb[1] = from.Height;
+        _warpCb[2] = from.Width / (float)from.Height;
+        _warpCb[3] = dt * 60;
+        _warpCb[4] = _previous; _warpCb[5] = _preset;
+        _warpCb[6] = Smooth(_blend);
+        _warpCb[7] = MathF.Pow(Decay, dt * 60);
+        _warpCb[8] = _bass; _warpCb[9] = _mid; _warpCb[10] = _treble; _warpCb[11] = _beat;
+        _warpCb[12] = _level; _warpCb[13] = _phase; _warpCb[14] = _flash; _warpCb[15] = _hat;
+        _warpCb[16] = _time; _warpCb[17] = Samples;
+        _warpCb[18] = _warpCb[19] = 0;
+        Pass(context, _warpPs, to.View, _feedbackViewport, _warpConstants!, _warpCb, from.Srv, _audioView);
+
+        // 2: every panel pixel, the average of its samples, in a few grey levels
+        Pass(context, _cellPs!, _cells.View, _cellViewport, _warpConstants!, _warpCb, to.Srv, null);
+
+        // 3: the cells as dots on the black glass
+        _panelCb[0] = _pixelW; _panelCb[1] = _pixelH;
+        _panelCb[2] = _cols; _panelCb[3] = _rows;
+        _panelCb[4] = (_pixelW - (_cols * _pitch)) * .5f;
+        _panelCb[5] = _pixelH - (_rows * _pitch);
+        _panelCb[6] = _pitch;
+        _panelCb[7] = Math.Clamp(frame.Fade, 0, 1);
+        Pass(context, _panelPs!, target, _viewport, _panelConstants!, _panelCb, _cells.Srv, null);
+        context.PSSetShaderResources(0, _noInputs);
+    }
+
+    private void Pass(ID3D11DeviceContext context, ID3D11PixelShader shader, ID3D11RenderTargetView destination, Viewport[] viewport,
+        ID3D11Buffer constants, float[] values, ID3D11ShaderResourceView source, ID3D11ShaderResourceView? second)
+    {
+        // nothing may still be bound as an input while it is the target
+        context.PSSetShaderResources(0, _noInputs);
+        context.RSSetViewports(viewport);
+        context.OMSetRenderTargets(destination, null);
+        context.PSSetShader(shader);
+        context.UpdateSubresource(values, constants);
+        _constantBuffer[0] = constants;
         context.PSSetConstantBuffers(0, _constantBuffer);
-        _inputs[0] = _cellView;
+        _inputs[0] = source;
+        _inputs[1] = second!;
         context.PSSetShaderResources(0, _inputs);
-        context.UpdateSubresource(_cb, _constants!);
         context.Draw(3, 0);
     }
 
-    // Takes turns between the effects; the outgoing panel is kept to dissolve away pixel by pixel.
-    private void Advance(float dt)
+    // Takes turns between the presets: when one has played its time, the next kick brings in the next one.
+    private void Advance(float dt, bool kick)
     {
-        _transition = MathF.Max(0, _transition - dt);
-        int wanted = ForcedEffect is int forced ? Math.Clamp(forced, 0, Effects - 1) : _effect;
-        _effectTime += dt;
-        if (ForcedEffect is null && _effectTime >= CycleSeconds) wanted = (_effect + 1) % Effects;
-        if (wanted == _effect) return;
+        _blend = MathF.Min(1, _blend + (dt / BlendSeconds));
+        _presetTime += dt;
+        int wanted = _preset;
+        if (ForcedEffect is int forced)
+        {
+            wanted = Math.Clamp(forced, 0, Presets - 1);
+        }
+        else if (_presetTime >= CycleSeconds && (kick || _presetTime >= CycleSeconds + 4))
+        {
+            wanted = (_preset + 1 + _random.Next(Presets - 1)) % Presets;
+        }
 
-        Array.Copy(_lum, _old, _lum.Length);
-        Array.Clear(_lum);
-        _effect = wanted;
-        _effectTime = 0;
-        _transition = Dissolve;
-        _particles = 0;
-        Array.Clear(_falling);
-        Array.Clear(_cells);
+        if (wanted == _preset) return;
+        _previous = _blend < 1 ? _previous : _preset;
+        _preset = wanted;
+        _presetTime = 0;
+        _blend = 0;
     }
 
-    private void Compose()
-    {
-        if (_transition <= 0)
-        {
-            Array.Copy(_lum, _shown, _lum.Length);
-            return;
-        }
-
-        // every cell switches over at its own random moment
-        int threshold = (int)((1 - (_transition / Dissolve)) * 256);
-        for (int i = 0; i < _shown.Length; i++)
-        {
-            _shown[i] = _dissolveOrder[i] < threshold ? _lum[i] : _old[i];
-        }
-    }
-
-    private void Plot(int x, int y, float value)
-    {
-        if ((uint)x >= (uint)_cols || (uint)y >= (uint)_rows) return;
-        int i = (y * _cols) + x;
-        if (value > _lum[i]) _lum[i] = value;
-    }
-
-    // ---- 0: bursts ---------------------------------------------------------------------------------
-
-    // Fireworks: each kick bursts a few rings of pixels at random points along the panel; sparks pop in between.
-    private void Burst(float dt, bool kick)
-    {
-        if (kick)
-        {
-            int bursts = 3 + _random.Next(4);
-            for (int k = 0; k < bursts; k++)
-            {
-                float x = _random.NextSingle() * _cols;
-                float y = _rows * (.15f + (.5f * _random.NextSingle()));
-                int count = 60 + _random.Next(61);
-                float speed = 10 + (16 * _random.NextSingle()) + (10 * _beat);
-                for (int p = 0; p < count; p++)
-                {
-                    float angle = _random.NextSingle() * MathF.Tau;
-                    float s = speed * (.6f + (.4f * _random.NextSingle()));
-                    Spawn(x, y, MathF.Cos(angle) * s, MathF.Sin(angle) * s * .8f, 1 + _random.NextSingle());
-                }
-            }
-        }
-
-        // between the kicks the bass keeps sparks coming up from the bottom row
-        _sparkDebt += dt * (8 + (90 * _bands[0] * _bands[0]));
-        while (_sparkDebt >= 1)
-        {
-            _sparkDebt -= 1;
-            Spawn(_random.NextSingle() * _cols, _rows - 1, (_random.NextSingle() - .5f) * 6, -(14 + (14 * _random.NextSingle())), .6f + (.6f * _random.NextSingle()));
-        }
-
-        const float Gravity = 38;
-        for (int p = 0; p < _particles; p++)
-        {
-            _life[p] -= dt;
-            if (_life[p] <= 0)
-            {
-                Remove(p--);
-                continue;
-            }
-
-            _vy[p] += Gravity * dt;
-            _px[p] += _vx[p] * dt;
-            _py[p] += _vy[p] * dt;
-            if (_py[p] >= _rows - 1 && _vy[p] > 0)
-            {
-                // one bounce off the bottom edge, then gone
-                if (_bounced[p])
-                {
-                    Remove(p--);
-                    continue;
-                }
-
-                _bounced[p] = true;
-                _py[p] = _rows - 1;
-                _vy[p] *= -.45f;
-                _vx[p] *= .7f;
-            }
-
-            Plot((int)_px[p], (int)_py[p], .35f + (.65f * (_life[p] / _maxLife[p])));
-        }
-    }
-
-    private void Spawn(float x, float y, float vx, float vy, float life)
-    {
-        if (_particles >= MaxParticles) return;
-        int p = _particles++;
-        _px[p] = x; _py[p] = y; _vx[p] = vx; _vy[p] = vy;
-        _life[p] = _maxLife[p] = life;
-        _bounced[p] = false;
-    }
-
-    private void Remove(int p)
-    {
-        int last = --_particles;
-        _px[p] = _px[last]; _py[p] = _py[last]; _vx[p] = _vx[last]; _vy[p] = _vy[last];
-        _life[p] = _life[last]; _maxLife[p] = _maxLife[last]; _bounced[p] = _bounced[last];
-    }
-
-    // ---- 1: rain -----------------------------------------------------------------------------------
-
-    // Matrix-like streaks; the panel's width is the spectrum, bass on the left, treble on the right.
-    private void Rain(float dt, bool kick)
-    {
-        for (int x = 0; x < _cols; x++)
-        {
-            float band = _bands[Math.Min(Bands - 1, x * Bands / _cols)];
-            if (!_falling[x])
-            {
-                bool start = _random.NextSingle() < dt * (.08f + (3.5f * band * band));
-                if (kick && _random.NextSingle() < .5f) start = true;
-                if (!start) continue;
-                _falling[x] = true;
-                _head[x] = -_random.NextSingle() * 3;
-                _speed[x] = 8 + (26 * band) + (6 * _random.NextSingle());
-                _tail[x] = 6 + (8 * _random.NextSingle());
-            }
-
-            _head[x] += _speed[x] * dt;
-            float tail = _tail[x];
-            int head = (int)_head[x];
-            for (int k = 0; k <= tail; k++)
-            {
-                float t = 1 - (k / tail);
-                Plot(x, head - k, k == 0 ? 1 : .8f * t * t);
-            }
-
-            if (_head[x] - tail > _rows) _falling[x] = false;
-        }
-    }
-
-    // ---- 2: life -----------------------------------------------------------------------------------
-
-    // Conway's rules at 12 steps a second; the bass sows small seeds, a kick drops a handful of live cells.
-    private void Life(float dt, bool kick)
-    {
-        _seedDebt += dt * (.5f + (8 * _bands[0] * _bands[0]));
-        while (_seedDebt >= 1)
-        {
-            _seedDebt -= 1;
-            Sow(Seeds[_random.Next(Seeds.Length)], _random.Next(_cols), _random.Next(Math.Max(1, _rows - 3)));
-        }
-
-        if (kick)
-        {
-            int cx = _random.Next(_cols), cy = _random.Next(_rows);
-            for (int k = 0; k < 40; k++)
-            {
-                int x = cx + _random.Next(-6, 7), y = cy + _random.Next(-3, 4);
-                if ((uint)y < (uint)_rows) _cells[(y * _cols) + Wrap(x)] = 1;
-            }
-        }
-
-        _stepDebt += dt * 12;
-        while (_stepDebt >= 1)
-        {
-            _stepDebt -= 1;
-            Step();
-        }
-
-        int alive = 0;
-        for (int i = 0; i < _cells.Length; i++)
-        {
-            if (_cells[i] == 0) continue;
-            alive++;
-            _lum[i] = 1;
-        }
-
-        // a dying colony is sown again, so the panel never goes dark for long
-        if (alive < _cells.Length / 50)
-        {
-            for (int i = 0; i < _cells.Length; i++)
-            {
-                if (_random.NextSingle() < .08f) _cells[i] = 1;
-            }
-        }
-    }
-
-    private void Sow(sbyte[] seed, int x, int y)
-    {
-        for (int k = 0; k + 1 < seed.Length; k += 2)
-        {
-            int sy = y + seed[k + 1];
-            if ((uint)sy < (uint)_rows) _cells[(sy * _cols) + Wrap(x + seed[k])] = 1;
-        }
-    }
-
-    private void Step()
-    {
-        for (int y = 0; y < _rows; y++)
-        {
-            for (int x = 0; x < _cols; x++)
-            {
-                int n = 0;
-                for (int dy = -1; dy <= 1; dy++)
-                {
-                    int yy = y + dy;
-                    if ((uint)yy >= (uint)_rows) continue;
-                    int row = yy * _cols;
-                    for (int dx = -1; dx <= 1; dx++)
-                    {
-                        if (dx == 0 && dy == 0) continue;
-                        n += _cells[row + Wrap(x + dx)];
-                    }
-                }
-
-                int i = (y * _cols) + x;
-                _next[i] = (byte)(n == 3 || (n == 2 && _cells[i] != 0) ? 1 : 0);
-            }
-        }
-
-        (_cells, _next) = (_next, _cells);
-    }
-
-    private int Wrap(int x) => ((x % _cols) + _cols) % _cols;
+    private static float Smooth(float t) => t * t * (3 - (2 * t));
 
     // ---- audio ------------------------------------------------------------------------------------
 
@@ -476,7 +272,18 @@ public sealed class OledGpuScene : IGpuScene
             _bands[i] += (target - _bands[i]) * smooth;
         }
 
+        _bass += (Math.Clamp(audio.Bass, 0, 1) - _bass) * smooth;
+        _mid += (Math.Clamp(audio.Mid, 0, 1) - _mid) * smooth;
+        _treble += (Math.Clamp(audio.Treble, 0, 1) - _treble) * smooth;
+        _level += (Math.Clamp(audio.Level, 0, 1) - _level) * smooth;
+        _hat = MathF.Max(_hat * MathF.Exp(-dt * 12), Math.Clamp(audio.Hat, 0, 1));
         _beat = MathF.Max(_beat * MathF.Exp(-dt * 5), Math.Clamp(audio.Kick, 0, 1));
+        _flash = MathF.Max(_flash * MathF.Exp(-dt * 10), Math.Clamp(audio.Kick, 0, 1));
+
+        // the shapes move faster the busier the music is
+        _time += dt;
+        _phase += dt * (.4f + (1.6f * _mid) + (1.2f * _beat));
+
         _kickCooldown = MathF.Max(0, _kickCooldown - dt);
         bool kick = false;
         if (audio.Kick > .3f)
@@ -502,11 +309,225 @@ public sealed class OledGpuScene : IGpuScene
     private static ReadOnlyMemory<byte> Compile(string profile, string source) =>
         Compiler.Compile(source, "main", "Oled", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
 
+    /// <summary>One float texture: its render target and its shader view, always together.</summary>
+    private sealed class Target : IDisposable
+    {
+        private readonly ID3D11Texture2D _texture;
+
+        public Target(ID3D11Device device, int width, int height)
+        {
+            Width = width;
+            Height = height;
+            _texture = device.CreateTexture2D(new Texture2DDescription(Format.R16_Float, (uint)width, (uint)height, 1, 1,
+                BindFlags.RenderTarget | BindFlags.ShaderResource, ResourceUsage.Default, CpuAccessFlags.None, 1, 0, ResourceOptionFlags.None));
+            View = device.CreateRenderTargetView(_texture, null);
+            Srv = device.CreateShaderResourceView(_texture, null);
+        }
+
+        public int Width { get; }
+        public int Height { get; }
+        public ID3D11RenderTargetView View { get; }
+        public ID3D11ShaderResourceView Srv { get; }
+
+        public void Dispose()
+        {
+            Srv.Dispose();
+            View.Dispose();
+            _texture.Dispose();
+        }
+    }
+
     private const string FullscreenVs = """
         float4 main(uint id : SV_VertexID) : SV_Position
         {
             float2 uv = float2((id << 1) & 2, id & 2);
             return float4((uv.x * 2) - 1, 1 - (uv.y * 2), 0, 1);
+        }
+        """;
+
+    private const string WarpConstants = """
+        cbuffer Warp : register(b0)
+        {
+            float2 Size;
+            float Aspect;
+            float Step;
+            float PresetA;
+            float PresetB;
+            float Blend;
+            float Decay;
+            float Bass;
+            float Mid;
+            float Treble;
+            float Beat;
+            float Level;
+            float Phase;
+            float Flash;
+            float Hat;
+            float Time;
+            float SamplesPerCell;
+        };
+        """;
+
+    // Positions are in strip heights from the middle of the strip, x to the right and y up: the strip runs
+    // from about -12 to 12 across and from -.5 to .5 up. Source() says where a point's light was a frame ago.
+    private const string WarpPs = WarpConstants + """
+
+        Texture2D<float> Previous : register(t0);
+        Texture2D<float> Music : register(t1);
+        SamplerState Linear : register(s0);
+
+        float2 Turn(float2 q, float a)
+        {
+            float s = sin(a), c = cos(a);
+            return float2((c * q.x) - (s * q.y), (s * q.x) + (c * q.y));
+        }
+
+        float2 Source(int preset, float2 p)
+        {
+            float k = Step;
+            if (preset == 0)
+            {
+                // tunnel: everything streams out of the middle, bursting on the beat
+                float2 zoom = float2(.0012 + (.003 * Bass) + (.01 * Beat), .018 + (.03 * Bass) + (.07 * Beat)) * k;
+                float2 s = p * (1 - zoom);
+                s.y += .006 * k * sin((p.x * 1.3) - (Phase * 2));
+                return s;
+            }
+
+            if (preset == 1)
+            {
+                // river: the light flows out to both ends, wobbling on the mids
+                float2 s = p;
+                s.x -= sign(p.x) * (.012 + (.04 * Bass) + (.12 * Beat)) * k;
+                s.y = (s.y * (1 - (.008 * k))) + (.012 * k * sin((p.x * 1.7) - (Phase * 3)) * (.3 + Mid));
+                return s;
+            }
+
+            if (preset == 2)
+            {
+                // whirlpools: a row of them, every other one turning the other way, pulling the light in
+                const float width = 1.6;
+                float t = floor((p.x / width) + .5);
+                float2 q = p - float2(t * width, 0);
+                float turn = (fmod(abs(t), 2) < 1 ? 1 : -1) * (.025 + (.05 * Mid) + (.14 * Beat)) * k;
+                q = Turn(q, turn * saturate(1 - (length(q) / .8))) * (1 + (.006 * k));
+                return q + float2(t * width, 0);
+            }
+
+            if (preset == 3)
+            {
+                // smoke: the spectrum rises off the bottom edge and curls on the highs
+                float2 s = p;
+                s.y -= (.01 + (.025 * Level) + (.03 * Beat)) * k;
+                s.x += .012 * k * sin((p.y * 9) + (Phase * 2) + (p.x * .7)) * (.4 + Treble);
+                return s;
+            }
+
+            // echo: the traces fold in towards the middle line, ring after ring
+            float2 s = p;
+            s.y *= 1 + ((.022 + (.05 * Bass) + (.1 * Beat)) * k);
+            s.x *= 1 + (.0008 * k);
+            return s;
+        }
+
+        float Wave(float x)
+        {
+            return Music.SampleLevel(Linear, float2(saturate(x), .25), 0);
+        }
+
+        float Band(float x)
+        {
+            float b = saturate(x) * 23;
+            int i = (int)b;
+            return lerp(Music.Load(int3(i, 1, 0)), Music.Load(int3(min(i + 1, 23), 1, 0)), b - i);
+        }
+
+        // a line of the given half width (in strip heights) at distance d
+        float Line(float d, float width)
+        {
+            return saturate(1.5 - (abs(d) / width));
+        }
+
+        float Draw(int preset, float2 p, float2 position)
+        {
+            float px = 1 / Size.y;
+            float width = (1.1 + (1.5 * Flash)) * px;
+            float half = Aspect * .5;
+            float mirror = abs(p.x) / half;
+            float amp = .12 + (.25 * Level) + (.12 * Flash);
+
+            if (preset == 0)
+            {
+                // a ring of the trace in the middle, and the trace along the strip
+                float r = length(p);
+                float a = atan2(p.y, p.x);
+                float ring = .26 + (.1 * Wave(abs(a) / 3.1416));
+                return max(Line(r - ring, width), Line(p.y - (amp * Wave(mirror)), width));
+            }
+
+            if (preset == 1) return Line(p.y - (amp * 1.3 * Wave(mirror)), width);
+
+            if (preset == 2) return Line(p.y - (amp * 1.2 * Wave((p.x / Aspect) + .5)), width);
+
+            if (preset == 3)
+            {
+                // the bands along the bottom edge, the bass out at the ends; a faint trace above them
+                float bottom = p.y + .5;
+                float bars = step(bottom, .05 + (.4 * pow(Band(1 - mirror), 1.5))) * step(.5, frac(abs(p.x) * 6));
+                return max(bars, .5 * Line(p.y + .15 - (amp * .6 * Wave(mirror)), width));
+            }
+
+            // the trace twice, mirrored above and below the middle line
+            float w = Wave(mirror);
+            return max(Line(abs(p.y) - (.3 + (amp * .5 * w)), width), Line(p.y, width * .8) * Flash);
+        }
+
+        float Hash(float2 c)
+        {
+            return frac(sin(dot(c, float2(12.9898, 78.233))) * 43758.5453);
+        }
+
+        float main(float4 position : SV_Position) : SV_Target
+        {
+            float2 uv = position.xy / Size;
+            float2 p = float2((uv.x - .5) * Aspect, .5 - uv.y);
+
+            float2 a = Source((int)PresetA, p);
+            float2 b = Source((int)PresetB, p);
+            float2 s = lerp(a, b, Blend);
+            float old = Previous.SampleLevel(Linear, float2((s.x / Aspect) + .5, .5 - s.y), 0);
+            float v = max(0, (old * Decay) - .012);
+
+            float drawn = lerp(Draw((int)PresetA, p, position.xy), Draw((int)PresetB, p, position.xy), Blend);
+            v = max(v, drawn * (.85 + (.3 * Flash)));
+
+            // the hats sparkle single pixels anywhere on the panel
+            float2 cell = floor(position.xy / SamplesPerCell);
+            if (Hash(cell + floor(Time * 30) * float2(7.13, 3.71)) < Hat * .0015) v = 1;
+            return v;
+        }
+        """;
+
+    // Every panel pixel is the average of its samples, lifted a little and cut to five grey levels.
+    private const string CellPs = WarpConstants + """
+
+        Texture2D<float> Feedback : register(t0);
+
+        float main(float4 position : SV_Position) : SV_Target
+        {
+            int n = (int)SamplesPerCell;
+            int2 origin = (int2)floor(position.xy) * n;
+            float sum = 0;
+            for (int y = 0; y < n; y++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    sum += Feedback.Load(int3(origin + int2(x, y), 0));
+                }
+            }
+
+            float v = saturate(sum / (n * n));
+            return floor((v * 4) + .15) / 4;
         }
         """;
 

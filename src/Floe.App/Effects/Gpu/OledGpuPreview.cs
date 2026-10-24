@@ -5,8 +5,8 @@ namespace Floe.App.Effects.Gpu;
 
 /// <summary>
 /// --render-gpu-oled=&lt;dir&gt; writes 180 PNG frames (30 fps) of <see cref="OledGpuScene"/> on the real dock strip,
-/// 3840x152 (1920x76 DIP), fed the same made-up beat as the other previews. --oled-effect=&lt;0|1|2&gt; holds one
-/// effect; without it the effects take turns every two seconds so one run shows them all.
+/// 3840x152 (1920x76 DIP), fed the same made-up beat as the other previews, plus a made-up scope trace. --oled-effect=&lt;0..4&gt; holds
+/// one preset; without it the presets take turns every two seconds so one run shows several.
 /// </summary>
 public static class OledGpuPreview
 {
@@ -55,6 +55,14 @@ public static class OledGpuPreview
             double x = b / (double)frame.Bands.Length;
             double shape = (b < 4 ? .5 + (.5 * kick) : .55) * (1 - (.4 * x));
             frame.Bands[b] = (float)Math.Clamp(shape * (.6 + (.4 * Math.Sin((t * (1.5 + x * 3)) + (b * .7)))), 0, 1);
+        }
+
+        // a bass note that thumps with the kick under a busier line on top
+        var wave = frame.Wave;
+        for (int i = 0; i < wave.Length; i++)
+        {
+            double s = i / (double)wave.Length;
+            wave[i] = (float)Math.Clamp((.55 + (.4 * kick)) * Math.Sin(s * Math.Tau * 2) + (.3 * Math.Sin((s * 37) + (t * 5))) + (.12 * Math.Sin((s * 140) - (t * 11))), -1, 1);
         }
     }
 }
