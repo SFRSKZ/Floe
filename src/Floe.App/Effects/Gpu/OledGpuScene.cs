@@ -25,7 +25,7 @@ public sealed class OledGpuScene : IGpuScene
     private const int Presets = 5;
 
     // one panel pixel every 3 DIP, as chunky as the little screens; the feedback runs at 3x3 samples per pixel
-    private const float PitchDip = 3;
+    private const float PitchDip = 2;
 
     // the bezel along the top and the sides, and how round its top corners are
     private const float BezelDip = 8;
@@ -199,7 +199,7 @@ public sealed class OledGpuScene : IGpuScene
         Advance(dt, kick);
         _activity += ((MusicPlaying ? 1 : 0) - _activity) * (1 - MathF.Exp(-dt * 2));
 
-        _overlay.Draw(_overlayValue, _overlayMask, _cols, _rows, dt, _time);
+        _overlay.Draw(_overlayValue, _overlayMask, _cols, _rows, dt, _time, _beat, _bands);
         for (int i = 0; i < _overlayValue.Length; i++)
         {
             _overlayPacked[2 * i] = _overlayValue[i];
