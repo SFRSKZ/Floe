@@ -18,8 +18,9 @@ public static class SettingsPreview
         {
             GlassSettings.Load();
             var window = new SettingsWindow();
-            // --settings-glass opens the Cam tab
+            // --settings-glass opens the Cam tab, --settings-visualizer the visualizer one
             if (args.Contains("--settings-glass", StringComparer.OrdinalIgnoreCase)) window.TabGlass.IsChecked = true;
+            if (args.Contains("--settings-visualizer", StringComparer.OrdinalIgnoreCase)) window.TabVisualizer.IsChecked = true;
             if (window.Content is not FrameworkElement content) return true;
             window.Content = null;
             var stage = new System.Windows.Controls.Border { Background = new SolidColorBrush(Color.FromRgb(0x1B, 0x20, 0x2A)), Child = content };

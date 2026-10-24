@@ -92,6 +92,13 @@ public partial class SettingsWindow : Window
         Loaded += (_, _) => _chromatic?.Start();
         Closed += (_, _) => _chromatic?.Dispose();
 
+        // never taller than the screen: the pages scroll inside what is left under the tabs
+        Loaded += (_, _) =>
+        {
+            var work = GetWorkArea(this);
+            PageScroller.MaxHeight = Math.Max(200, work.Height - 24 - (ActualHeight - PageScroller.ActualHeight));
+        };
+
         // the window sits above the dock: keep its bottom edge put when a page changes its height
         SizeChanged += (_, e) =>
         {
@@ -252,8 +259,8 @@ public partial class SettingsWindow : Window
 
     private void BuildTabs()
     {
-        var tabs = new[] { TabEffect, TabGlass };
-        var pages = new FrameworkElement[] { EffectPage, GlassPage };
+        var tabs = new[] { TabEffect, TabGlass, TabVisualizer };
+        var pages = new FrameworkElement[] { EffectPage, GlassPage, VisualizerPage };
         for (var i = 0; i < tabs.Length; i++)
         {
             var index = i;
@@ -295,14 +302,21 @@ public partial class SettingsWindow : Window
         VisualizerToggle.Checked += (_, _) => GlassSettings.SetVisualizer(true);
         VisualizerToggle.Unchecked += (_, _) => GlassSettings.SetVisualizer(false);
 
-        MordorToggle.IsChecked = GlassSettings.Mordor;
-        MordorToggle.Checked += (_, _) =>
+        // a theme turns its visualizer on with it: Mordor the eye, Tron the OLED panel
+        foreach (var (button, theme) in new[]
         {
-            GlassSettings.SetMordor(true);
-            VisualizerToggle.IsChecked = true;
-            VisualizerLookEyeFlame.IsChecked = true;
-        };
-        MordorToggle.Unchecked += (_, _) => GlassSettings.SetMordor(false);
+            (ThemeNone, DockTheme.None), (ThemeMordor, DockTheme.Mordor), (ThemeTronLegacy, DockTheme.TronLegacy), (ThemeTronAres, DockTheme.TronAres),
+        })
+        {
+            button.IsChecked = GlassSettings.Theme == theme;
+            button.Checked += (_, _) =>
+            {
+                GlassSettings.SetTheme(theme);
+                if (theme == DockTheme.None) return;
+                VisualizerToggle.IsChecked = true;
+                (theme == DockTheme.Mordor ? VisualizerLookEyeFlame : VisualizerLookOled).IsChecked = true;
+            };
+        }
 
         GpuVisualizerToggle.IsChecked = GlassSettings.GpuVisualizer;
         GpuVisualizerToggle.Checked += (_, _) => GlassSettings.SetGpuVisualizer(true);

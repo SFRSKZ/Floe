@@ -195,8 +195,6 @@ public static class GlassSettings
         Changed?.Invoke();
     }
 
-    public static void SetMordor(bool enabled) => SetTheme(enabled ? DockTheme.Mordor : DockTheme.None);
-
     /// <summary>
     /// Turning a theme on also turns on its visualizer (Mordor lights the eye, Tron the OLED panel); turning it off
     /// leaves the visualizer as it is.
