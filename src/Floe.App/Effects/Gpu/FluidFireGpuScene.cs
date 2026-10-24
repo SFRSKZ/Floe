@@ -29,19 +29,23 @@ public sealed class FluidFireGpuScene : IGpuScene
 
     // the demo's approved settings
     private const float Speed = .40f;
-    private const float Curl = 30;
-    private const float Buoyancy = 240;
+    // little curl and little lift: the fire streams straight out of the eye instead of curling back into it
+    private const float Curl = 9;
+    private const float Buoyancy = 110;
     private const float Side = 280;
-    private const float VelocityDissipation = .4f;
+    private const float VelocityDissipation = .9f;
     private const float DyeDissipation = 1.6f;
     private const int PressureIterations = 20;
 
     // one sim cell is 150/SH of the 680x150 demo, kept in DIP, so the fire keeps its size on any strip
     private const float CellDip = 2.66f;
 
-    // one fire source every this many DIP along the eye's ellipse, which stands this far off the dock
-    private const float SourceDip = 18;
-    private const float RimDip = 6;
+    // The eye: an almond round the dock, its pupil. The yellow ring that outlines it stands RingDip off the
+    // dock's long edges, its tips run TipDip past the dock's ends; between the dock and the ring lies the dark
+    // iris. One fire source every SourceDip along the ring, just outside it.
+    private const float SourceDip = 9;
+    private const float RingDip = 8;
+    private const float TipDip = 34;
 
     // the spectrum and the beat, smoothed on the CPU; the shaders only see the splats
     private readonly float[] _bands = new float[Bands];
@@ -242,10 +246,13 @@ public sealed class FluidFireGpuScene : IGpuScene
         _cb[9] = Curl;
         _cb[10] = Buoyancy;
         _cb[11] = 0;
-        _cb[12] = .5f; _cb[13] = .5f;
-        _cb[14] = 0;
         _cb[15] = Math.Clamp(frame.Fade, 0, 1);
-        _cb[16] = _cb[17] = _cb[18] = _cb[19] = 0;
+        // the eye for the display pass to outline: centre, straight half length and half height, in DIP
+        var eye = Eye();
+        _cb[11] = _sootPhase;
+        _cb[12] = eye.Tip; _cb[13] = _pixelsPerDip;
+        _cb[14] = 0;
+        _cb[16] = eye.X; _cb[17] = eye.Y; _cb[18] = eye.Straight; _cb[19] = eye.Half;
 
         context.RSSetViewports(_outputViewport);
         context.OMSetRenderTargets(target, null);
@@ -281,64 +288,91 @@ public sealed class FluidFireGpuScene : IGpuScene
     {
         float widthDip = _pixelW / _pixelsPerDip;
         float heightDip = _pixelH / _pixelsPerDip;
-        (float Left, float Right, float Bottom, float Top) dock;
-        lock (_dockLock) dock = _dock;
 
         // The demo's sideways push crosses its 680 DIP strip in a fifth of a second; on a wider strip the
         // same texel speed would barely show, so the sideways components keep that pace across the width.
         float stretch = _columns / 8f;
         float push = Side * k60 * .1f;
 
-        // Like the eye: the dock is the pupil and the fire streams out of an ellipse around it, along the
-        // ellipse's normal: straight up over the middle, sideways out of the two tips, slanting in between.
-        // The sim cells are square in DIP, so the ellipse and its normals are worked out in DIP.
-        float cx = (dock.Left + dock.Right) * .5f * widthDip;
-        float cy = (dock.Bottom + dock.Top) * .5f * heightDip;
-        float a = ((dock.Right - dock.Left) * .5f * widthDip) + RimDip;
-        float b = ((dock.Top - dock.Bottom) * .5f * heightDip) + RimDip;
-
-        // the upper half only (the lower one is under the screen's edge), sources spaced evenly along the arc
-        float arc = MathF.PI * .5f * (a + b);
-        int count = Math.Clamp((int)(arc / SourceDip), 8, 64);
+        // The fire streams out of the whole ring at once, along its outward normal: straight up over the dock,
+        // slanting out round the tips and straight out of their points. The sim cells are square in DIP, so the
+        // ring and its normals are worked out in DIP.
+        var eye = Eye();
+        float cap = Math.Max(1, (eye.Straight * 2) + (MathF.PI * .5f * (eye.Tip + eye.Half) * 2));
+        int count = Math.Clamp((int)(cap / SourceDip), 12, 220);
         for (int k = 0; k < count; k++)
         {
-            float t = MathF.PI * (k + .5f) / count;
-            float cos = MathF.Cos(t), sin = MathF.Sin(t);
-            float x = cx + (a * cos);
-            float y = cy + (b * sin);
+            // walk the ring's upper half from the left point to the right one: cap, straight top, cap
+            float s = (k + .5f) / count;
+            var (x, y, nx, ny, tip) = RingPoint(eye, s);
+            float band = Band(1 - MathF.Abs((s * 2) - 1));
+            float heat = (.16f + (tip * .3f) + (.25f * _bands[0]) + (band * band * 1.1f)) * k60;
+            float force = push * (.35f + band + (tip * (.6f + (1.4f * _beat))));
 
-            // outward normal of the ellipse; the tips are where the fire is flung hardest
-            float nx = cos / a, ny = sin / b;
-            float n = MathF.Sqrt((nx * nx) + (ny * ny));
-            nx /= n; ny /= n;
-            float tip = MathF.Abs(cos);
-            float band = Band(1 - MathF.Abs((t / MathF.PI * 2) - 1));
-            float heat = (.12f + (tip * tip * (.35f + _bands[0])) + (band * band * 1.2f)) * k60;
-            float force = push * (.3f + band + (tip * tip * (1 + (2 * _beat))));
-
-            // the dark of the eye: bands of soot drift round the ellipse and ride out on the fire as black waves
-            float wave = MathF.Sin((k * .55f) - (_sootPhase * 2.2f)) + (.6f * MathF.Sin((k * 1.3f) + (_sootPhase * 1.4f)));
+            // the dark of the eye: bands of soot drift round the ring and ride out on the fire as black waves
+            float wave = MathF.Sin((s * 70) - (_sootPhase * 2.2f)) + (.6f * MathF.Sin((s * 160) + (_sootPhase * 1.4f)));
             float soot = MathF.Max(0, wave - .5f) * (.6f + band + _beat) * k60;
 
-            float u = x / widthDip, v = y / heightDip;
-            SplatDye(context, aspect, u, v, heat, .0014f);
-            if (soot > 0) SplatDye(context, aspect, u + (nx * 3 / widthDip), v + (ny * 3 / heightDip), 0, .0012f, soot);
-            SplatVelocity(context, aspect, u + (nx * 4 / widthDip), v + (ny * 4 / heightDip), nx * force * stretch, ny * force, .0018f);
+            float u = (x + (nx * 3)) / widthDip, v = (y + (ny * 3)) / heightDip;
+            SplatDye(context, aspect, u, v, heat, .0009f);
+            if (soot > 0) SplatDye(context, aspect, u + (nx * 3 / widthDip), v + (ny * 3 / heightDip), 0, .0009f, soot);
+            SplatVelocity(context, aspect, u + (nx * 3 / widthDip), v + (ny * 3 / heightDip), nx * force * stretch, ny * force, .0012f);
         }
 
-        // the kick: the whole ellipse flares at once, hardest out of the tips
+        // the kick: the whole ring flares at once, out of the points and up off the top
         if (kick)
         {
-            for (int s = -1; s <= 1; s += 2)
+            for (int side = -1; side <= 1; side += 2)
             {
-                float u = (cx + (s * a)) / widthDip;
-                float v = cy / heightDip;
-                SplatVelocity(context, aspect, u + (s * 20 / widthDip), v, s * Side * 3 * stretch, Side * .4f, .008f);
-                SplatDye(context, aspect, u, v, 1.4f, .007f);
+                float u = (eye.X + (side * (eye.Straight + eye.Tip))) / widthDip;
+                float v = eye.Y / heightDip;
+                SplatVelocity(context, aspect, u + (side * 20 / widthDip), v, side * Side * 3 * stretch, Side * .3f, .008f);
+                SplatDye(context, aspect, u, v, 1.4f, .006f);
             }
 
-            SplatVelocity(context, aspect, cx / widthDip, (cy + b) / heightDip, 0, Side * 1.2f, .02f);
+            for (int k = 0; k < 7; k++)
+            {
+                float x = eye.X + (((k / 3f) - 1) * eye.Straight);
+                SplatVelocity(context, aspect, x / widthDip, (eye.Y + eye.Half + 4) / heightDip, 0, Side * .9f, .004f);
+                SplatDye(context, aspect, x / widthDip, (eye.Y + eye.Half + 3) / heightDip, .8f, .002f);
+            }
         }
+    }
+
+    // The eye round the dock, in DIP: its centre, the half length of its straight top and bottom, its half
+    // height and how far each rounded point reaches past the straight part.
+    private (float X, float Y, float Straight, float Half, float Tip) Eye()
+    {
+        float widthDip = _pixelW / _pixelsPerDip;
+        float heightDip = _pixelH / _pixelsPerDip;
+        (float Left, float Right, float Bottom, float Top) dock;
+        lock (_dockLock) dock = _dock;
+        float half = ((dock.Top - dock.Bottom) * .5f * heightDip) + RingDip;
+        float straight = Math.Max(0, ((dock.Right - dock.Left) * .5f * widthDip) - half + RingDip);
+        return ((dock.Left + dock.Right) * .5f * widthDip, (dock.Bottom + dock.Top) * .5f * heightDip, straight, half, half + TipDip);
+    }
+
+    // A point on the ring's upper half, s from 0 (the left point) to 1 (the right one), with its outward normal
+    // and how near it is to a point (1 at the very tip, 0 along the straight top).
+    private static (float X, float Y, float Nx, float Ny, float Tip) RingPoint((float X, float Y, float Straight, float Half, float Tip) eye, float s)
+    {
+        float capArc = MathF.PI * .25f * (eye.Tip + eye.Half);
+        float total = (capArc * 2) + (eye.Straight * 2);
+        float along = s * total;
+        if (along > capArc && along < total - capArc)
+        {
+            return (eye.X - eye.Straight + (along - capArc), eye.Y + eye.Half, 0, 1, 0);
+        }
+
+        // round a point: an elliptical quarter, Tip long and Half high
+        bool right = along >= total - capArc;
+        float t = right ? (total - along) / capArc : along / capArc;
+        float angle = t * MathF.PI * .5f;
+        float cos = MathF.Cos(angle), sin = MathF.Sin(angle);
+        float side = right ? 1 : -1;
+        float nx = cos / eye.Tip, ny = sin / eye.Half;
+        float n = MathF.Sqrt((nx * nx) + (ny * ny));
+        return (eye.X + (side * (eye.Straight + (eye.Tip * cos))), eye.Y + (eye.Half * sin), side * nx / n, ny / n, cos * cos);
     }
 
     // a band by position: 0 is the bass, 1 the top of the spectrum
@@ -738,9 +772,22 @@ public sealed class FluidFireGpuScene : IGpuScene
     private const string DisplayPs = """
         Texture2D DyeField : register(t0);
 
+        // the eye, as the CPU worked it out: centre and straight half length and half height in SplatColor,
+        // the points' reach and the pixels per DIP in Point, the soot clock in Value. 1 on the ring, less inside.
+        float EyeShape(float2 dip)
+        {
+            float2 q = dip - SplatColor.xy;
+            float ax = abs(q.x);
+            if (ax <= SplatColor.z) return abs(q.y) / SplatColor.w;
+            return length(float2((ax - SplatColor.z) / Point.x, q.y / SplatColor.w));
+        }
+
         float4 main(float4 position : SV_Position) : SV_Target
         {
             float2 uv = Uv(position);
+            float ppd = Point.y;
+            float2 dip = uv * Size / ppd;
+            float e = EyeShape(dip);
             float2 dye = SAMPLE(DyeField, uv).rg;
             float t = 1 - exp(-dye.r * 1.4);
             // crisp-edged, so it reads as black waves rather than a grey haze
@@ -756,8 +803,28 @@ public sealed class FluidFireGpuScene : IGpuScene
             // the soot swallows the fire's light and stays black even where the fire has gone
             // it burns the colour down the way the fire cools, yellow to red to black, never through olive
             c *= pow(saturate(1 - soot), float3(1.5, 3, 6));
-            float a = max(saturate(t * 6), .95 * soot) * smoothstep(1, .6, uv.y) * Fade;
-            return float4(c * a, a);
+            float a = max(saturate(t * 6), .95 * soot) * smoothstep(1, .6, uv.y);
+            float3 lit = c * a;
+
+            // the iris between the dock and the ring: black, with dark red streaks running out to the ring
+            float2 q = dip - SplatColor.xy;
+            float2 core = float2(clamp(q.x, -SplatColor.z, SplatColor.z), 0);
+            float2 away = q - core;
+            float across = abs(q.x) <= SplatColor.z ? q.x * .9 : atan2(away.y, abs(away.x)) * 14 * sign(q.x) + (SplatColor.z * .9 * sign(q.x));
+            float streak = saturate(sin(across * 2.1 + sin(across * .37 + Value) * 3) * .5 + .5);
+            float3 iris = float3(.55, .05, 0) * pow(streak, 3) * smoothstep(.4, 1, e);
+            float inside = smoothstep(1.02, .98, e);
+            lit = lerp(lit, iris, inside);
+            a = lerp(a, 1, inside);
+
+            // the ring: a thin line of white-yellow fire round the eye, flickering along its length, with a glow
+            float px = abs(e - 1) / max(fwidth(e), 1e-5);
+            float flicker = .75 + (.25 * sin((across * 1.3) + (Value * 9)) * sin((across * .41) - (Value * 5)));
+            float ring = saturate(1.5 - (px / (1.6 * ppd))) * flicker;
+            float glow = exp(-px / (5 * ppd)) * .55 * flicker;
+            lit = lit + (float3(1, .85, .35) * ring) + (float3(1, .45, .05) * glow * (1 - ring));
+            a = max(a, max(ring, glow));
+            return float4(lit, a) * Fade;
         }
         """;
 }
