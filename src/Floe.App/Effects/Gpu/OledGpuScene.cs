@@ -26,6 +26,10 @@ public sealed class OledGpuScene : IGpuScene
 
     // one panel pixel every 3 DIP, as chunky as the little screens; the feedback runs at 3x3 samples per pixel
     private const float PitchDip = 3;
+
+    // the bezel along the top and the sides, and how round its top corners are
+    private const float BezelDip = 5;
+    private const float CornerDip = 8;
     private const int Samples = 3;
 
     // the trails: how much of the last frame survives, per 60 fps frame
@@ -58,14 +62,14 @@ public sealed class OledGpuScene : IGpuScene
     private readonly ID3D11ShaderResourceView[] _inputs = new ID3D11ShaderResourceView[2];
     private readonly ID3D11ShaderResourceView[] _noInputs = new ID3D11ShaderResourceView[2];
     private readonly float[] _warpCb = new float[20];
-    private readonly float[] _panelCb = new float[8];
+    private readonly float[] _panelCb = new float[12];
     // row 0: the waveform; row 1: the bands
     private readonly float[] _audio = new float[SpectrumFrame.WaveLength * 2];
     private Viewport[] _feedbackViewport = Array.Empty<Viewport>(), _cellViewport = Array.Empty<Viewport>(), _viewport = Array.Empty<Viewport>();
 
     private int _pixelW, _pixelH;
     private float _pixelsPerDip = 1;
-    private float _pitch;
+    private float _pitch, _bezel;
     private int _cols, _rows;
 
     private int _preset, _previous;
@@ -129,8 +133,9 @@ public sealed class OledGpuScene : IGpuScene
         _pixelH = height;
         _pixelsPerDip = pixelsPerDip > 0 ? pixelsPerDip : 1;
         _pitch = PitchDip * _pixelsPerDip;
-        _cols = Math.Max(8, (int)(width / _pitch));
-        _rows = Math.Max(4, (int)(height / _pitch));
+        _bezel = BezelDip * _pixelsPerDip;
+        _cols = Math.Max(8, (int)((width - (2 * _bezel)) / _pitch));
+        _rows = Math.Max(4, (int)((height - _bezel) / _pitch));
 
         _feedback0 = new Target(_device, _cols * Samples, _rows * Samples);
         _feedback1 = new Target(_device, _cols * Samples, _rows * Samples);
@@ -215,6 +220,10 @@ public sealed class OledGpuScene : IGpuScene
         _panelCb[5] = _pixelH - (_rows * _pitch);
         _panelCb[6] = _pitch;
         _panelCb[7] = Math.Clamp(frame.Fade, 0, 1);
+        _panelCb[8] = _bezel;
+        _panelCb[9] = CornerDip * _pixelsPerDip;
+        _panelCb[10] = _pixelsPerDip;
+        _panelCb[11] = 0;
         Pass(context, _panelPs!, target, _viewport, _panelConstants!, _panelCb, _cells.Srv, null);
         context.PSSetShaderResources(0, _noInputs);
     }
@@ -532,6 +541,7 @@ public sealed class OledGpuScene : IGpuScene
         """;
 
     // Each cell is a rounded dot: off pixels stay a faint grid on the black glass, lit ones glow cool white.
+    // A graphite bezel frames the glass along the top and the sides; the bottom runs on to the screen's edge.
     private const string PanelPs = """
         cbuffer Params : register(b0)
         {
@@ -540,7 +550,19 @@ public sealed class OledGpuScene : IGpuScene
             float2 Origin;
             float Pitch;
             float Fade;
+            float Bezel;
+            float Corner;
+            float PixelsPerDip;
+            float Unused;
         };
+
+        // distance to a box open at the bottom with rounded top corners, negative inside
+        float Box(float2 p, float left, float top, float right, float radius)
+        {
+            float2 c = float2(clamp(p.x, left + radius, right - radius), top + radius);
+            if (p.y < c.y && (p.x < c.x || p.x > c.x)) return length(p - c) - radius;
+            return max(max(left - p.x, p.x - right), top - p.y);
+        }
 
         Texture2D<float> Cells : register(t0);
 
@@ -581,8 +603,17 @@ public sealed class OledGpuScene : IGpuScene
             c += lit * bloom * .16;
             c += float3(.008, .008, .012) * (1 - dotMask);
 
-            // the glass covers the strip edge to edge
-            float a = .95 * Fade;
+            // the bezel: its outer edge catches a little light, its inner lip is dark where it meets the glass
+            float outer = Box(position.xy, 0, 0, Size.x, Corner);
+            float inner = Box(position.xy, Bezel, Bezel, Size.x - Bezel, max(1, Corner - Bezel));
+            float shape = saturate(.5 - outer);
+            float glass = saturate(.5 - inner);
+            float3 frame = lerp(float3(.105, .11, .12), float3(.05, .052, .058), saturate(position.y / (Bezel * 3)));
+            frame += float3(.16, .165, .175) * saturate(1 - abs(outer + (.5 * PixelsPerDip)) / PixelsPerDip);
+            frame *= lerp(.35, 1, saturate(-inner / PixelsPerDip));
+            c = lerp(frame, c, glass);
+
+            float a = .95 * Fade * shape;
             return float4(saturate(c) * a, a);
         }
         """;
