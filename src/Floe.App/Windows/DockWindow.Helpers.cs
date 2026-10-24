@@ -28,6 +28,10 @@ public partial class DockWindow
     private double ToScreenX(double localX)
         => Left + (ActualWidth / 2) + ((localX - (ActualWidth / 2)) * _dockScale);
 
+    // the dock scales about its bottom edge
+    private double ToScreenY(double localY)
+        => Top + ActualHeight + ((localY - ActualHeight) * _dockScale);
+
     private static void Log(string message)
     {
         try

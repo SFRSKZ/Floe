@@ -102,7 +102,7 @@ public sealed class GlassPanel : Grid
         _clip.RadiusX = _clip.RadiusY = radius;
         _hairline.RadiusX = _hairline.RadiusY = radius;
         _metalSurface.CornerRadius = new System.Windows.CornerRadius(radius);
-        if (_metal is not null)
+        if (_metal is not null && size.Width > 0 && size.Height > 0)
         {
             _metal.Size = size;
             _metal.CornerRadius = radius;
@@ -119,6 +119,8 @@ public sealed class GlassPanel : Grid
             return;
         }
 
+        _tint.Fill = DockWindow.BuildGlassBrush();
+        _hairline.Stroke = DockWindow.BuildRimBrush();
         ApplyRim();
     }
 
@@ -126,6 +128,7 @@ public sealed class GlassPanel : Grid
     {
         _metal = GlassSettings.Rim switch
         {
+            not RimStyle.Plain when GlassSettings.Mordor => MetalRimEffect.ApplyPreset("ember", true),
             RimStyle.MetalSilver => MetalRimEffect.ApplyPreset("silver", true),
             RimStyle.MetalGold => MetalRimEffect.ApplyPreset("gold", true),
             RimStyle.MetalChromatic => MetalRimEffect.ApplyPreset("chromatic", true),
@@ -141,7 +144,8 @@ public sealed class GlassPanel : Grid
             // the dock's settings for its rim
             _metal.Thickness = 1.8;
             _metal.GlowGain = 0.45;
-            _metal.Size = RenderSize;
+            // before the first layout RenderSize is 0;0, which the effect rejects; ArrangeOverride sets it then
+            if (RenderSize.Width > 0 && RenderSize.Height > 0) _metal.Size = RenderSize;
             _metal.CornerRadius = CornerRadius;
         }
 

@@ -144,8 +144,18 @@ public sealed class MetalRimEffect : ShaderEffect
                 effect.Softness = dark ? 0.09 : 0.05;
                 effect.ShaderOpacity = 1;
                 break;
+            case "ember":
+                // red-hot iron: the Mordor theme's rim, whichever metal was picked
+                effect.TintColor = Color.FromArgb(0xd8, 0xff, 0x52, 0x10);
+                effect.Speed = 0.7;
+                effect.ShaderOpacity = 0.95;
+                effect.HighlightColor = Color.FromRgb(0xff, 0xc0, 0x70);
+                effect.ShadowColor = Color.FromRgb(0x2a, 0x06, 0x02);
+                effect.ShiftRed = 0.15;
+                effect.ShiftBlue = 0;
+                break;
             default:
-                throw new ArgumentException("Expected silver, gold or chromatic.", nameof(name));
+                throw new ArgumentException("Expected silver, gold, chromatic or ember.", nameof(name));
         }
         effect.GlowColor = Color.FromRgb(effect.TintColor.R, effect.TintColor.G, effect.TintColor.B);
         return effect;

@@ -70,12 +70,16 @@ public partial class App : Application
         if (Effects.Visualizer.HologramPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.CubePreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.StardustPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.StardustGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.FluidFireGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.OledGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.SilkContourPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Floe.App.Windows.SettingsPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.DozeDissolvePreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.HologramIntroPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Derezz.DerezzPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Services.DotMatrixIconsPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.GpuOffscreen.TryRenderTest(e.Args)) { Shutdown(); return; }
 
         if (TryRenderSettings(e.Args))
         {

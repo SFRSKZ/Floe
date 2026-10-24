@@ -295,6 +295,19 @@ public partial class SettingsWindow : Window
         VisualizerToggle.Checked += (_, _) => GlassSettings.SetVisualizer(true);
         VisualizerToggle.Unchecked += (_, _) => GlassSettings.SetVisualizer(false);
 
+        MordorToggle.IsChecked = GlassSettings.Mordor;
+        MordorToggle.Checked += (_, _) =>
+        {
+            GlassSettings.SetMordor(true);
+            VisualizerToggle.IsChecked = true;
+            VisualizerLookEyeFlame.IsChecked = true;
+        };
+        MordorToggle.Unchecked += (_, _) => GlassSettings.SetMordor(false);
+
+        GpuVisualizerToggle.IsChecked = GlassSettings.GpuVisualizer;
+        GpuVisualizerToggle.Checked += (_, _) => GlassSettings.SetGpuVisualizer(true);
+        GpuVisualizerToggle.Unchecked += (_, _) => GlassSettings.SetGpuVisualizer(false);
+
         DerezzToggle.IsChecked = AuraSettings.Derezz;
         DerezzToggle.Checked += (_, _) =>
         {
@@ -349,6 +362,10 @@ public partial class SettingsWindow : Window
         VisualizerLookDustWave.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.DustWave);
         VisualizerLookSilkContour.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.SilkContour;
         VisualizerLookSilkContour.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.SilkContour);
+        VisualizerLookEyeFlame.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.EyeFlame;
+        VisualizerLookEyeFlame.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.EyeFlame);
+        VisualizerLookOled.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Oled;
+        VisualizerLookOled.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Oled);
         CubeSizeSlider.Value = GlassSettings.CubeSize;
         CubeSizeValue.Text = GlassSettings.CubeSize.ToString("0") + " px";
         CubeSizeSlider.ValueChanged += (_, e) =>

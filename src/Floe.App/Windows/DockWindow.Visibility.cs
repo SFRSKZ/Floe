@@ -81,6 +81,7 @@ public partial class DockWindow
 
         _shown = true;
         UpdateEffectVisibility();
+        _visualizerWindow?.PlaceBelowDock(_hwnd);
         _outsideTicks = 0;
         AnimateTop(ShownTop);
     }
@@ -106,7 +107,7 @@ public partial class DockWindow
         BeginAnimation(TopProperty, animation);
     }
 
-    private double ShownTop => (MonitorBottomPx / DockScale) - Height - BottomMargin;
+    private double ShownTop => (MonitorBottomPx / DockScale) - Height - BottomMargin + Sink;
 
     private double HiddenTop => (MonitorBottomPx / DockScale) - TriggerShow - RestTop;
 

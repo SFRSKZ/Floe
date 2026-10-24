@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Windows.Media;
 
@@ -21,6 +22,8 @@ public enum VisualizerStyle
     Stardust,
     DustWave,
     SilkContour,
+    EyeFlame,
+    Oled,
 }
 
 public enum HologramColor
@@ -75,7 +78,13 @@ public static class GlassSettings
 
     public static bool Visualizer { get; private set; } = true;
 
+    /// <summary>Stardust and the dust wave drawn by Direct3D in their own layer instead of WPF (experimental).</summary>
+    public static bool GpuVisualizer { get; private set; }
+
     public static BulgeStyle Bulge { get; private set; } = BulgeStyle.Soft;
+
+    /// <summary>The Mordor theme: black iron glass lit from below by embers, ember glows, and Sauron's eye.</summary>
+    public static bool Mordor { get; private set; }
 
     public static VisualizerStyle VisualizerLook { get; private set; } = VisualizerStyle.Glow;
 
@@ -117,8 +126,12 @@ public static class GlassSettings
 
             Rim = Enum.TryParse<RimStyle>(model.Rim, true, out var rim) ? rim : RimStyle.Plain;
             Visualizer = model.Visualizer;
+            GpuVisualizer = model.GpuVisualizer;
+            Mordor = model.Mordor;
             Bulge = Enum.TryParse<BulgeStyle>(model.Bulge, true, out var bulge) ? bulge : BulgeStyle.Soft;
-            VisualizerLook = Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
+            // the eye flame replaced the wraith wind in its place in the list
+            VisualizerLook = model.VisualizerLook == "WraithWind" ? VisualizerStyle.EyeFlame
+                : Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
             HologramTint = Enum.TryParse<HologramColor>(model.HologramTint, true, out var tint) ? tint : HologramColor.Blue;
             Intro = Enum.TryParse<NowPlayingIntro>(model.Intro, true, out var intro) ? intro : NowPlayingIntro.Drop;
             DustColors = Enum.TryParse<DustPalette>(model.DustColors, true, out var dust) ? dust : DustPalette.Tint;
@@ -132,6 +145,11 @@ public static class GlassSettings
         catch
         {
             // fall back to defaults
+        }
+        finally
+        {
+            // previews can try the theme on without touching the saved settings
+            if (Environment.GetCommandLineArgs().Contains("--mordor", StringComparer.OrdinalIgnoreCase)) Mordor = true;
         }
     }
 
@@ -155,6 +173,37 @@ public static class GlassSettings
         }
 
         Visualizer = enabled;
+        Save();
+        Changed?.Invoke();
+    }
+
+    /// <summary>Turning the theme on also lights the eye; turning it off leaves the visualizer as it is.</summary>
+    public static void SetMordor(bool enabled)
+    {
+        if (Mordor == enabled)
+        {
+            return;
+        }
+
+        Mordor = enabled;
+        if (enabled)
+        {
+            Visualizer = true;
+            VisualizerLook = VisualizerStyle.EyeFlame;
+        }
+
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetGpuVisualizer(bool enabled)
+    {
+        if (GpuVisualizer == enabled)
+        {
+            return;
+        }
+
+        GpuVisualizer = enabled;
         Save();
         Changed?.Invoke();
     }
@@ -290,6 +339,8 @@ public static class GlassSettings
             {
                 Rim = Rim.ToString(),
                 Visualizer = Visualizer,
+                GpuVisualizer = GpuVisualizer,
+                Mordor = Mordor,
                 Bulge = Bulge.ToString(),
                 VisualizerLook = VisualizerLook.ToString(),
                 HologramTint = HologramTint.ToString(),
@@ -311,6 +362,10 @@ public static class GlassSettings
         public string Rim { get; set; } = nameof(RimStyle.Plain);
 
         public bool Visualizer { get; set; } = true;
+
+        public bool GpuVisualizer { get; set; }
+
+        public bool Mordor { get; set; }
 
         public string Bulge { get; set; } = nameof(BulgeStyle.Soft);
 
