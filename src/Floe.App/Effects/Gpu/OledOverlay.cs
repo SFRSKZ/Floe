@@ -4,8 +4,8 @@ namespace Floe.App.Effects.Gpu;
 
 /// <summary>
 /// What the OLED panel shows on top of the visualizer, drawn on the CPU straight into the panel's cells: the
-/// song that plays (cover, title, artist, controls, progress) in the strip's left wing, and a little CRT-headed
-/// robot who walks the panel while nothing plays, looking around with the eyes on his screen, and dances at its
+/// song that plays (cover, title, artist, controls, progress) in the strip's left wing, and a little TV-headed
+/// character who walks the panel while nothing plays, looking around with the eyes on his screen, and dances at its
 /// right end while music plays.
 /// <para>
 /// <see cref="SetMedia"/> and <see cref="SetDock"/> come from the UI thread; <see cref="Draw"/> runs on the
@@ -67,7 +67,7 @@ internal sealed class OledOverlay
     /// <summary>The square size the cover is converted from: <see cref="SetMedia"/> takes it as BGRA, this many pixels a side.</summary>
     public static int CoverPixels => CoverSource;
 
-    public void Draw(float[] value, float[] mask, int cols, int rows, float dt, float time, float beat, ReadOnlySpan<float> bands)
+    public void Draw(float[] value, float[] mask, int cols, int rows, float dt, float time, float beat)
     {
         Array.Clear(value);
         Array.Clear(mask);
@@ -103,7 +103,7 @@ internal sealed class OledOverlay
 
         // he keeps off the song in the left wing, and dances at the right end while it plays
         _robot.Update(dt, time, cols, media ? mediaEnd + FadeCells + 12 : 12, music: playing, beat, _random);
-        _robot.Draw(value, mask, cols, rows, time, bands);
+        _robot.Draw(value, mask, cols, rows, time);
     }
 
     private void BuildCover(byte[]? pixels, int version, int size)
@@ -234,45 +234,55 @@ internal sealed class OledOverlay
     // ---- the robot --------------------------------------------------------------------------------
 
     /// <summary>
-    /// A 16-bit style robot: a CRT monitor for a head (seen from three quarters, two eyes on its screen), a body
-    /// with a little equalizer on the chest, gloved hands and boots. While nothing plays he walks the panel,
+    /// A 16-bit style character: an old TV for a head (seen from three quarters, two crescent eyes on its screen),
+    /// a hoodie with its hands in the pocket, baggy trousers and sneakers. While nothing plays he walks the panel,
     /// stops to look around, blinks and waves; while music plays he stands at the right end and dances to it.
+    /// He is drawn with a black outline, so the show behind him never runs through him.
     /// </summary>
     private sealed class Robot
     {
         private enum Mode { Away, Walk, Look, Wave, Dance }
 
-        // '.' is see-through; '0'..'5' are the panel's greys from black to full white
+        // '.' is see-through; '0'..'5' are the panel's greys from black to full white. All face right.
         private static readonly string[] Head =
         {
-            "............55......",
-            ".............3......",
-            ".4444444444444444...",
-            "455555555555555532..",
-            "45311111111111113521",
-            "45320000000000003521",
-            "45300000000000003521",
-            "45300000000000003521",
-            "45300000000000003521",
-            "45300000000000003521",
-            "45300000000000003521",
-            "45311111111111113521",
-            "45525255555555553321",
-            ".2222222222222222211",
+            "...45555555555554",
+            ".2355555555555555",
+            "22355111111111155",
+            "22355100000000155",
+            "22355100000000155",
+            "22355100000000155",
+            "22355100000000155",
+            "22355100000000155",
+            "22355111111111155",
+            ".2355555555555555",
+            "..22444444444444.",
         };
 
-        private static readonly string[] Torso =
+        private static readonly string[] Hoodie =
         {
-            "..24444442..",
-            ".2455555542.",
-            "245300003542",
-            "245300003542",
-            "245300003542",
-            "245333333542",
-            ".2455555542.",
-            "..22222222..",
+            "....12333321....",
+            "..233252252332..",
+            ".23322522522332.",
+            ".23222522522232.",
+            ".23122422422132.",
+            ".23124444442132.",
+            ".23142222224132.",
+            ".33342222224333.",
+            "..214444444412..",
+            "..132323232323..",
         };
 
+        private const string Waist = "...2222222222...";
+
+        private static readonly string[] Leg = { "2221", "2321", "3221", "2321", "2221" };
+        private static readonly string[] Shoe = { ".4554", "55555", "33333" };
+        private static readonly string[] Eye = { ".55", "55.", "5..", "55.", ".55" };
+        private static readonly string[] HappyEye = { "...", ".5.", "5.5", "...", "..." };
+
+        private const int HeadWidth = 17, BodyWidth = 16;
+
+        private readonly List<int> _cells = new();
         private Mode _mode = Mode.Away;
         private float _x = -30, _dir = 1, _until, _lookUntil;
         private float _eyeX, _eyeY, _eyeToX, _eyeToY, _blink = -1;
@@ -368,171 +378,161 @@ internal sealed class OledOverlay
             _step += dt * speed * .9f;
         }
 
-        public void Draw(float[] value, float[] mask, int cols, int rows, float time, ReadOnlySpan<float> bands)
+        public void Draw(float[] value, float[] mask, int cols, int rows, float time)
         {
             if (_mode == Mode.Away) return;
+            _cells.Clear();
             bool walking = _mode == Mode.Walk;
             bool dancing = _mode == Mode.Dance;
             bool flip = _dir < 0;
-            int x = (int)MathF.Round(_x);
+            int bodyX = (int)MathF.Round(_x) - (BodyWidth / 2);
 
-            // from the boots up: boots 2 rows, legs 6, body 8, neck 1, head 14
-            int foot = rows - 1;
-            int lift = (walking && MathF.Sin(_step * 2) > .3f) || (dancing && _beat > .5f) ? 1 : 0;
-            int hip = foot - 7 - lift;
-            int torsoTop = hip - 8;
-            int headTop = torsoTop - 1 - Head.Length;
+            // from the sneakers up; he hops a cell with his steps and on the beat
+            int hop = (walking && MathF.Sin(_step * 2) > .3f) || (dancing && _beat > .5f) ? 1 : 0;
+            int shoeTop = rows - Shoe.Length - hop;
+            int legTop = shoeTop - Leg.Length;
+            int waistY = legTop - 1;
+            int hoodieTop = waistY - Hoodie.Length;
+            int headTop = hoodieTop - Head.Length;
 
-            // the head turns with him: the case's depth stays on the side he walks away from
-            int headX = flip ? x - 11 : x - 9;
-            Sprite(value, mask, cols, rows, Head, headX, headTop, flip);
-            if (MathF.Sin(time * 3) > .6f) Put(value, mask, cols, rows, headX + Col(12, Head[0].Length, flip), headTop, .4f);
+            for (int i = 0; i < 2; i++)
+            {
+                // the near leg strides forward while the far one goes back; dancing, one foot taps per beat
+                float stride = walking ? MathF.Sin(_step) * (i == 0 ? 1 : -1) : 0;
+                bool lifted = (walking && stride > .3f) || (dancing && _beat > .3f && (_beats & 1) == i);
+                int local = i == 0 ? 3 : 9;
+                int lx = bodyX + (flip ? BodyWidth - local - Leg[0].Length : local);
+                int dx = (int)MathF.Round(stride) * (flip ? -1 : 1);
+                for (int r = 0; r < Leg.Length; r++)
+                {
+                    Row(value, mask, cols, rows, Leg[r], lx + (r >= 2 ? dx : 0), legTop + r, (i == 1) != flip);
+                }
+
+                int sx = lx + (int)MathF.Round(stride * 2 * (flip ? -1 : 1));
+                for (int r = 0; r < Shoe.Length; r++)
+                {
+                    Row(value, mask, cols, rows, Shoe[r], sx, shoeTop + r - (lifted ? 1 : 0), flip);
+                }
+            }
+
+            Row(value, mask, cols, rows, Waist, bodyX, waistY, flip);
+            for (int r = 0; r < Hoodie.Length; r++) Row(value, mask, cols, rows, Hoodie[r], bodyX, hoodieTop + r, flip);
+
+            // the head: the set's depth stays behind him, and it nods side to side when he dances
+            int nod = dancing && _beat > .3f ? ((_beats & 1) == 0 ? -1 : 1) : 0;
+            int headX = (flip ? bodyX : bodyX - 1) + nod;
+            for (int r = 0; r < Head.Length; r++) Row(value, mask, cols, rows, Head[r], headX, headTop + r, flip);
+            int antenna = headX + Col(10, HeadWidth, flip);
+            Put(value, mask, cols, rows, antenna, headTop - 1, .6f);
+            Put(value, mask, cols, rows, antenna, headTop - 2, MathF.Sin(time * 3) > .6f ? .5f : 1);
             Eyes(value, mask, cols, rows, headX, headTop, flip, time);
 
-            Put(value, mask, cols, rows, x - 1, torsoTop - 1, .6f);
-            Put(value, mask, cols, rows, x, torsoTop - 1, .6f);
-            int torsoX = x - 6;
-            Sprite(value, mask, cols, rows, Torso, torsoX, torsoTop, flip);
-            Equalizer(value, mask, cols, rows, torsoX + 4, torsoTop + 2, bands, time);
+            // out of the pocket: the front hand waves, and dancing he throws one hand up per beat
+            bool frontUp = _mode == Mode.Wave || (dancing && _beat > .3f && (_beats & 1) == 1);
+            bool backUp = dancing && _beat > .3f && (_beats & 1) == 0;
+            if (frontUp) Arm(value, mask, cols, rows, bodyX, hoodieTop, front: true, flip, time);
+            if (backUp) Arm(value, mask, cols, rows, bodyX, hoodieTop, front: false, flip, time);
 
-            // arms: they swing with the steps, one waves, both pump on the beat when he dances
-            float swing = walking ? MathF.Sin(_step) * 2 : 0;
-            bool leftUp = dancing && _beat > .3f && (_beats & 1) == 0;
-            bool rightUp = (dancing && _beat > .3f && (_beats & 1) == 1) || _mode == Mode.Wave;
-            Arm(value, mask, cols, rows, torsoX - 1, torsoTop + 1, -1, swing, leftUp, time);
-            Arm(value, mask, cols, rows, torsoX + 12, torsoTop + 1, 1, -swing, rightUp, time);
-
-            float stride = walking ? MathF.Sin(_step) : dancing ? ((_beats & 1) == 0 ? .5f : -.5f) : 0;
-            Leg(value, mask, cols, rows, x - 3, hip, foot, stride, flip);
-            Leg(value, mask, cols, rows, x + 2, hip, foot, -stride, flip);
+            Outline(value, mask, cols, rows);
         }
 
-        // Two round eyes on the screen: their pupils look about, they blink together, and they turn to happy
-        // little arcs when he waves or dances.
+        // Two crescent eyes on the screen: they look about, blink together, and turn to happy little arcs when
+        // he waves or dances.
         private void Eyes(float[] value, float[] mask, int cols, int rows, int headX, int headTop, bool flip, float time)
         {
-            int w = Head[0].Length;
             bool happy = _mode is Mode.Wave or Mode.Dance;
-            bool shut = time - _blink < .13f;
-            int py = (int)MathF.Round(Math.Clamp(_eyeY, -1, 1));
-            int px = (int)MathF.Round(Math.Clamp(_eyeX * (flip ? -1 : 1), -1, 1));
-            for (int e = 0; e < 2; e++)
+            bool shut = !happy && time - _blink < .13f;
+            int px = happy || shut ? 0 : (int)MathF.Round(Math.Clamp(_eyeX * (flip ? -1 : 1), -1, 1));
+            int py = happy || shut ? 0 : (int)MathF.Round(Math.Clamp(_eyeY, -1, 1));
+            foreach (int left in new[] { 6, 11 })
             {
-                int left = e == 0 ? 4 : 10;
-                for (int r = 0; r < 4; r++)
+                for (int r = 0; r < 5; r++)
                 {
-                    for (int c = 0; c < 4; c++)
+                    for (int c = 0; c < 3; c++)
                     {
-                        float v;
-                        if (happy) v = (r == 1 && c is 1 or 2) || (r == 2 && c is 0 or 3) ? 1 : -1;
-                        else if (shut) v = r == 2 ? .8f : -1;
-                        else if ((r is 0 or 3) && (c is 0 or 3)) v = -1;
-                        else v = (c - 1 == px || c - 2 == px) && (r - 1 == py || r - 2 == py) ? 0 : 1;
-                        if (v < 0) continue;
-                        Put(value, mask, cols, rows, headX + Col(left + c, w, flip), headTop + 6 + r, v);
+                        char ch = happy ? HappyEye[r][c] : shut ? (r == 2 ? '4' : '.') : Eye[r][c];
+                        if (ch == '.') continue;
+                        Put(value, mask, cols, rows, headX + Col(left + c + px, HeadWidth, flip), headTop + 3 + r + py, Shade(ch));
                     }
                 }
             }
         }
 
-        // the chest's little screen: four bars from the bands when he dances, a slow scan otherwise
-        private void Equalizer(float[] value, float[] mask, int cols, int rows, int x, int y, ReadOnlySpan<float> bands, float time)
+        private void Arm(float[] value, float[] mask, int cols, int rows, int bodyX, int hoodieTop, bool front, bool flip, float time)
         {
-            for (int c = 0; c < 4; c++)
-            {
-                float level = _mode == Mode.Dance && bands.Length >= 4 ? bands[c * bands.Length / 4]
-                    : ((int)(time * 4) & 3) == c ? .4f : 0;
-                int h = (int)MathF.Round(level * 3);
-                for (int r = 0; r < 3; r++)
-                {
-                    Put(value, mask, cols, rows, x + c, y + 2 - r, r < h ? (r == h - 1 ? 1 : .6f) : 0);
-                }
-            }
-        }
+            // the hand leaves the pocket: the sleeve's cuff takes its place
+            int cuff = front ? 12 : 1;
+            for (int c = 0; c < 3; c++) Put(value, mask, cols, rows, bodyX + Col(cuff + c, BodyWidth, flip), hoodieTop + 7, Shade('2'));
 
-        private void Arm(float[] value, float[] mask, int cols, int rows, int sx, int sy, int side, float swing, bool up, float time)
-        {
-            int ex, ey, hx, hy;
-            if (up)
-            {
-                int wave = _mode == Mode.Wave ? (int)MathF.Round(MathF.Sin(time * 12) * 1.5f) : 0;
-                ex = sx + (side * 2);
-                ey = sy - 3;
-                hx = sx + (side * 2) + wave;
-                hy = sy - 7;
-            }
-            else
-            {
-                ex = sx + side - (int)MathF.Round(swing * side * .5f);
-                ey = sy + 3;
-                hx = sx + side - (int)MathF.Round(swing * side);
-                hy = sy + 6;
-            }
-
+            int wave = front && _mode == Mode.Wave ? (int)MathF.Round(MathF.Sin(time * 12)) : 0;
+            int shoulder = front ? 14 : 0, reach = front ? 17 : -2;
+            int sx = bodyX + Col(shoulder, BodyWidth, flip), sy = hoodieTop + 2;
+            int ex = bodyX + Col(reach, BodyWidth, flip), ey = hoodieTop - 2;
+            int hx = bodyX + Col(reach + wave, BodyWidth, flip), hy = hoodieTop - 6;
             Limb(value, mask, cols, rows, sx, sy, ex, ey);
             Limb(value, mask, cols, rows, ex, ey, hx, hy);
-
-            // a round glove
-            for (int r = -1; r <= 1; r++)
+            for (int r = -1; r <= 0; r++)
             {
-                for (int c = -1; c <= 1; c++)
-                {
-                    if (Math.Abs(r) + Math.Abs(c) < 2) Put(value, mask, cols, rows, hx + c, hy + r, r < 0 || c < 0 ? 1 : .8f);
-                }
+                for (int c = 0; c <= 1; c++) Put(value, mask, cols, rows, hx + c, hy + r, r < 0 ? .9f : .7f);
             }
         }
 
-        private void Leg(float[] value, float[] mask, int cols, int rows, int lx, int hip, int foot, float stride, bool flip)
-        {
-            int kx = lx + (int)MathF.Round(stride), ky = hip + 3 - (stride > .3f ? 1 : 0);
-            int fx = lx + (int)MathF.Round(stride * 2);
-            Limb(value, mask, cols, rows, lx, hip, kx, ky);
-            Limb(value, mask, cols, rows, kx, ky, fx, foot - 2);
-
-            // a boot pointing the way he faces, light on top, a dark sole
-            int toe = flip ? -1 : 1;
-            for (int c = -1; c <= 2; c++)
-            {
-                Put(value, mask, cols, rows, fx + (c * toe), foot - 1, c == 2 ? .6f : .8f);
-                Put(value, mask, cols, rows, fx + (c * toe), foot, .4f);
-            }
-        }
-
-        // a limb two cells thick, lit on one side and shaded on the other
-        private static void Limb(float[] value, float[] mask, int cols, int rows, int x0, int y0, int x1, int y1)
+        // a sleeve two cells thick, lit on one side and shaded on the other
+        private void Limb(float[] value, float[] mask, int cols, int rows, int x0, int y0, int x1, int y1)
         {
             int n = Math.Max(Math.Max(Math.Abs(x1 - x0), Math.Abs(y1 - y0)), 1);
             for (int i = 0; i <= n; i++)
             {
                 int x = x0 + (int)MathF.Round((x1 - x0) * i / (float)n), y = y0 + (int)MathF.Round((y1 - y0) * i / (float)n);
-                Put(value, mask, cols, rows, x, y, .8f);
-                Put(value, mask, cols, rows, x + 1, y, .5f);
+                Put(value, mask, cols, rows, x, y, Shade('3'));
+                Put(value, mask, cols, rows, x + 1, y, Shade('2'));
+            }
+        }
+
+        // a black rim around everything he drew, one cell wide
+        private void Outline(float[] value, float[] mask, int cols, int rows)
+        {
+            foreach (int i in _cells)
+            {
+                int x = i % cols, y = i / cols;
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        int nx = x + dx, ny = y + dy;
+                        if ((uint)nx >= (uint)cols || (uint)ny >= (uint)rows) continue;
+                        int j = (ny * cols) + nx;
+                        if (mask[j] >= 1) continue;
+                        value[j] = 0;
+                        mask[j] = 1;
+                    }
+                }
             }
         }
 
         private static int Col(int c, int width, bool flip) => flip ? width - 1 - c : c;
 
-        private static void Sprite(float[] value, float[] mask, int cols, int rows, string[] art, int x, int y, bool flip)
+        // the lit dots bloom, so the greys go darker than linear to keep his clothes dark next to the white set
+        private static float Shade(char ch) => MathF.Pow((ch - '0') / 5f, 1.7f);
+
+        private void Row(float[] value, float[] mask, int cols, int rows, string line, int x, int y, bool flip)
         {
-            for (int r = 0; r < art.Length; r++)
+            for (int c = 0; c < line.Length; c++)
             {
-                string line = art[r];
-                for (int c = 0; c < line.Length; c++)
-                {
-                    char ch = line[c];
-                    if (ch == '.') continue;
-                    Put(value, mask, cols, rows, x + Col(c, line.Length, flip), y + r, (ch - '0') / 5f);
-                }
+                char ch = line[c];
+                if (ch == '.') continue;
+                Put(value, mask, cols, rows, x + Col(c, line.Length, flip), y, Shade(ch));
             }
         }
 
-        // the robot covers what is behind him: every cell he draws is masked, dark ones included
-        private static void Put(float[] value, float[] mask, int cols, int rows, int x, int y, float v)
+        // he covers what is behind him: every cell he draws is masked, dark ones included
+        private void Put(float[] value, float[] mask, int cols, int rows, int x, int y, float v)
         {
             if ((uint)x >= (uint)cols || (uint)y >= (uint)rows) return;
             int i = (y * cols) + x;
             value[i] = v;
             mask[i] = 1;
+            _cells.Add(i);
         }
     }
 }
