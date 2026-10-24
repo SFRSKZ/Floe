@@ -26,6 +26,15 @@ public enum VisualizerStyle
     Oled,
 }
 
+/// <summary>A theme dresses the whole dock (glass, rim, glows) and its visualizer in one look.</summary>
+public enum DockTheme
+{
+    None,
+    Mordor,
+    TronLegacy,
+    TronAres,
+}
+
 public enum HologramColor
 {
     Blue,
@@ -83,8 +92,13 @@ public static class GlassSettings
 
     public static BulgeStyle Bulge { get; private set; } = BulgeStyle.Soft;
 
+    public static DockTheme Theme { get; private set; }
+
     /// <summary>The Mordor theme: black iron glass lit from below by embers, ember glows, and Sauron's eye.</summary>
-    public static bool Mordor { get; private set; }
+    public static bool Mordor => Theme == DockTheme.Mordor;
+
+    /// <summary>Either Tron theme: black glass edged in neon light lines, with the OLED panel lit in the same colour.</summary>
+    public static bool Tron => Theme is DockTheme.TronLegacy or DockTheme.TronAres;
 
     public static VisualizerStyle VisualizerLook { get; private set; } = VisualizerStyle.Glow;
 
@@ -127,7 +141,8 @@ public static class GlassSettings
             Rim = Enum.TryParse<RimStyle>(model.Rim, true, out var rim) ? rim : RimStyle.Plain;
             Visualizer = model.Visualizer;
             GpuVisualizer = model.GpuVisualizer;
-            Mordor = model.Mordor;
+            // before themes there was only the Mordor switch
+            Theme = Enum.TryParse<DockTheme>(model.Theme, true, out var theme) ? theme : model.Mordor ? DockTheme.Mordor : DockTheme.None;
             Bulge = Enum.TryParse<BulgeStyle>(model.Bulge, true, out var bulge) ? bulge : BulgeStyle.Soft;
             // the eye flame replaced the wraith wind in its place in the list
             VisualizerLook = model.VisualizerLook == "WraithWind" ? VisualizerStyle.EyeFlame
@@ -149,7 +164,10 @@ public static class GlassSettings
         finally
         {
             // previews can try the theme on without touching the saved settings
-            if (Environment.GetCommandLineArgs().Contains("--mordor", StringComparer.OrdinalIgnoreCase)) Mordor = true;
+            var args = Environment.GetCommandLineArgs();
+            if (args.Contains("--mordor", StringComparer.OrdinalIgnoreCase)) Theme = DockTheme.Mordor;
+            var themeArg = args.FirstOrDefault(a => a.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase));
+            if (themeArg is not null && Enum.TryParse<DockTheme>(themeArg[8..], true, out var previewTheme)) Theme = previewTheme;
         }
     }
 
@@ -177,19 +195,24 @@ public static class GlassSettings
         Changed?.Invoke();
     }
 
-    /// <summary>Turning the theme on also lights the eye; turning it off leaves the visualizer as it is.</summary>
-    public static void SetMordor(bool enabled)
+    public static void SetMordor(bool enabled) => SetTheme(enabled ? DockTheme.Mordor : DockTheme.None);
+
+    /// <summary>
+    /// Turning a theme on also turns on its visualizer (Mordor lights the eye, Tron the OLED panel); turning it off
+    /// leaves the visualizer as it is.
+    /// </summary>
+    public static void SetTheme(DockTheme theme)
     {
-        if (Mordor == enabled)
+        if (Theme == theme)
         {
             return;
         }
 
-        Mordor = enabled;
-        if (enabled)
+        Theme = theme;
+        if (theme != DockTheme.None)
         {
             Visualizer = true;
-            VisualizerLook = VisualizerStyle.EyeFlame;
+            VisualizerLook = theme == DockTheme.Mordor ? VisualizerStyle.EyeFlame : VisualizerStyle.Oled;
         }
 
         Save();
@@ -341,6 +364,7 @@ public static class GlassSettings
                 Visualizer = Visualizer,
                 GpuVisualizer = GpuVisualizer,
                 Mordor = Mordor,
+                Theme = Theme.ToString(),
                 Bulge = Bulge.ToString(),
                 VisualizerLook = VisualizerLook.ToString(),
                 HologramTint = HologramTint.ToString(),
@@ -366,6 +390,8 @@ public static class GlassSettings
         public bool GpuVisualizer { get; set; }
 
         public bool Mordor { get; set; }
+
+        public string Theme { get; set; } = nameof(DockTheme.None);
 
         public string Bulge { get; set; } = nameof(BulgeStyle.Soft);
 
