@@ -201,6 +201,13 @@ public partial class DockWindow
         UpdateCapsule(scales);
         ApplyLayout(scales);
         UpdateShape();
+        // --cube-time=S plays the Tron cube mound for S seconds, so a still shows it flowing and scattering
+        var cubeTime = Environment.GetCommandLineArgs().FirstOrDefault(a => a.StartsWith("--cube-time=", StringComparison.OrdinalIgnoreCase))?["--cube-time=".Length..];
+        if (double.TryParse(cubeTime, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var seconds))
+        {
+            for (var t = 0.0; t < seconds; t += 1.0 / 60) UpdateTronCubes(1.0 / 60);
+        }
+
         _hoveredIndex = FindHoveredIndex();
         if (_hoveredIndex >= 0)
         {

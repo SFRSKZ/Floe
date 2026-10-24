@@ -647,7 +647,7 @@ public sealed class DerezzField
     }
 
     /// <summary>One brush worth of quads, built into a single geometry per frame.</summary>
-    private sealed class Batch
+    internal sealed class Batch
     {
         private StreamGeometry? _geometry;
         private StreamGeometryContext? _context;
