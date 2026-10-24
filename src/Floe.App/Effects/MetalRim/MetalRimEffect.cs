@@ -2,6 +2,7 @@
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
+using Floe.App.Services;
 
 namespace Floe.App.Effects.MetalRim;
 
@@ -154,8 +155,22 @@ public sealed class MetalRimEffect : ShaderEffect
                 effect.ShiftRed = 0.15;
                 effect.ShiftBlue = 0;
                 break;
+            case "tron":
+                {
+                    // neon light, not chrome: a thin line of the theme's light in a dark halo
+                    var line = ThemePalette.LineColor;
+                    var dim = ThemePalette.DimColor;
+                    effect.TintColor = Color.FromArgb(0xe0, line.R, line.G, line.B);
+                    effect.HighlightColor = ThemePalette.HotColor;
+                    effect.ShadowColor = Color.FromRgb((byte)(dim.R / 4), (byte)(dim.G / 4), (byte)(dim.B / 4));
+                    effect.Speed = 0.5;
+                    effect.ShaderOpacity = 1;
+                    effect.ShiftRed = 0;
+                    effect.ShiftBlue = 0;
+                    break;
+                }
             default:
-                throw new ArgumentException("Expected silver, gold, chromatic or ember.", nameof(name));
+                throw new ArgumentException("Expected silver, gold, chromatic, ember or tron.", nameof(name));
         }
         effect.GlowColor = Color.FromRgb(effect.TintColor.R, effect.TintColor.G, effect.TintColor.B);
         return effect;

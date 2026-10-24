@@ -155,6 +155,7 @@ public partial class DockWindow : Window
     private readonly Path _specular = new() { IsHitTestVisible = false };
     private readonly Rectangle _grain = new() { IsHitTestVisible = false };
     private readonly Path _rim = new() { IsHitTestVisible = false };
+    private readonly TronCubes _tronCubes = new();
     private readonly Ellipse _glow = new() { IsHitTestVisible = false, Width = 220, Height = 86 };
 
     private readonly Ellipse _dropRing = new()
@@ -379,6 +380,7 @@ public partial class DockWindow : Window
         _grain.Clip = _shapeGeometry;
         ShapeLayer.Children.Add(_grain);
         ShapeLayer.Children.Add(_metalHost);
+        ShapeLayer.Children.Add(_tronCubes);
 
         _glowLayer.Children.Add(_glow);
         _glowLayer.Children.Add(_dropRing);

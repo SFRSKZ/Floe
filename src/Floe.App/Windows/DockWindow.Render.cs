@@ -66,6 +66,9 @@ public partial class DockWindow
     }
 
     private static readonly bool PerfLog = Environment.GetEnvironmentVariable("FLOE_PERF") is not null;
+    // the loose cubes scatter on the dock's own frame time
+    private double _frameDt = 1 / 60.0;
+    private readonly List<TronCubes.Column> _tronColumns = new();
     private int _perfFrames;
     private double _perfWork;
     private double _perfMaxWork;
@@ -159,6 +162,8 @@ public partial class DockWindow
             dt = 1.0 / 60.0;
         }
 
+        _frameDt = dt;
+
         if (_metalEffect is not null && !_glassPreview)
         {
             // Lite holds the rim still; the drop flash lives on FlashAge, so it still plays.
@@ -210,8 +215,8 @@ public partial class DockWindow
             UpdateShape();
             // UpdateShape may skip its rebuild here, but the warp has to go once the bulge is gone
             UpdateRimWarp();
-            // a held-still rim must not keep the loop alive by itself
-            if (_metalEffect is null || !IsMouseOver || !Performance.AmbientMotion) StopAnimation();
+            // a held-still rim must not keep the loop alive by itself; a loose cube still in the air must
+            if ((_metalEffect is null || !IsMouseOver || !Performance.AmbientMotion) && !_tronCubes.Busy) StopAnimation();
         }
 
         return true;
@@ -246,6 +251,9 @@ public partial class DockWindow
 
     private void UpdateShape()
     {
+        // the loose cubes follow the springs every frame, even when the geometry itself is skipped
+        UpdateTronCubes(_frameDt);
+
         // skip rebuilding the geometry when nothing meaningful changed (per-frame cost)
         if (Math.Abs(_shapeHover - _currentHoverX) < 0.25
             && Math.Abs(_shapeBulge - _currentBulge) < 0.25
@@ -315,7 +323,7 @@ public partial class DockWindow
                 continue;
             }
 
-            var color = GlassSettings.Mordor ? AuraSettings.Embers[1] : slot.Item.Glow;
+            var color = GlassSettings.Tron ? ThemePalette.LineColor : GlassSettings.Mordor ? AuraSettings.Embers[1] : slot.Item.Glow;
             var alpha = (byte)(0x6E * weight * intensity);
             _glowPairs.Add((rel, Color.FromArgb(alpha, color.R, color.G, color.B)));
         }
@@ -355,8 +363,10 @@ public partial class DockWindow
         double TopAt(double localX)
             => Math.Max(0, RestTop - (EffectiveBulge * BulgeProfile(localX - (_currentHoverX - offset))));
 
-        var y0 = TopAt(r);
-        var y1 = TopAt(width - r);
+        if (GlassSettings.Tron) BuildCubeColumns(_tronColumns, false);
+        var stepped = GlassSettings.Tron && _tronColumns.Count > 0;
+        var y0 = stepped ? _tronColumns[^1].Top : TopAt(r);
+        var y1 = stepped ? _tronColumns[0].Top : TopAt(width - r);
 
         AddArc(points, offset + r, Bottom - r, r, 180, 90, 6);
         points.Add(new Point(offset + width - r, Bottom));
@@ -364,11 +374,23 @@ public partial class DockWindow
         points.Add(new Point(offset + width, y1 + r));
         AddArc(points, offset + width - r, y1 + r, r, 0, -90, 6);
 
-        var steps = Math.Max(16, (int)(width / 3));
-        for (var i = 0; i <= steps; i++)
+        if (stepped)
         {
-            var localX = (width - r) - ((width - (2 * r)) * i / steps);
-            points.Add(new Point(offset + localX, TopAt(localX)));
+            // whole cubes: two points per column, leaving a vertical riser where the step changes
+            foreach (var column in _tronColumns)
+            {
+                points.Add(new Point(column.Left + column.Width, column.Top));
+                points.Add(new Point(column.Left, column.Top));
+            }
+        }
+        else
+        {
+            var steps = Math.Max(16, (int)(width / 3));
+            for (var i = 0; i <= steps; i++)
+            {
+                var localX = (width - r) - ((width - (2 * r)) * i / steps);
+                points.Add(new Point(offset + localX, TopAt(localX)));
+            }
         }
 
         AddArc(points, offset + r, y0 + r, r, -90, -180, 6);
@@ -376,6 +398,46 @@ public partial class DockWindow
 
         ApplySideStretch(points, offset, width);
         return points;
+    }
+
+    // Tron's top edge as whole cubes, right to left. The loose cubes get the side stretch too, since
+    // the shape's own points carry it once BuildShape hands them to ApplySideStretch.
+    private void BuildCubeColumns(List<TronCubes.Column> target, bool stretch)
+    {
+        target.Clear();
+        var offset = _capsuleLeft;
+        var width = _capsuleWidth;
+        var r = CornerRadius;
+        var hover = _currentHoverX - offset;
+        var bulge = EffectiveBulge;
+        var strength = MaxBulge > 0 ? Math.Max(0, Math.Min(1, bulge / MaxBulge)) : 0;
+        var mid = offset + (width / 2);
+        var leftShift = stretch && strength > .001 ? MaxSideStretch * Gaussian(0, hover) * strength : 0;
+        var rightShift = stretch && strength > .001 ? MaxSideStretch * Gaussian(width, hover) * strength : 0;
+
+        for (var right = width - r; right > r + .01; right -= TronCubes.Cube)
+        {
+            var left = Math.Max(r, right - TronCubes.Cube);
+            var cubes = (bulge * BulgeProfile(((right + left) / 2) - hover)) / TronCubes.Cube;
+            var whole = Math.Floor(cubes);
+            var x0 = offset + left;
+            var x1 = offset + right;
+            if (leftShift > 0 || rightShift > 0)
+            {
+                if (x0 < mid) x0 -= leftShift; else x0 += rightShift;
+                if (x1 < mid) x1 -= leftShift; else x1 += rightShift;
+            }
+
+            target.Add(new TronCubes.Column(x0, RestTop - (whole * TronCubes.Cube), x1 - x0, whole * TronCubes.Cube, cubes - whole));
+        }
+    }
+
+    // feed the loose cubes once per frame: the columns plus the frame time that drives the scatter
+    private void UpdateTronCubes(double dt)
+    {
+        if (GlassSettings.Tron) BuildCubeColumns(_tronColumns, true);
+        else _tronColumns.Clear();
+        _tronCubes.Frame(_tronColumns, _currentHoverX, dt);
     }
 
     private void ApplySideStretch(List<Point> points, double offset, double width)

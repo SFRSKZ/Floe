@@ -128,6 +128,7 @@ public sealed class GlassPanel : Grid
     {
         _metal = GlassSettings.Rim switch
         {
+            _ when GlassSettings.Tron => MetalRimEffect.ApplyPreset("tron", true),
             not RimStyle.Plain when GlassSettings.Mordor => MetalRimEffect.ApplyPreset("ember", true),
             RimStyle.MetalSilver => MetalRimEffect.ApplyPreset("silver", true),
             RimStyle.MetalGold => MetalRimEffect.ApplyPreset("gold", true),

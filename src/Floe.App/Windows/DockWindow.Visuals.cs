@@ -54,6 +54,17 @@ public partial class DockWindow
             StartPoint = new Point(0, 0),
             EndPoint = new Point(0, 1),
         };
+        if (GlassSettings.Tron)
+        {
+            // glossy black glass, with the grid's dim light just showing at the bottom
+            var dim = ThemePalette.DimColor;
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD8, 0x03, 0x05, 0x07), 0.0));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xDA, 0x04, 0x06, 0x09), 0.55));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xDC, dim.R, dim.G, dim.B), 1.0));
+            brush.Freeze();
+            return brush;
+        }
+
         if (GlassSettings.Mordor)
         {
             // black iron, a little rust in it, with the embers below glowing up through the bottom
@@ -92,6 +103,17 @@ public partial class DockWindow
             StartPoint = new Point(0, 0),
             EndPoint = new Point(0, 1),
         };
+        if (GlassSettings.Tron)
+        {
+            // one neon hairline: at its brightest along the top edge, still lit at the bottom
+            var line = ThemePalette.LineColor;
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xE6, line.R, line.G, line.B), 0.0));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x8C, line.R, line.G, line.B), 0.45));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xB4, line.R, line.G, line.B), 1.0));
+            brush.Freeze();
+            return brush;
+        }
+
         if (GlassSettings.Mordor)
         {
             // a hot edge: dull red on top, brighter where the embers below catch it
@@ -197,13 +219,13 @@ public partial class DockWindow
 
     private void ApplyGlassSettings()
     {
-        if (_appliedMordor != GlassSettings.Mordor)
+        if (_appliedTheme != GlassSettings.Theme)
         {
-            _appliedMordor = GlassSettings.Mordor;
+            _appliedTheme = GlassSettings.Theme;
             _glass.Fill = BuildGlassBrush();
             _rim.Stroke = BuildRimBrush();
-            // the sheen catches the fire's warm light instead of white
-            var sheen = GlassSettings.Mordor ? Color.FromRgb(0xFF, 0xA0, 0x60) : Colors.White;
+            // the sheen catches the fire's warm light, or the neon line, instead of white
+            var sheen = GlassSettings.Tron ? ThemePalette.LineColor : GlassSettings.Mordor ? Color.FromRgb(0xFF, 0xA0, 0x60) : Colors.White;
             foreach (var stop in _sheenBrush.GradientStops) stop.Color = Color.FromArgb(stop.Color.A, sheen.R, sheen.G, sheen.B);
             _spectralItem = null;
             UpdateAura();
@@ -216,10 +238,14 @@ public partial class DockWindow
             var argument = Environment.GetCommandLineArgs().FirstOrDefault(a => a.StartsWith("--renderrim=", StringComparison.OrdinalIgnoreCase));
             if (argument is not null && Enum.TryParse<RimStyle>(argument[12..], true, out var previewStyle)) style = previewStyle;
         }
+        // the loose cubes only exist in Tron, and follow the shape every frame
+        _tronCubes.Visibility = GlassSettings.Tron ? Visibility.Visible : Visibility.Collapsed;
         if (_appliedRim == style) return;
         _appliedRim = style;
         _metalEffect = _appliedRim switch
         {
+            // the metal shader cannot follow cube steps: Tron keeps the plain neon hairline
+            _ when GlassSettings.Tron => null,
             not RimStyle.Plain when GlassSettings.Mordor => MetalRimEffect.ApplyPreset("ember", true),
             RimStyle.MetalSilver => MetalRimEffect.ApplyPreset("silver", true),
             RimStyle.MetalGold => MetalRimEffect.ApplyPreset("gold", true),
@@ -227,6 +253,10 @@ public partial class DockWindow
             _ => null,
         };
         if (NoFx.Contains("metal") || _metalEffect is { IsAvailable: false } || (!_glassPreview && !RenderCapability.IsPixelShaderVersionSupported(3, 0))) _metalEffect = null;
+        // the stepped neon hairline gets a soft bloom of its own colour
+        _rim.Effect = GlassSettings.Tron && !NoFx.Contains("glow")
+            ? new DropShadowEffect { ShadowDepth = 0, BlurRadius = 8, Color = ThemePalette.LineColor, Opacity = .8, RenderingBias = RenderingBias.Performance }
+            : null;
         _metalHost.Visibility = _metalEffect is null ? Visibility.Collapsed : Visibility.Visible;
         _rim.Visibility = _outerRim.Visibility = _metalEffect is null ? Visibility.Visible : Visibility.Collapsed;
         _metalSurface.Effect = _metalEffect;
@@ -276,6 +306,9 @@ public partial class DockWindow
         _rim.StrokeThickness = 2 * pixel; // clipping discards the outer half: a 1px inner hairline
         _outerRim.StrokeThickness = 2 * pixel; // exterior clip discards the inner half
         _shadowClip.Rect = ShadowClipRect();
+        // the loose cubes draw over the whole canvas, in window coordinates
+        _tronCubes.Width = _windowWidth;
+        _tronCubes.Height = WindowHeight;
         if (_metalEffect is null) return;
         var width = Math.Max(1, _capsuleWidth);
         var hover = _currentHoverX - _capsuleLeft;
@@ -385,7 +418,7 @@ public partial class DockWindow
         _shapeHover = double.NaN;
     }
 
-    private bool _appliedMordor;
+    private DockTheme _appliedTheme = (DockTheme)(-1);
 
     private void DisposeGlass() => GlassSettings.Changed -= OnGlassSettingsChanged;
 }

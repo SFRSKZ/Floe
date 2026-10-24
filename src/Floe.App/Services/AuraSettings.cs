@@ -250,6 +250,7 @@ public static class AuraSettings
 
     public static Color[] GetColors(DockItemViewModel item)
     {
+        if (GlassSettings.Tron) return ThemePalette.Glows;
         if (GlassSettings.Mordor) return Embers;
 
         if (Mode == AuraColorMode.Icon && item.Icon is not null)
