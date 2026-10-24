@@ -1,3 +1,4 @@
+using Floe.App.Services;
 using Floe.Core.Interop;
 using Vortice.D3DCompiler;
 using Vortice.Direct3D;
@@ -16,13 +17,18 @@ namespace Floe.App.Effects.Gpu;
 /// tunnels, rivers and spirals that move with the song. That runs on the GPU at three samples per panel pixel;
 /// a second pass averages each panel pixel's samples into a few grey levels, and the last one draws the cells
 /// as rounded dots with a faint glow. Five presets take turns every <see cref="CycleSeconds"/>, blending
-/// their warps over two seconds and changing on a kick.
+/// their warps over two seconds and changing on a kick; a Tron theme lights the dots in its colours and adds a
+/// sixth preset, the grid floor, which plays alone when the theme comes on.
 /// </para>
 /// </summary>
 public sealed class OledGpuScene : IGpuScene
 {
     private const int Bands = 24;
     private const int Presets = 5;
+
+    // the sixth preset: the grid floor, which only joins the cycle while a Tron theme runs
+    private const int GridPreset = Presets;
+    private const float GridSeconds = 20;
 
     // one panel pixel every 3 DIP, as chunky as the little screens; the feedback runs at 3x3 samples per pixel
     private const float PitchDip = 2;
@@ -69,7 +75,8 @@ public sealed class OledGpuScene : IGpuScene
     private readonly ID3D11ShaderResourceView[] _inputs = new ID3D11ShaderResourceView[2];
     private readonly ID3D11ShaderResourceView[] _noInputs = new ID3D11ShaderResourceView[2];
     private readonly float[] _warpCb = new float[20];
-    private readonly float[] _panelCb = new float[12];
+    // the cells, then the dots' off, lit and hot colours as three float4
+    private readonly float[] _panelCb = new float[24];
     // row 0: the waveform; row 1: the bands
     private readonly float[] _audio = new float[SpectrumFrame.WaveLength * 2];
     private Viewport[] _feedbackViewport = Array.Empty<Viewport>(), _cellViewport = Array.Empty<Viewport>(), _viewport = Array.Empty<Viewport>();
@@ -81,6 +88,11 @@ public sealed class OledGpuScene : IGpuScene
 
     private int _preset, _previous;
     private float _presetTime, _blend = 1;
+    private DockTheme _theme;
+    private float _tronTime;
+
+    /// <summary>The theme whose light the dots carry; set from the UI, read again on the render thread every frame.</summary>
+    public DockTheme Theme { get; set; }
 
     /// <summary>How long each preset plays before the next one blends in.</summary>
     public float CycleSeconds { get; set; } = 20;
@@ -195,8 +207,11 @@ public sealed class OledGpuScene : IGpuScene
         if (_feedback0 is null || _feedback1 is null || _cells is null) return;
 
         float dt = Math.Clamp(frame.Dt, 0, .05f);
+        var theme = Theme;
+        bool tron = theme is DockTheme.TronLegacy or DockTheme.TronAres;
+        TrackTheme(theme, dt);
         bool kick = UpdateAudio(dt, frame.Audio);
-        Advance(dt, kick);
+        Advance(dt, kick, tron);
         _activity += ((MusicPlaying ? 1 : 0) - _activity) * (1 - MathF.Exp(-dt * 2));
 
         _overlay.Draw(_overlayValue, _overlayMask, _cols, _rows, dt, _time);
@@ -259,6 +274,7 @@ public sealed class OledGpuScene : IGpuScene
         _panelCb[9] = CornerDip * _pixelsPerDip;
         _panelCb[10] = _pixelsPerDip;
         _panelCb[11] = 0;
+        SetDotColors(theme, tron);
         Pass(context, _panelPs!, target, _viewport, _panelConstants!, _panelCb, _cells.Srv, null);
         context.PSSetShaderResources(0, _noInputs);
     }
@@ -280,19 +296,54 @@ public sealed class OledGpuScene : IGpuScene
         context.Draw(3, 0);
     }
 
+    // A Tron theme brings the grid floor in at once, lights the dots in its colours and keeps the grid alone for
+    // its first moments; other themes keep the monochrome show and the five presets.
+    private void TrackTheme(DockTheme theme, float dt)
+    {
+        bool tron = theme is DockTheme.TronLegacy or DockTheme.TronAres;
+        if (tron != (_theme is DockTheme.TronLegacy or DockTheme.TronAres))
+        {
+            _tronTime = 0;
+            if (tron)
+            {
+                _previous = _blend < 1 ? _previous : _preset;
+                _preset = GridPreset;
+                _presetTime = 0;
+                _blend = 0;
+            }
+        }
+
+        _theme = theme;
+        if (tron) _tronTime += dt;
+    }
+
     // Takes turns between the presets: when one has played its time, the next kick brings in the next one.
-    private void Advance(float dt, bool kick)
+    private void Advance(float dt, bool kick, bool tron)
     {
         _blend = MathF.Min(1, _blend + (dt / BlendSeconds));
         _presetTime += dt;
+        int count = tron ? Presets + 1 : Presets;
+        if (_preset >= count)
+        {
+            // the grid leaves with its theme; the blend still draws it on its way out
+            _previous = _blend < 1 ? _previous : _preset;
+            _preset = 0;
+            _presetTime = 0;
+            _blend = 0;
+        }
+
         int wanted = _preset;
         if (ForcedEffect is int forced)
         {
-            wanted = Math.Clamp(forced, 0, Presets - 1);
+            wanted = Math.Clamp(forced, 0, Presets);
+        }
+        else if (tron && _tronTime < GridSeconds)
+        {
+            wanted = GridPreset;
         }
         else if (_presetTime >= CycleSeconds && (kick || _presetTime >= CycleSeconds + 4))
         {
-            wanted = (_preset + 1 + _random.Next(Presets - 1)) % Presets;
+            wanted = (_preset + 1 + _random.Next(count - 1)) % count;
         }
 
         if (wanted == _preset) return;
@@ -300,6 +351,32 @@ public sealed class OledGpuScene : IGpuScene
         _preset = wanted;
         _presetTime = 0;
         _blend = 0;
+    }
+
+    // The panel's three dot colours: the monochrome look as it always was, or the theme's dim glass, lines and heat.
+    private void SetDotColors(DockTheme theme, bool tron)
+    {
+        if (tron)
+        {
+            var palette = ThemePalette.For(theme);
+            _panelCb[12] = (palette.Dim.R / 255f * .25f) + .02f;
+            _panelCb[13] = (palette.Dim.G / 255f * .25f) + .02f;
+            _panelCb[14] = (palette.Dim.B / 255f * .25f) + .02f;
+            _panelCb[15] = 1;
+            _panelCb[16] = palette.Line.R / 255f;
+            _panelCb[17] = palette.Line.G / 255f;
+            _panelCb[18] = palette.Line.B / 255f;
+            _panelCb[19] = 1;
+            _panelCb[20] = palette.Hot.R / 255f;
+            _panelCb[21] = palette.Hot.G / 255f;
+            _panelCb[22] = palette.Hot.B / 255f;
+            _panelCb[23] = 1;
+            return;
+        }
+
+        _panelCb[12] = .063f; _panelCb[13] = .067f; _panelCb[14] = .078f; _panelCb[15] = 1;
+        _panelCb[16] = .90f; _panelCb[17] = .95f; _panelCb[18] = 1; _panelCb[19] = 1;
+        _panelCb[20] = .90f; _panelCb[21] = .95f; _panelCb[22] = 1; _panelCb[23] = 1;
     }
 
     private static float Smooth(float t) => t * t * (3 - (2 * t));
@@ -468,6 +545,9 @@ public sealed class OledGpuScene : IGpuScene
                 return s;
             }
 
+            // the grid floor draws itself whole every frame; its light only fades where it was
+            if (preset == 5) return p;
+
             // echo: the traces fold in towards the middle line, ring after ring
             float2 s = p;
             s.y *= 1 + ((.022 + (.05 * Bass) + (.1 * Beat)) * k);
@@ -520,6 +600,63 @@ public sealed class OledGpuScene : IGpuScene
                 float bottom = p.y + .5;
                 float bars = step(bottom, .05 + (.4 * pow(Band(1 - mirror), 1.5))) * step(.5, frac(abs(p.x) * 6));
                 return max(bars, .5 * Line(p.y + .15 - (amp * .6 * Wave(mirror)), width));
+            }
+
+            if (preset == 5)
+            {
+                // The Tron floor in perspective: the horizon just above the middle, rows rushing at the viewer with
+                // the music, columns running to the vanishing point, and two light cycles racing along the lines.
+                // Lines keep a few samples' width wherever they are (fwidth), and fade where they would crowd.
+                const float horizon = .1;
+                const float eye = .32;
+                float down = max(horizon - p.y, .004);
+                float ground = step(.004, horizon - p.y);
+                float z = eye / down;
+                float x = p.x * z / 1.6;
+                float row = z + (Phase * 1.4) + (Time * .35);
+                float stroke = 2.2 + (1.2 * Flash);
+                float fade = ground * saturate((horizon - p.y) / .05);
+                float2 spread = max(float2(fwidth(x), fwidth(row)), 1e-4);
+                float2 dist = abs(frac(float2(x, row) - .5) - .5) / spread;
+                float2 lines = saturate(1 - (dist / stroke)) * saturate(1.2 - (spread * 2.5));
+                // out at the strip's far ends the columns lie almost flat and break into stairs: only the middle keeps them
+                lines.x *= saturate((7 - abs(p.x)) / 3);
+                float grid = max(lines.x, lines.y) * fade;
+                float glow = Line(p.y - horizon, width * 2) * .55;
+
+                float trails = 0;
+                float zSpread = max(fwidth(z), 1e-4);
+                [unroll] for (int i = 0; i < 2; i++)
+                {
+                    float t = (Time * (.45 + (.3 * Beat))) + (i * 3.3);
+                    float leg = floor(t / 3);
+                    float head = frac(t / 3);
+                    float pick = frac(sin((leg * 12.9898) + (i * 78.233)) * 43758.5453);
+                    float tail = 3 + (2.5 * Level);
+                    if (fmod(leg + i, 2) < 1)
+                    {
+                        // across the floor along a row, its trail bright behind it
+                        float laneZ = 1 + floor(pick * 4);
+                        float side = pick > .5 ? 1 : -1;
+                        float headX = side * lerp(-12, 12, head);
+                        float back = (headX - x) * side;
+                        float along = step(0, back) * saturate(1 - (back / tail));
+                        float lane = abs(z - laneZ) / zSpread;
+                        trails = max(trails, along * saturate(1 - (lane / (stroke * 2))) * fade);
+                    }
+                    else
+                    {
+                        // down a column towards the viewer
+                        float laneX = floor(pick * 11) - 5;
+                        float headZ = lerp(16, .5, head);
+                        float behind = z - headZ;
+                        float along = step(0, behind) * saturate(1 - (behind / (tail * 2.5)));
+                        float lane = abs(x - laneX) / spread.x;
+                        trails = max(trails, along * saturate(1 - (lane / (stroke * 2))) * fade);
+                    }
+                }
+
+                return max(glow, max(grid * .6, trails));
             }
 
             // the trace twice, mirrored above and below the middle line
@@ -578,8 +715,9 @@ public sealed class OledGpuScene : IGpuScene
         }
         """;
 
-    // Each cell is a rounded dot: off pixels stay a faint grid on the black glass, lit ones glow cool white.
-    // A graphite bezel frames the glass along the top and the sides; the bottom runs on to the screen's edge.
+    // Each cell is a rounded dot: off pixels stay a faint grid on the black glass, lit ones glow cool white or the
+    // theme's light lines, and the hottest ones heat up to its hot colour. A graphite bezel frames the glass along
+    // the top and the sides; the bottom runs on to the screen's edge.
     private const string PanelPs = """
         cbuffer Params : register(b0)
         {
@@ -592,6 +730,9 @@ public sealed class OledGpuScene : IGpuScene
             float Corner;
             float PixelsPerDip;
             float Unused;
+            float4 DotOff;
+            float4 DotLit;
+            float4 DotHot;
         };
 
         // distance to a box open at the bottom with rounded top corners, negative inside
@@ -635,9 +776,13 @@ public sealed class OledGpuScene : IGpuScene
                 }
             }
 
-            float3 off = float3(.063, .067, .078);
-            float3 lit = float3(.90, .95, 1);
-            float3 c = lerp(off, lit, v) * dotMask;
+            float3 off = DotOff.rgb;
+            float3 lit = DotLit.rgb;
+            float3 hot = DotHot.rgb;
+            float3 c = lerp(off, lit, v);
+            // the brightest cells run hotter than the lines, up to the theme's heat
+            c = lerp(c, hot, saturate((v - .8) * 5));
+            c *= dotMask;
             c += lit * bloom * .16;
             c += float3(.008, .008, .012) * (1 - dotMask);
 

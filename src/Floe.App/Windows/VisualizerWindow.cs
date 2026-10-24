@@ -66,6 +66,7 @@ internal sealed class VisualizerWindow : Window
         root.Children.Add(_silkContour);
         Content = root;
         SizeChanged += (_, _) => UpdateCapsule();
+        GlassSettings.Changed += OnGlassSettingsChanged;
     }
 
     public bool IsRunning => _glow.IsActive || _hologram.IsActive || _cubes.IsActive || _stardust.IsActive || _dustWave.IsActive || _silkContour.IsActive;
@@ -83,6 +84,7 @@ internal sealed class VisualizerWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _hideTimer?.Stop();
+        GlassSettings.Changed -= OnGlassSettingsChanged;
         CaptureReveal.Forget(_hwnd);
         _gpu?.Dispose();
         _gpu = null;
@@ -145,7 +147,8 @@ internal sealed class VisualizerWindow : Window
         // the eye flame only exists on the GPU; the dust looks move there when the setting asks for it
         bool flame = running && look == VisualizerStyle.EyeFlame && Layer(ref _flame, () => _fire = new FluidFireGpuScene());
         PlaceFire(_bounds);
-        bool oled = running && look == VisualizerStyle.Oled && Layer(ref _oled, () => _panel = new OledGpuScene(), capturable: true);
+        bool oled = running && look == VisualizerStyle.Oled && Layer(ref _oled, () => _panel = new OledGpuScene { Theme = GlassSettings.Theme }, capturable: true);
+        if (_panel is not null) _panel.Theme = GlassSettings.Theme;
         bool dust = running && GlassSettings.GpuVisualizer && look is VisualizerStyle.Stardust or VisualizerStyle.DustWave
             && Layer(ref _gpu, () => new StardustGpuScene());
         if (_gpu is not null)
@@ -247,6 +250,18 @@ internal sealed class VisualizerWindow : Window
             (float)((_dockRect.Right - bounds.Left) / bounds.Width),
             (float)((bounds.Bottom - _dockRect.Bottom) / bounds.Height),
             (float)((bounds.Bottom - _dockRect.Top) / bounds.Height));
+    }
+
+    // The panel reads its own copy of the theme on the render thread; a settings change hands it the new one.
+    private void OnGlassSettingsChanged()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(new Action(OnGlassSettingsChanged));
+            return;
+        }
+
+        if (_panel is not null) _panel.Theme = GlassSettings.Theme;
     }
 
     private bool Layer(ref GpuLayerWindow? layer, Func<IGpuScene> scene, bool capturable = false)

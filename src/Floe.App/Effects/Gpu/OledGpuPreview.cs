@@ -1,13 +1,15 @@
 using System.IO;
+using Floe.App.Services;
 using Floe.Core.Interop;
 
 namespace Floe.App.Effects.Gpu;
 
 /// <summary>
 /// --render-gpu-oled=&lt;dir&gt; writes 180 PNG frames (30 fps) of <see cref="OledGpuScene"/> on the real dock strip,
-/// 3840x152 (1920x76 DIP), fed the same made-up beat as the other previews, plus a made-up scope trace. --oled-effect=&lt;0..4&gt; holds
-/// one preset; without it the presets take turns every two seconds so one run shows several. A made-up song
-/// sits in the left wing; --oled-idle plays nothing instead, so the robot comes out.
+/// 3840x152 (1920x76 DIP), fed the same made-up beat as the other previews, plus a made-up scope trace. --oled-effect=&lt;0..5&gt; holds
+/// one preset; without it the presets take turns every two seconds so one run shows several. --oled-theme=legacy|ares
+/// dresses the panel in that Tron theme, its colours and its grid floor. A made-up song sits in the left wing;
+/// --oled-idle plays nothing instead, so the robot comes out.
 /// </summary>
 public static class OledGpuPreview
 {
@@ -22,12 +24,16 @@ public static class OledGpuPreview
         string folder = Path.GetFullPath(argument[option.Length..]);
         const string effectOption = "--oled-effect=";
         string? effect = args.FirstOrDefault(a => a.StartsWith(effectOption, StringComparison.OrdinalIgnoreCase))?[effectOption.Length..];
+        const string themeOption = "--oled-theme=";
+        string? theme = args.FirstOrDefault(a => a.StartsWith(themeOption, StringComparison.OrdinalIgnoreCase))?[themeOption.Length..];
 
         try
         {
             bool idle = args.Contains("--oled-idle", StringComparer.OrdinalIgnoreCase);
             using var scene = new OledGpuScene { CycleSeconds = 2, MusicPlaying = !idle };
             if (int.TryParse(effect, out var forced)) scene.ForcedEffect = forced;
+            if (string.Equals(theme, "legacy", StringComparison.OrdinalIgnoreCase)) scene.Theme = DockTheme.TronLegacy;
+            else if (string.Equals(theme, "ares", StringComparison.OrdinalIgnoreCase)) scene.Theme = DockTheme.TronAres;
             scene.SetDock(.265f, .735f);
             scene.SetMedia("Zülüf Dökülmüş Yüze (Live at Harbiye Açıkhava)", "Minor Empire", 83, 245, !idle, Cover());
             GpuOffscreen.RenderFrames(scene, 3840, 152, 2, Frames, (frame, index) =>
