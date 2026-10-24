@@ -26,9 +26,9 @@ public partial class DockWindow
         {
             Field = IconField.For(icon.Source, IconBox, solid: true),
             Tone = (double)AuraSettings.ClickTone,
-            Palette = (double)(GlassSettings.Mordor ? ClickPalette.Icon : AuraSettings.ClickPalette),
+            Palette = (double)AuraSettings.ClickPalette,
         };
-        if ((GlassSettings.Mordor || AuraSettings.ClickPalette == ClickPalette.Icon) && AuraSettings.GetColors(item) is { Length: > 0 } colors)
+        if (AuraSettings.ClickPalette == ClickPalette.Icon && AuraSettings.GetColors(item) is { Length: > 0 } colors)
         {
             effect.ColorA = colors[0];
             effect.ColorB = colors[1 % colors.Length];

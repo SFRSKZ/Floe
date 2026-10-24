@@ -323,7 +323,7 @@ public partial class DockWindow
                 continue;
             }
 
-            var color = GlassSettings.Tron ? ThemePalette.LineColor : GlassSettings.Mordor ? AuraSettings.Embers[1] : slot.Item.Glow;
+            var color = GlassSettings.Tron ? ThemePalette.LineColor : slot.Item.Glow;
             var alpha = (byte)(0x6E * weight * intensity);
             _glowPairs.Add((rel, Color.FromArgb(alpha, color.R, color.G, color.B)));
         }

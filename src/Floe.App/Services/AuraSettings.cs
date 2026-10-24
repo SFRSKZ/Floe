@@ -245,13 +245,9 @@ public static class AuraSettings
         Changed?.Invoke();
     }
 
-    /// <summary>The embers of the Mordor theme: every glow burns in them, whatever the palette.</summary>
-    public static Color[] Embers { get; } = { Rgb(0xFF, 0xB3, 0x47), Rgb(0xFF, 0x45, 0x00), Rgb(0xB0, 0x10, 0x00) };
-
     public static Color[] GetColors(DockItemViewModel item)
     {
         if (GlassSettings.Tron) return ThemePalette.Glows;
-        if (GlassSettings.Mordor) return Embers;
 
         if (Mode == AuraColorMode.Icon && item.Icon is not null)
         {

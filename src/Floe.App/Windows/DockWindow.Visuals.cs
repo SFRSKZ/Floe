@@ -65,17 +65,6 @@ public partial class DockWindow
             return brush;
         }
 
-        if (GlassSettings.Mordor)
-        {
-            // black iron, a little rust in it, with the embers below glowing up through the bottom
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xC8, 0x16, 0x10, 0x0E), 0.0));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD2, 0x0E, 0x0A, 0x09), 0.35));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD4, 0x1C, 0x08, 0x04), 0.72));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xDC, 0x6A, 0x18, 0x04), 1.0));
-            brush.Freeze();
-            return brush;
-        }
-
         brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x52, 0x25, 0x25, 0x25), 0.0));
         brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x58, 0x1E, 0x1E, 0x1E), 0.08));
         brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x59, 0x1E, 0x1E, 0x1E), 0.42));
@@ -110,16 +99,6 @@ public partial class DockWindow
             brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xE6, line.R, line.G, line.B), 0.0));
             brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x8C, line.R, line.G, line.B), 0.45));
             brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xB4, line.R, line.G, line.B), 1.0));
-            brush.Freeze();
-            return brush;
-        }
-
-        if (GlassSettings.Mordor)
-        {
-            // a hot edge: dull red on top, brighter where the embers below catch it
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x50, 0xFF, 0x7A, 0x30), 0.0));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x26, 0xC8, 0x2A, 0x0A), 0.4));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x60, 0xFF, 0x5A, 0x10), 1.0));
             brush.Freeze();
             return brush;
         }
@@ -224,8 +203,8 @@ public partial class DockWindow
             _appliedTheme = GlassSettings.Theme;
             _glass.Fill = BuildGlassBrush();
             _rim.Stroke = BuildRimBrush();
-            // the sheen catches the fire's warm light, or the neon line, instead of white
-            var sheen = GlassSettings.Tron ? ThemePalette.LineColor : GlassSettings.Mordor ? Color.FromRgb(0xFF, 0xA0, 0x60) : Colors.White;
+            // in Tron the sheen catches the neon line instead of white
+            var sheen = GlassSettings.Tron ? ThemePalette.LineColor : Colors.White;
             foreach (var stop in _sheenBrush.GradientStops) stop.Color = Color.FromArgb(stop.Color.A, sheen.R, sheen.G, sheen.B);
             _spectralItem = null;
             UpdateAura();
@@ -246,7 +225,6 @@ public partial class DockWindow
         {
             // the metal shader cannot follow cube steps: Tron keeps the plain neon hairline
             _ when GlassSettings.Tron => null,
-            not RimStyle.Plain when GlassSettings.Mordor => MetalRimEffect.ApplyPreset("ember", true),
             RimStyle.MetalSilver => MetalRimEffect.ApplyPreset("silver", true),
             RimStyle.MetalGold => MetalRimEffect.ApplyPreset("gold", true),
             RimStyle.MetalChromatic => MetalRimEffect.ApplyPreset("chromatic", true),

@@ -28,9 +28,7 @@ internal sealed class VisualizerWindow : Window
     private readonly StardustVisualizer _dustWave = new() { Wave = true };
     private readonly SilkContourVisualizer _silkContour = new();
     private GpuLayerWindow? _gpu;
-    private GpuLayerWindow? _flame;
     private GpuLayerWindow? _oled;
-    private FluidFireGpuScene? _fire;
     private OledGpuScene? _panel;
     private ImageSource? _coverSource;
     private byte[]? _cover;
@@ -74,12 +72,12 @@ internal sealed class VisualizerWindow : Window
     public IntPtr Handle => _hwnd;
 
     /// <summary>The window the light is drawn in right now: the GPU layer when it carries the look.</summary>
-    public IntPtr TopHandle => _oled is { IsRunning: true } oled ? oled.Handle : _flame is { IsRunning: true } flame ? flame.Handle : _gpu is { IsRunning: true } gpu ? gpu.Handle : _hwnd;
+    public IntPtr TopHandle => _oled is { IsRunning: true } oled ? oled.Handle  : _gpu is { IsRunning: true } gpu ? gpu.Handle : _hwnd;
 
     /// <summary>The OLED panel runs under the dock: its glass has to keep up with what moves behind it.</summary>
     public bool PanelBehindDock => _oled is { IsRunning: true };
 
-    public bool Showing => IsVisible || _gpu is { IsRunning: true } || _flame is { IsRunning: true } || _oled is { IsRunning: true };
+    public bool Showing => IsVisible || _gpu is { IsRunning: true } || _oled is { IsRunning: true };
 
     protected override void OnClosed(EventArgs e)
     {
@@ -88,8 +86,6 @@ internal sealed class VisualizerWindow : Window
         CaptureReveal.Forget(_hwnd);
         _gpu?.Dispose();
         _gpu = null;
-        _flame?.Dispose();
-        _flame = null;
         _oled?.Dispose();
         _oled = null;
         base.OnClosed(e);
@@ -110,7 +106,7 @@ internal sealed class VisualizerWindow : Window
     {
         _scale = scale;
         _dockRect = dockRect;
-        PlaceFire(bounds);
+        PlacePanel(bounds);
         // The dock re-places the strip on every poll; touching the window (and
         // the z-order) only when something changed keeps that poll cheap.
         if (!_placed || bounds != _bounds)
@@ -137,17 +133,15 @@ internal sealed class VisualizerWindow : Window
         _dock = dock;
         WindowStyling.PlaceBelow(_hwnd, dock);
         _gpu?.PlaceBelowDock(dock);
-        _flame?.PlaceBelowDock(dock);
         _oled?.PlaceBelowDock(dock);
     }
 
     public void SetRunning(bool running)
     {
         var look = GlassSettings.VisualizerLook;
-        // the eye flame only exists on the GPU; the dust looks move there when the setting asks for it
-        bool flame = running && look == VisualizerStyle.EyeFlame && Layer(ref _flame, () => _fire = new FluidFireGpuScene());
-        PlaceFire(_bounds);
+        // the OLED panel only exists on the GPU; the dust looks move there when the setting asks for it
         bool oled = running && look == VisualizerStyle.Oled && Layer(ref _oled, () => _panel = new OledGpuScene { Theme = GlassSettings.Theme }, capturable: true);
+        PlacePanel(_bounds);
         ApplyPanelSettings();
         bool dust = running && GlassSettings.GpuVisualizer && look is VisualizerStyle.Stardust or VisualizerStyle.DustWave
             && Layer(ref _gpu, () => new StardustGpuScene());
@@ -157,14 +151,13 @@ internal sealed class VisualizerWindow : Window
             _gpu.SetRunning(dust);
         }
 
-        _flame?.SetRunning(flame);
         _oled?.SetRunning(oled);
 
-        // without a GPU the eye flame and the OLED panel fall back to stardust
-        if ((look == VisualizerStyle.EyeFlame && !flame) || (look == VisualizerStyle.Oled && !oled)) look = VisualizerStyle.Stardust;
+        // without a GPU the OLED panel falls back to stardust
+        if (look == VisualizerStyle.Oled && !oled) look = VisualizerStyle.Stardust;
 
         // a GPU layer carries its look by itself; this window only fades out what it drew before
-        running &= !(dust || flame || oled);
+        running &= !(dust || oled);
         _running = running;
         _glow.IsActive = running && look == VisualizerStyle.Glow;
         _hologram.IsActive = running && look == VisualizerStyle.Hologram;
@@ -237,19 +230,12 @@ internal sealed class VisualizerWindow : Window
         }
     }
 
-    private void PlaceFire(Rect bounds)
+    private void PlacePanel(Rect bounds)
     {
         if (_panel is not null && bounds.Width > 0 && !_dockRect.IsEmpty)
         {
             _panel.SetDock((float)((_dockRect.Left - bounds.Left) / bounds.Width), (float)((_dockRect.Right - bounds.Left) / bounds.Width));
         }
-
-        if (_fire is null || bounds.Width <= 0 || bounds.Height <= 0 || _dockRect.IsEmpty) return;
-        _fire.SetDock(
-            (float)((_dockRect.Left - bounds.Left) / bounds.Width),
-            (float)((_dockRect.Right - bounds.Left) / bounds.Width),
-            (float)((bounds.Bottom - _dockRect.Bottom) / bounds.Height),
-            (float)((bounds.Bottom - _dockRect.Top) / bounds.Height));
     }
 
     // The panel reads its own copy of the theme on the render thread; a settings change hands it the new one.
@@ -310,7 +296,6 @@ internal sealed class VisualizerWindow : Window
             (int)Math.Round(_bounds.Width * _scale),
             (int)Math.Round(_bounds.Height * _scale));
         _gpu?.Place(pixels, _scale, _dock);
-        _flame?.Place(pixels, _scale, _dock);
         _oled?.Place(pixels, _scale, _dock);
     }
 

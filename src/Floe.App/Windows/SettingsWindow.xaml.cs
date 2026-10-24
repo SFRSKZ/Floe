@@ -302,10 +302,10 @@ public partial class SettingsWindow : Window
         VisualizerToggle.Checked += (_, _) => GlassSettings.SetVisualizer(true);
         VisualizerToggle.Unchecked += (_, _) => GlassSettings.SetVisualizer(false);
 
-        // a theme turns its visualizer on with it: Mordor the eye, Tron the OLED panel
+        // a theme turns its visualizer on with it: Tron the OLED panel
         foreach (var (button, theme) in new[]
         {
-            (ThemeNone, DockTheme.None), (ThemeMordor, DockTheme.Mordor), (ThemeTronLegacy, DockTheme.TronLegacy), (ThemeTronAres, DockTheme.TronAres),
+            (ThemeNone, DockTheme.None), (ThemeTronLegacy, DockTheme.TronLegacy), (ThemeTronAres, DockTheme.TronAres),
         })
         {
             button.IsChecked = GlassSettings.Theme == theme;
@@ -314,7 +314,7 @@ public partial class SettingsWindow : Window
                 GlassSettings.SetTheme(theme);
                 if (theme == DockTheme.None) return;
                 VisualizerToggle.IsChecked = true;
-                (theme == DockTheme.Mordor ? VisualizerLookEyeFlame : VisualizerLookOled).IsChecked = true;
+                VisualizerLookOled.IsChecked = true;
             };
         }
 
@@ -376,8 +376,6 @@ public partial class SettingsWindow : Window
         VisualizerLookDustWave.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.DustWave);
         VisualizerLookSilkContour.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.SilkContour;
         VisualizerLookSilkContour.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.SilkContour);
-        VisualizerLookEyeFlame.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.EyeFlame;
-        VisualizerLookEyeFlame.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.EyeFlame);
         VisualizerLookOled.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Oled;
         VisualizerLookOled.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Oled);
 
@@ -389,7 +387,7 @@ public partial class SettingsWindow : Window
             LookOptions.Visibility = oled ? Visibility.Collapsed : Visibility.Visible;
         }
 
-        foreach (var look in new[] { VisualizerLookGlow, VisualizerLookHologram, VisualizerLookCubes, VisualizerLookStardust, VisualizerLookDustWave, VisualizerLookSilkContour, VisualizerLookEyeFlame, VisualizerLookOled })
+        foreach (var look in new[] { VisualizerLookGlow, VisualizerLookHologram, VisualizerLookCubes, VisualizerLookStardust, VisualizerLookDustWave, VisualizerLookSilkContour, VisualizerLookOled })
         {
             look.Checked += (_, _) => ShowLookOptions();
         }

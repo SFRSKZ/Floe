@@ -383,8 +383,6 @@
                 <TextBlock Text="Tema" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
                 <WrapPanel>
                     <RadioButton x:Name="ThemeNone" GroupName="Theme" Style="{StaticResource ModeToggle}" Content="Yok" />
-                    <RadioButton x:Name="ThemeMordor" GroupName="Theme" Style="{StaticResource ModeToggle}" Content="Mordor"
-                                 ToolTip="Kara demir cam, kor parıltısı, Sauron'un gözü" />
                     <RadioButton x:Name="ThemeTronLegacy" GroupName="Theme" Style="{StaticResource ModeToggle}" Content="Tron: Legacy"
                                  ToolTip="Siyah cam, buz mavisi ışık çizgileri, mavi OLED" />
                     <RadioButton x:Name="ThemeTronAres" GroupName="Theme" Style="{StaticResource ModeToggle}" Content="Tron: Ares"
@@ -444,7 +442,6 @@
                     <RadioButton x:Name="VisualizerLookStardust" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Yıldız tozu" />
                     <RadioButton x:Name="VisualizerLookDustWave" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Toz dalgası" />
                     <RadioButton x:Name="VisualizerLookSilkContour" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="İpek kontur" />
-                    <RadioButton x:Name="VisualizerLookEyeFlame" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Sauron'un gözü" />
                     <RadioButton x:Name="VisualizerLookOled" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="OLED ekran" />
                 </WrapPanel>
 

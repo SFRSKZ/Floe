@@ -22,7 +22,6 @@ public enum VisualizerStyle
     Stardust,
     DustWave,
     SilkContour,
-    EyeFlame,
     Oled,
 }
 
@@ -30,7 +29,6 @@ public enum VisualizerStyle
 public enum DockTheme
 {
     None,
-    Mordor,
     TronLegacy,
     TronAres,
 }
@@ -94,9 +92,6 @@ public static class GlassSettings
 
     public static DockTheme Theme { get; private set; }
 
-    /// <summary>The Mordor theme: black iron glass lit from below by embers, ember glows, and Sauron's eye.</summary>
-    public static bool Mordor => Theme == DockTheme.Mordor;
-
     /// <summary>Either Tron theme: black glass edged in neon light lines, with the OLED panel lit in the same colour.</summary>
     public static bool Tron => Theme is DockTheme.TronLegacy or DockTheme.TronAres;
 
@@ -147,12 +142,10 @@ public static class GlassSettings
             Rim = Enum.TryParse<RimStyle>(model.Rim, true, out var rim) ? rim : RimStyle.Plain;
             Visualizer = model.Visualizer;
             GpuVisualizer = model.GpuVisualizer;
-            // before themes there was only the Mordor switch
-            Theme = Enum.TryParse<DockTheme>(model.Theme, true, out var theme) ? theme : model.Mordor ? DockTheme.Mordor : DockTheme.None;
+            // a theme that is gone (Mordor) falls back to none, as does its visualizer (the eye flame)
+            Theme = Enum.TryParse<DockTheme>(model.Theme, true, out var theme) ? theme : DockTheme.None;
             Bulge = Enum.TryParse<BulgeStyle>(model.Bulge, true, out var bulge) ? bulge : BulgeStyle.Soft;
-            // the eye flame replaced the wraith wind in its place in the list
-            VisualizerLook = model.VisualizerLook == "WraithWind" ? VisualizerStyle.EyeFlame
-                : Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
+            VisualizerLook = Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
             HologramTint = Enum.TryParse<HologramColor>(model.HologramTint, true, out var tint) ? tint : HologramColor.Blue;
             Intro = Enum.TryParse<NowPlayingIntro>(model.Intro, true, out var intro) ? intro : NowPlayingIntro.Drop;
             OledEffect = Math.Clamp(model.OledEffect, -1, 10);
@@ -172,7 +165,6 @@ public static class GlassSettings
         {
             // previews can try the theme on without touching the saved settings
             var args = Environment.GetCommandLineArgs();
-            if (args.Contains("--mordor", StringComparer.OrdinalIgnoreCase)) Theme = DockTheme.Mordor;
             var themeArg = args.FirstOrDefault(a => a.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase));
             if (themeArg is not null && Enum.TryParse<DockTheme>(themeArg[8..], true, out var previewTheme)) Theme = previewTheme;
         }
@@ -203,7 +195,7 @@ public static class GlassSettings
     }
 
     /// <summary>
-    /// Turning a theme on also turns on its visualizer (Mordor lights the eye, Tron the OLED panel); turning it off
+    /// Turning a theme on also turns on its visualizer (Tron lights the OLED panel); turning it off
     /// leaves the visualizer as it is.
     /// </summary>
     public static void SetTheme(DockTheme theme)
@@ -217,7 +209,7 @@ public static class GlassSettings
         if (theme != DockTheme.None)
         {
             Visualizer = true;
-            VisualizerLook = theme == DockTheme.Mordor ? VisualizerStyle.EyeFlame : VisualizerStyle.Oled;
+            VisualizerLook = VisualizerStyle.Oled;
         }
 
         Save();
@@ -381,7 +373,6 @@ public static class GlassSettings
                 Rim = Rim.ToString(),
                 Visualizer = Visualizer,
                 GpuVisualizer = GpuVisualizer,
-                Mordor = Mordor,
                 Theme = Theme.ToString(),
                 Bulge = Bulge.ToString(),
                 VisualizerLook = VisualizerLook.ToString(),
@@ -408,7 +399,6 @@ public static class GlassSettings
 
         public bool GpuVisualizer { get; set; }
 
-        public bool Mordor { get; set; }
 
         public string Theme { get; set; } = nameof(DockTheme.None);
 
