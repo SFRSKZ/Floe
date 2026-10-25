@@ -190,6 +190,18 @@ public partial class DockWindow
         });
     }
 
+    /// <summary>The benchmark's cursor: hovers window x as a mouse move would, without the tooltip.</summary>
+    internal void BenchHover(double x)
+    {
+        _targetHoverX = Math.Min(_windowWidth, Math.Max(0, x));
+        _targetBulge = MaxBulge;
+        _targetDockScale = 1;
+        SetIconsDimmed(false);
+        EnsureAnimation();
+    }
+
+    internal double BenchWidth => _windowWidth;
+
     public void PreviewHover(double capsuleX)
     {
         _dockScale = _targetDockScale = 1;

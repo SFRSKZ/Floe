@@ -196,7 +196,24 @@ public static class GlassSettings
             if (themeArg is not null && Enum.TryParse<DockTheme>(themeArg[8..], true, out var previewTheme)) Theme = previewTheme;
             var surfaceArg = args.FirstOrDefault(a => a.StartsWith("--surface=", StringComparison.OrdinalIgnoreCase));
             if (surfaceArg is not null && Enum.TryParse<DockSurface>(surfaceArg[10..], true, out var previewSurface)) Surface = previewSurface;
+            var rimArg = args.FirstOrDefault(a => a.StartsWith("--rim=", StringComparison.OrdinalIgnoreCase));
+            if (rimArg is not null && Enum.TryParse<RimStyle>(rimArg[6..], true, out var previewRim)) Rim = previewRim;
+            var lookArg = args.FirstOrDefault(a => a.StartsWith("--look=", StringComparison.OrdinalIgnoreCase));
+            if (lookArg is not null && Enum.TryParse<VisualizerStyle>(lookArg[7..], true, out var previewLook)) VisualizerLook = previewLook;
+            var gpuArg = args.FirstOrDefault(a => a.StartsWith("--gpu-viz=", StringComparison.OrdinalIgnoreCase));
+            if (gpuArg is not null) GpuVisualizer = gpuArg[10..] is "1" or "on" or "true";
         }
+    }
+
+    internal static void PreviewTheme(DockTheme theme)
+    {
+        Theme = theme;
+        ColorVersion++;
+    }
+
+    internal static void PreviewCubeSize(double size)
+    {
+        CubeSize = Math.Clamp(Math.Round(size), 8, 24);
     }
 
     public static void SetRim(RimStyle rim)

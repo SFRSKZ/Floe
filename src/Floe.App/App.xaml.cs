@@ -62,6 +62,8 @@ public partial class App : Application
             return;
         }
 
+        // the benchmarks run their own windows and quit when done
+        if (Services.PerfBench.TryStart(e.Args)) return;
         if (Effects.ActiveIcon.ClickGlassPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Chromatic.ChromaticPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Glass.DropLensPreview.TryRender(e.Args)) { Shutdown(); return; }
@@ -75,6 +77,7 @@ public partial class App : Application
         if (Effects.Gpu.MeltGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.OledGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.HologramGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.CubeGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.SilkContourPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Floe.App.Windows.SettingsPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.DozeDissolvePreview.TryRender(e.Args)) { Shutdown(); return; }

@@ -253,6 +253,7 @@ public partial class DockWindow : Window
     public DockWindow()
     {
         InitializeComponent();
+        if (DwmDock) AllowsTransparency = false;
 
         Root.RenderTransformOrigin = new Point(0.5, 1.0);
         Root.RenderTransform = _rootScale;
@@ -369,6 +370,11 @@ public partial class DockWindow : Window
         ShapeLayer.Children.Add(_rim);
         ShapeLayer.Children.Add(_sheen);
         ShapeLayer.Children.Add(_specular);
+        // more diagnostics: glass hides the whole surface, combine drops the exterior clips, stroke the hairlines
+        if (NoFx.Contains("glass")) ShapeLayer.Visibility = Visibility.Collapsed;
+        if (NoFx.Contains("icons")) IconLayer.Visibility = Visibility.Collapsed;
+        if (NoFx.Contains("combine")) _shadowHost.Clip = _outerRim.Clip = null;
+        if (NoFx.Contains("stroke")) _rim.Data = _outerRim.Data = null;
 
         _grain.Fill = new ImageBrush(MakeNoiseBitmap())
         {
@@ -478,6 +484,8 @@ public partial class DockWindow : Window
         }
 
         Root.Children.Insert(2, _spectralLayer);
+        if (NoFx.Contains("aura")) _glowLayer.Visibility = _spectralLayer.Visibility = Visibility.Collapsed;
+        if (NoFx.Contains("clock")) _clockLayer.Visibility = Visibility.Collapsed;
 
 
 
