@@ -40,7 +40,8 @@ public partial class DockWindow : Window
     private const double WindowHeight = RestBarHeight + MaxBulge + Headroom + ShadowRoom;
     private const double EdgeMargin = 6;
     private const double MaxSideStretch = 12;
-    private const double CompactScale = 0.62;
+    // the size the dock rests at with the cursor away: smaller, unless shrinking is turned off
+    private static double CompactScale => GlassSettings.Shrink ? 0.62 : 1;
     private const double HoverMaxScale = 1.4;
     private const double FalloffRadius = 115;
     private const double GlowRadius = 92;

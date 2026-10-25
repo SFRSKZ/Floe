@@ -59,6 +59,8 @@ public partial class DockWindow
 
         Width = _windowWidth;
         Height = WindowHeight;
+        // a pinned or closed app changes the width; grow or shrink from the middle, not the left edge
+        if (_hwnd != IntPtr.Zero) CenterOnMonitor();
 
         for (var i = 0; i < count; i++)
         {

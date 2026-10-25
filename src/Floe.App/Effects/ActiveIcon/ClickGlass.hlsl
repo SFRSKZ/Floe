@@ -8,6 +8,11 @@ float2 Box : register(c2);
 float Palette : register(c3);
 float4 ColorA : register(c4);
 float4 ColorB : register(c5);
+// The active icon's loop: 0 plays the click as usual; above 0 the finished glass hollows into a ring
+// that runs from the edge in to the middle (1), where the next drop opens.
+float Inward : register(c6);
+// 1 keeps the icon unbent under the glass (the active icon's loop): only the glass's light moves
+float Sharp : register(c7);
 
 float Dist(float2 uv) { return (tex2D(Field, uv).r - 0.5) * 32.0; }
 float Bell(float x, float width) { x /= width; return exp(-x * x); }
@@ -30,6 +35,8 @@ float4 main(float2 uv : TEXCOORD0) : COLOR0
     float glass = 1.0 - smoothstep(1.05, 1.65, t);
     float morph = smoothstep(0.29, 0.48, t);
     float scale = max(0.02, enter * (0.64 + 0.36 * (1.0 - exp(-max(t - 0.16, 0.0) * 5.8))));
+    float inward = saturate(Inward);
+    scale = max(0.02, scale * lerp(1.0, 0.04, inward));
     float2 p = (uv - 0.5) * total;
     float2 radial = p / max(length(p), 0.001);
     float2 fieldUv = 0.5 + p / (total * scale);
@@ -41,6 +48,9 @@ float4 main(float2 uv : TEXCOORD0) : COLOR0
     float2 outward = lerp(radial, gradient / max(length(gradient), 0.001), morph);
     outward /= max(length(outward), 0.001);
     float mask = 1.0 - smoothstep(-0.7, 0.7, sd);
+    // a wave rather than a drop: only a band of glass along the shape's edge
+    float band = max(unit * 0.11, 1.6);
+    mask = lerp(mask, Bell(sd + band * 0.5, band * 0.55), smoothstep(0.0, 0.15, Inward));
     float radius = saturate(1.0 + sd / max(unit * scale * 0.5, 0.01));
     float shoulder = smoothstep(0.60, 1.0, radius);
     float youth = 1.0 - smoothstep(0.245, 0.42, t);
@@ -48,13 +58,15 @@ float4 main(float2 uv : TEXCOORD0) : COLOR0
     float2 optical = lerp(outward, radial, 0.65);
     float3 normal = normalize(float3(optical * slope * (0.8 + 0.4 * radial.x * radial.y), 1));
     float mono = Palette > 0.5 && Palette < 1.5 ? 1.0 : 0.0;
-    float spread = lerp(0.85, 2.2, morph) * (1.0 - mono);
+    float sharp = saturate(Sharp);
+    float spread = lerp(0.85, 2.2, morph) * (1.0 - mono) * (1.0 - sharp);
     float depth = unit * 1.2 * 0.80 * scale;
     float focus = 1.0 - smoothstep(0.225, 0.335, t);
     float opening = 1.0 - smoothstep(0.19, 0.265, t);
     float profile = lerp(0.7 + 0.6 * radius * radius, 1.0 - 0.9 * radius * radius, opening);
     float2 samplePoint = p * lerp(1.0, profile, focus) + float2(0.025, 0.10) * unit * opening;
-    float bendScale = lerp(1.0, lerp(0.35, 0.12, opening), focus);
+    float bendScale = lerp(1.0, lerp(0.35, 0.12, opening), focus) * (1.0 - sharp);
+    samplePoint = lerp(samplePoint, p, sharp);
     float4 red = tex2D(Input, 0.5 + (samplePoint + Bend(normal, 0.65, spread, depth) * bendScale) / total);
     float4 green = tex2D(Input, 0.5 + (samplePoint + Bend(normal, 0.55, spread, depth) * bendScale) / total);
     float4 blue = tex2D(Input, 0.5 + (samplePoint + Bend(normal, 0.45, spread, depth) * bendScale) / total);

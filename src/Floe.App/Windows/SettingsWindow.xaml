@@ -389,6 +389,24 @@
                                  ToolTip="Siyah cam, kırmızı ışık çizgileri, kırmızı OLED" />
                 </WrapPanel>
                 <Border Height="6" />
+                <CheckBox x:Name="ShrinkToggle"
+                          Style="{StaticResource GlassToggle}"
+                          Content="İmleç uzaktayken küçül" />
+                <Border Height="6" />
+                <TextBlock Text="Yüzey" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
+                <WrapPanel>
+                    <RadioButton x:Name="SurfaceClassic" GroupName="Surface" Style="{StaticResource ModeToggle}" Content="Klasik cam"
+                                 ToolTip="İlk hali: parlak cam" />
+                    <RadioButton x:Name="SurfaceMica" GroupName="Surface" Style="{StaticResource ModeToggle}" Content="Mat cam"
+                                 ToolTip="Koyu, sakin buzlu cam; soluk gümüş kenar" />
+                    <RadioButton x:Name="SurfaceFrost" GroupName="Surface" Style="{StaticResource ModeToggle}" Content="Açık buz"
+                                 ToolTip="Beyaz, şeffaf buz; parlak gümüş kenar" />
+                    <RadioButton x:Name="SurfaceGraphite" GroupName="Surface" Style="{StaticResource ModeToggle}" Content="Grafit"
+                                 ToolTip="Opak koyu kart; füme metal kenar" />
+                    <RadioButton x:Name="SurfaceFloating" GroupName="Surface" Style="{StaticResource ModeToggle}" Content="Tabansız"
+                                 ToolTip="Plaka yok, ikonlar havada; sadece ince metal çizgi" />
+                </WrapPanel>
+                <Border Height="6" />
                 <TextBlock Text="Kenar stili" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
                 <WrapPanel>
                     <RadioButton x:Name="RimPlain" GroupName="Rim" Style="{StaticResource ModeToggle}" Content="Sade" />

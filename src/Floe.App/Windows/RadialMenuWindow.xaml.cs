@@ -67,13 +67,22 @@ public partial class RadialMenuWindow : Window
 
         var (cursorX, cursorY) = ScreenInput.GetCursorPosition();
         var dpi = VisualTreeHelper.GetDpi(this);
-        var dx = (cursorX / dpi.DpiScaleX) - (Left + CenterX);
-        var dy = (cursorY / dpi.DpiScaleY) - (Top + CenterY);
+        var x = cursorX / dpi.DpiScaleX;
+        var y = cursorY / dpi.DpiScaleY;
+        var dx = x - (Left + CenterX);
+        var dy = y - (Top + CenterY);
+        if (Math.Sqrt((dx * dx) + (dy * dy)) <= Outer + 16) return;
 
-        if (Math.Sqrt((dx * dx) + (dy * dy)) > Outer + 16)
-        {
-            Dismiss();
-        }
+        // The ring is pushed up off the screen edge (and above the dock's reserved strip), so it does not sit on
+        // the icon that opened it: resting on that icon, or on the way from it to the ring, keeps it open.
+        var ax = x - _anchor.X;
+        var ay = y - _anchor.Y;
+        if (Math.Sqrt((ax * ax) + (ay * ay)) <= AnchorReach) return;
+        var toRing = new Vector((Left + CenterX) - _anchor.X, (Top + CenterY) - _anchor.Y);
+        var along = toRing.LengthSquared > 0 ? ((ax * toRing.X) + (ay * toRing.Y)) / toRing.LengthSquared : -1;
+        if (along is >= 0 and <= 1 && Math.Abs((ax * toRing.Y) - (ay * toRing.X)) / toRing.Length <= AnchorReach) return;
+
+        Dismiss();
     }
 
     public static double Radius => Size / 2;
@@ -81,6 +90,10 @@ public partial class RadialMenuWindow : Window
     public static double HitRadius => Outer;
 
     private DateTime _shownAt;
+
+    // where the cursor was when the menu opened (the icon), in DIP
+    private Point _anchor;
+    private const double AnchorReach = 44;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -170,6 +183,9 @@ public partial class RadialMenuWindow : Window
 
         Show();
         UpdateLayout();
+        var (anchorX, anchorY) = ScreenInput.GetCursorPosition();
+        var anchorDpi = VisualTreeHelper.GetDpi(this);
+        _anchor = new Point(anchorX / anchorDpi.DpiScaleX, anchorY / anchorDpi.DpiScaleY);
         _shownAt = DateTime.UtcNow;
         _watchdog.Start();
     }

@@ -14,6 +14,19 @@ public enum RimStyle
     MetalChromatic,
 }
 
+/// <summary>
+/// The dock's surface. Classic is the original glass; the others drop its shine for a calmer, flatter plate,
+/// each with a thin metal outline in a tone that suits it.
+/// </summary>
+public enum DockSurface
+{
+    Classic,
+    Mica,
+    Frost,
+    Graphite,
+    Floating,
+}
+
 public enum VisualizerStyle
 {
     Glow,
@@ -90,6 +103,11 @@ public static class GlassSettings
 
     public static BulgeStyle Bulge { get; private set; } = BulgeStyle.Soft;
 
+    public static DockSurface Surface { get; private set; } = DockSurface.Classic;
+
+    /// <summary>The dock shrinks while the cursor is away and grows back under it; off, it stays full size.</summary>
+    public static bool Shrink { get; private set; } = true;
+
     public static DockTheme Theme { get; private set; }
 
     /// <summary>Either Tron theme: black glass edged in neon light lines, with the OLED panel lit in the same colour.</summary>
@@ -145,6 +163,8 @@ public static class GlassSettings
             // a theme that is gone (Mordor) falls back to none, as does its visualizer (the eye flame)
             Theme = Enum.TryParse<DockTheme>(model.Theme, true, out var theme) ? theme : DockTheme.None;
             Bulge = Enum.TryParse<BulgeStyle>(model.Bulge, true, out var bulge) ? bulge : BulgeStyle.Soft;
+            Surface = Enum.TryParse<DockSurface>(model.Surface, true, out var surface) ? surface : DockSurface.Classic;
+            Shrink = model.Shrink;
             VisualizerLook = Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
             HologramTint = Enum.TryParse<HologramColor>(model.HologramTint, true, out var tint) ? tint : HologramColor.Blue;
             Intro = Enum.TryParse<NowPlayingIntro>(model.Intro, true, out var intro) ? intro : NowPlayingIntro.Drop;
@@ -167,6 +187,8 @@ public static class GlassSettings
             var args = Environment.GetCommandLineArgs();
             var themeArg = args.FirstOrDefault(a => a.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase));
             if (themeArg is not null && Enum.TryParse<DockTheme>(themeArg[8..], true, out var previewTheme)) Theme = previewTheme;
+            var surfaceArg = args.FirstOrDefault(a => a.StartsWith("--surface=", StringComparison.OrdinalIgnoreCase));
+            if (surfaceArg is not null && Enum.TryParse<DockSurface>(surfaceArg[10..], true, out var previewSurface)) Surface = previewSurface;
         }
     }
 
@@ -178,6 +200,30 @@ public static class GlassSettings
         }
 
         Rim = rim;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetSurface(DockSurface surface)
+    {
+        if (Surface == surface)
+        {
+            return;
+        }
+
+        Surface = surface;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetShrink(bool enabled)
+    {
+        if (Shrink == enabled)
+        {
+            return;
+        }
+
+        Shrink = enabled;
         Save();
         Changed?.Invoke();
     }
@@ -375,6 +421,8 @@ public static class GlassSettings
                 GpuVisualizer = GpuVisualizer,
                 Theme = Theme.ToString(),
                 Bulge = Bulge.ToString(),
+                Surface = Surface.ToString(),
+                Shrink = Shrink,
                 VisualizerLook = VisualizerLook.ToString(),
                 HologramTint = HologramTint.ToString(),
                 Intro = Intro.ToString(),
@@ -403,6 +451,10 @@ public static class GlassSettings
         public string Theme { get; set; } = nameof(DockTheme.None);
 
         public string Bulge { get; set; } = nameof(BulgeStyle.Soft);
+
+        public string Surface { get; set; } = nameof(DockSurface.Classic);
+
+        public bool Shrink { get; set; } = true;
 
         public string VisualizerLook { get; set; } = nameof(VisualizerStyle.Glow);
 

@@ -68,7 +68,7 @@ public partial class DockWindow
 
     /// <summary>Width of everything after the icons, with now playing grown to <paramref name="media"/>.</summary>
     private static double TrailWidth(double media) =>
-        ClockGap + ((MediaWidth + ClockGap) * media) + WeatherWidth + ClockGap + ClockWidth + StartGap + StartWidth + ClockPad;
+        ClockGap + ((MediaWidth + ClockGap) * media) + WeatherWidth + TrayWidth + ClockGap + ClockWidth + StartGap + StartWidth + ClockPad;
 
     private bool SectionsSettled => _dropTime < 0 && Math.Abs(_mediaReveal - _mediaTarget) < 0.002 && Math.Abs(_mediaRevealVel) < 0.01;
 
@@ -90,6 +90,7 @@ public partial class DockWindow
         _clockLayer.Children.Add(_media);
         _clockLayer.Children.Add(_weather);
         _clockLayer.Children.Add(_quickSettings);
+        InitializeTray();
 
         _mediaTimer.Tick += async (_, _) => await PollMediaAsync();
         _mediaTimer.Start();
@@ -461,6 +462,11 @@ public partial class DockWindow
         Canvas.SetLeft(_weather, x);
         Canvas.SetTop(_weather, RestTop + ((RestBarHeight - _weather.Height) / 2));
         x += WeatherWidth;
+
+        // the ^ for the background apps sits before the clock, as Windows has it
+        Canvas.SetLeft(_tray, x);
+        Canvas.SetTop(_tray, RestTop + ((RestBarHeight - StartWidth) / 2));
+        x += TrayWidth;
 
         Canvas.SetLeft(_clockDivider, x + (ClockGap / 2));
         Canvas.SetTop(_clockDivider, lineTop);

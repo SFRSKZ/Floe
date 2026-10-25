@@ -28,6 +28,7 @@ internal sealed class VisualizerWindow : Window
     private readonly StardustVisualizer _dustWave = new() { Wave = true };
     private readonly SilkContourVisualizer _silkContour = new();
     private GpuLayerWindow? _gpu;
+    private GpuLayerWindow? _holo;
     private GpuLayerWindow? _oled;
     private OledGpuScene? _panel;
     private ImageSource? _coverSource;
@@ -72,12 +73,12 @@ internal sealed class VisualizerWindow : Window
     public IntPtr Handle => _hwnd;
 
     /// <summary>The window the light is drawn in right now: the GPU layer when it carries the look.</summary>
-    public IntPtr TopHandle => _oled is { IsRunning: true } oled ? oled.Handle  : _gpu is { IsRunning: true } gpu ? gpu.Handle : _hwnd;
+    public IntPtr TopHandle => _oled is { IsRunning: true } oled ? oled.Handle  : _gpu is { IsRunning: true } gpu ? gpu.Handle : _holo is { IsRunning: true } holo ? holo.Handle : _hwnd;
 
     /// <summary>The OLED panel runs under the dock: its glass has to keep up with what moves behind it.</summary>
     public bool PanelBehindDock => _oled is { IsRunning: true };
 
-    public bool Showing => IsVisible || _gpu is { IsRunning: true } || _oled is { IsRunning: true };
+    public bool Showing => IsVisible || _gpu is { IsRunning: true } || _holo is { IsRunning: true } || _oled is { IsRunning: true };
 
     protected override void OnClosed(EventArgs e)
     {
@@ -86,6 +87,8 @@ internal sealed class VisualizerWindow : Window
         CaptureReveal.Forget(_hwnd);
         _gpu?.Dispose();
         _gpu = null;
+        _holo?.Dispose();
+        _holo = null;
         _oled?.Dispose();
         _oled = null;
         base.OnClosed(e);
@@ -133,6 +136,7 @@ internal sealed class VisualizerWindow : Window
         _dock = dock;
         WindowStyling.PlaceBelow(_hwnd, dock);
         _gpu?.PlaceBelowDock(dock);
+        _holo?.PlaceBelowDock(dock);
         _oled?.PlaceBelowDock(dock);
     }
 
@@ -151,13 +155,18 @@ internal sealed class VisualizerWindow : Window
             _gpu.SetRunning(dust);
         }
 
+        // the hologram's MilkDrop echoes need the GPU's feedback; without it the WPF hologram plays alone
+        bool holo = running && GlassSettings.GpuVisualizer && look == VisualizerStyle.Hologram
+            && Layer(ref _holo, () => new HologramGpuScene());
+        _holo?.SetRunning(holo);
+
         _oled?.SetRunning(oled);
 
         // without a GPU the OLED panel falls back to stardust
         if (look == VisualizerStyle.Oled && !oled) look = VisualizerStyle.Stardust;
 
         // a GPU layer carries its look by itself; this window only fades out what it drew before
-        running &= !(dust || oled);
+        running &= !(dust || oled || holo);
         _running = running;
         _glow.IsActive = running && look == VisualizerStyle.Glow;
         _hologram.IsActive = running && look == VisualizerStyle.Hologram;
@@ -296,6 +305,7 @@ internal sealed class VisualizerWindow : Window
             (int)Math.Round(_bounds.Width * _scale),
             (int)Math.Round(_bounds.Height * _scale));
         _gpu?.Place(pixels, _scale, _dock);
+        _holo?.Place(pixels, _scale, _dock);
         _oled?.Place(pixels, _scale, _dock);
     }
 

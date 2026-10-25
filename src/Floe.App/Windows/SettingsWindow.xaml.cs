@@ -290,6 +290,22 @@ public partial class SettingsWindow : Window
         RimGold.Checked += (_, _) => GlassSettings.SetRim(RimStyle.MetalGold);
         RimChromatic.Checked += (_, _) => GlassSettings.SetRim(RimStyle.MetalChromatic);
 
+        ShrinkToggle.IsChecked = GlassSettings.Shrink;
+        ShrinkToggle.Checked += (_, _) => GlassSettings.SetShrink(true);
+        ShrinkToggle.Unchecked += (_, _) => GlassSettings.SetShrink(false);
+
+        SurfaceClassic.IsChecked = GlassSettings.Surface == DockSurface.Classic;
+        SurfaceMica.IsChecked = GlassSettings.Surface == DockSurface.Mica;
+        SurfaceFrost.IsChecked = GlassSettings.Surface == DockSurface.Frost;
+        SurfaceGraphite.IsChecked = GlassSettings.Surface == DockSurface.Graphite;
+        SurfaceFloating.IsChecked = GlassSettings.Surface == DockSurface.Floating;
+
+        SurfaceClassic.Checked += (_, _) => GlassSettings.SetSurface(DockSurface.Classic);
+        SurfaceMica.Checked += (_, _) => GlassSettings.SetSurface(DockSurface.Mica);
+        SurfaceFrost.Checked += (_, _) => GlassSettings.SetSurface(DockSurface.Frost);
+        SurfaceGraphite.Checked += (_, _) => GlassSettings.SetSurface(DockSurface.Graphite);
+        SurfaceFloating.Checked += (_, _) => GlassSettings.SetSurface(DockSurface.Floating);
+
         BulgeSoft.IsChecked = GlassSettings.Bulge == BulgeStyle.Soft;
         BulgePedestal.IsChecked = GlassSettings.Bulge == BulgeStyle.Pedestal;
         BulgeFlat.IsChecked = GlassSettings.Bulge == BulgeStyle.Flat;

@@ -148,17 +148,22 @@ public partial class DockWindow
     {
         UpdateMonitor();
 
-        var scale = DockScale;
-        var area = _monitorInfo.Monitor;
-        var monitorLeft = area.Left / scale;
-        var monitorWidth = (area.Right - area.Left) / scale;
-        var width = ActualWidth > 0 ? ActualWidth : Width;
-
         BeginAnimation(TopProperty, null);
-        Left = monitorLeft + ((monitorWidth - width) / 2);
+        CenterOnMonitor();
         Top = _shown ? ShownTop : HiddenTop;
 
         EnsureAppBar();
+    }
+
+    // The window is wider than the capsule and the capsule sits in its middle, so centring the window centres
+    // the dock. Width, not ActualWidth: right after a relayout ActualWidth still holds the old size.
+    private void CenterOnMonitor()
+    {
+        var scale = DockScale;
+        var area = _monitorInfo.Monitor;
+        if (area.Right <= area.Left) return; // no monitor read yet; Reposition centres once there is
+        var width = double.IsNaN(Width) || Width <= 0 ? ActualWidth : Width;
+        Left = (area.Left / scale) + ((((area.Right - area.Left) / scale) - width) / 2);
     }
 
     private void UpdateMonitor()
@@ -215,7 +220,10 @@ public partial class DockWindow
 
         // Keep the reservation while a fullscreen app runs: fullscreen windows size to the
         // monitor rect anyway, and dropping it would re-layout every maximized window.
-        var height = (int)Math.Round((RestBarHeight + BottomMargin) * DockScale);
+        // reserve up to the capsule's top as it rests: full size when the dock does not shrink, so maximized
+        // windows end above it instead of under it
+        var restTop = ((ShadowRoom + RestBarHeight) * CompactScale) + BottomMargin - Sink + 4;
+        var height = (int)Math.Round(Math.Max(RestBarHeight + BottomMargin, restTop) * DockScale);
         _appBar.SetPosition(_monitorInfo.Monitor, height);
     }
 

@@ -14,7 +14,7 @@ public enum ActiveIconMode
     Glass = 1,
 }
 
-/// <summary>Neon tube or liquid-glass frame drawn straight onto the active dock icon.</summary>
+/// <summary>Neon tube or glass ripples drawn straight onto the active dock icon.</summary>
 public sealed class ActiveIconEffect : ShaderEffect
 {
     /// <summary>Room the effect may draw in around the icon (DIP); icons sit 8 DIP apart.</summary>
@@ -54,8 +54,9 @@ public sealed class ActiveIconEffect : ShaderEffect
         // inside the dock window: every other visualizer frame is plenty for a slow colour flow
         _clock = new PacedClock(now =>
         {
-            // the shader only flows its colour slowly: 12 fps is indistinguishable and saves constant writes
-            double fps = Math.Min(12, Performance.AmbientFps);
+            // the neon only flows its colour slowly: 12 fps is indistinguishable and saves constant writes;
+            // the glass ripples move, and need twice that to glide
+            double fps = Math.Min(Mode >= 0.5 ? 24 : 12, Performance.AmbientFps);
             if (!VisualizerPacing.DockAnimating && (fps <= 0 || now - _lastTime < 1.0 / fps))
             {
                 return;

@@ -38,6 +38,7 @@ public partial class DockWindow
     {
         var visible = IsVisible && _shown && !_fullscreenHidden;
         _activeFx?.SetVisible(visible && _fxImage is not null);
+        SetGlassLoopVisible(visible);
         if (visible && AuraSettings.Effect == AuraEffect.Aurora && _activeIndex >= 0) _aurora?.Begin();
         else _aurora?.End();
 
@@ -112,11 +113,13 @@ public partial class DockWindow
         {
             _fxImage.Effect = null;
             _activeFx?.Stop();
+            StopGlassLoop();
         }
 
         if (image is null || item?.Icon is not { } icon)
         {
             _fxImage = null;
+            StopGlassLoop();
             return;
         }
 
@@ -134,6 +137,7 @@ public partial class DockWindow
             image.Effect = _activeFx;
             _fxImage = image;
             _activeFx.Start();
+            if (AuraSettings.Effect == AuraEffect.Glass) StartGlassLoop(image, item);
             UpdateEffectVisibility();
         }
     }
