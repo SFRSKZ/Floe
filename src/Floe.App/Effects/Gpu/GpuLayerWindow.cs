@@ -100,6 +100,26 @@ internal sealed class GpuLayerWindow : IDisposable
 
     public IntPtr Handle => Volatile.Read(ref _hwnd);
 
+    /// <summary>
+    /// Frames a second this layer draws at, overriding the visualizer pacing (0 keeps it); a layer that moves with
+    /// the dock asks for the monitor's rate, so it never steps slower than the dock beside it.
+    /// </summary>
+    public double Fps { get; set; }
+
+    /// <summary>
+    /// Draws only when <see cref="RequestFrame"/> asks (while running; the fade-out still runs at <see cref="Fps"/>):
+    /// for a layer whose content arrives from the dock's frames, so it never presents the same picture twice.
+    /// </summary>
+    public bool OnDemand { get; set; }
+
+    public void RequestFrame()
+    {
+        _frameRequested = true;
+        _wake.Set();
+    }
+
+    private volatile bool _frameRequested;
+
     public bool IsRunning => _runningWanted && !_disposed;
 
     /// <summary>The dust wave look of the stardust scene; copied into <see cref="GpuFrame.Wave"/>.</summary>
@@ -346,9 +366,22 @@ internal sealed class GpuLayerWindow : IDisposable
             if (result == WaitObject0 + 1) PumpMessages();
         }
 
+        if (OnDemand && _runningWanted)
+        {
+            while (!_exit && !_frameRequested && _runningWanted)
+            {
+                _waitOne[0] = _wake.SafeWaitHandle.DangerousGetHandle();
+                uint woke = MsgWaitForMultipleObjects(1, _waitOne, false, 250, QsAllInput);
+                if (woke == WaitObject0 + 1) PumpMessages();
+            }
+
+            _frameRequested = false;
+            return;
+        }
+
         // Performance.VisualizerFps is the user's cap; without one the strip runs at 60, or 30 while
         // the dock animates (see VisualizerPacing).
-        double fps = Performance.VisualizerFps;
+        double fps = Fps > 0 ? Fps : Performance.VisualizerFps;
         if (fps <= 0) fps = VisualizerPacing.DockAnimating ? 30 : 60;
         long interval = (long)(Stopwatch.Frequency / fps);
         while (!_exit)

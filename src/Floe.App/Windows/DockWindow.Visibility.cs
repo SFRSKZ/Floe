@@ -82,6 +82,7 @@ public partial class DockWindow
         _shown = true;
         UpdateEffectVisibility();
         _visualizerWindow?.PlaceBelowDock(_hwnd);
+        _tronLayer?.PlaceBelowDock(_hwnd);
         _outsideTicks = 0;
         AnimateTop(ShownTop);
     }
@@ -151,6 +152,7 @@ public partial class DockWindow
         BeginAnimation(TopProperty, null);
         CenterOnMonitor();
         Top = _shown ? ShownTop : HiddenTop;
+        if (BenchTop is { } benchTop) Top = benchTop;
 
         EnsureAppBar();
     }
@@ -164,7 +166,20 @@ public partial class DockWindow
         if (area.Right <= area.Left) return; // no monitor read yet; Reposition centres once there is
         var width = double.IsNaN(Width) || Width <= 0 ? ActualWidth : Width;
         Left = (area.Left / scale) + ((((area.Right - area.Left) / scale) - width) / 2);
+        if (BenchLeft is { } benchLeft) Left = benchLeft;
     }
+
+    /// <summary>The benchmark parks its dock here (DIP), off every screen, so it never covers the real one.</summary>
+    internal static double? BenchLeft { get; set; }
+
+    internal static double? BenchTop { get; set; }
+
+    /// <summary>
+    /// Prototype (FLOE_DWM_DOCK=1 or --dwm-dock): a plain window DWM blends by its alpha instead of a layered one,
+    /// so frames stay on the GPU. Clicks on the transparent margins are not passed through yet.
+    /// </summary>
+    internal static readonly bool DwmDock = Environment.GetEnvironmentVariable("FLOE_DWM_DOCK") == "1"
+        || Environment.GetCommandLineArgs().Any(a => a.Equals("--dwm-dock", StringComparison.OrdinalIgnoreCase));
 
     private void UpdateMonitor()
     {

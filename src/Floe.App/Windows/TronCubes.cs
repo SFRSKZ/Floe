@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Media3D;
 using Floe.App.Effects.Derezz;
+using Floe.App.Effects.Gpu;
 using Floe.App.Services;
 
 namespace Floe.App.Windows;
@@ -87,6 +88,8 @@ public sealed class TronCubes : FrameworkElement
     private Brush[] _bloomInk = Array.Empty<Brush>();
     private Color _line, _hot;
     private bool _tinted;
+    private TronMesh? _mesh;
+    private bool _meshInked;
 
     private readonly Point[] _projected = new Point[8];
     private readonly Point[] _quad = new Point[4];
@@ -102,12 +105,36 @@ public sealed class TronCubes : FrameworkElement
     {
         IsHitTestVisible = false;
         Visibility = Visibility.Collapsed;
+        // diagnostics: FLOE_NOFX=tronglow drops the bloom's blur, to tell its cost from the geometry's
+        if ((Environment.GetEnvironmentVariable("FLOE_NOFX") ?? "").Contains("tronglow")) _glow.Effect = null;
         AddVisualChild(_sharp);
         AddVisualChild(_glow);
     }
 
     /// <summary>True while the mound flows or a cube or shard is still in the air, so the dock keeps its frames coming.</summary>
     public bool Busy => _flowing || _particles.Count > 0;
+
+    /// <summary>
+    /// When set, every frame goes into this mesh for the GPU layer instead of into WPF geometry (and the WPF
+    /// visuals stay empty); <see cref="MeshChanged"/> fires once it is filled. Null draws in WPF again.
+    /// </summary>
+    internal TronMesh? Mesh
+    {
+        get => _mesh;
+        set
+        {
+            if (_mesh == value) return;
+            _mesh = value;
+            _meshInked = false;
+            using (_sharp.RenderOpen()) { }
+            using (_glow.RenderOpen()) { }
+        }
+    }
+
+    internal event Action? MeshChanged;
+
+    /// <summary>Cubes and shards in the air right now; for the benchmarks.</summary>
+    internal int ParticleCount => _particles.Count;
 
     protected override int VisualChildrenCount => 2;
 
@@ -253,9 +280,13 @@ public sealed class TronCubes : FrameworkElement
     private void Render()
     {
         EnsureInks();
-        foreach (var set in new[] { _front, _side, _top, _edges, _glint, _flash, _bloom })
+        if (_mesh is not null) _mesh.Begin();
+        else
         {
-            foreach (var batch in set) batch.Begin();
+            foreach (var set in new[] { _front, _side, _top, _edges, _glint, _flash, _bloom })
+            {
+                foreach (var batch in set) batch.Begin();
+            }
         }
 
         // outer columns first: the ones nearer the hover stand in front of them
@@ -297,6 +328,13 @@ public sealed class TronCubes : FrameworkElement
             var view = Matrix3D.Multiply(rotation, View(0));
             var flash = p.Shard ? Math.Max(0, 1 - (p.Age / .12)) : Math.Max(0, (p.Age - (p.Split - .08)) / .08);
             DrawCube(new Point(p.X, p.Y), size, view, alpha, Math.Min(1, flash), true);
+        }
+
+        if (_mesh is not null)
+        {
+            _empty = false;
+            MeshChanged?.Invoke();
+            return;
         }
 
         using (var dc = _sharp.RenderOpen())
@@ -349,21 +387,50 @@ public sealed class TronCubes : FrameworkElement
             if (n.Z <= .02) continue;
             for (var c = 0; c < 4; c++) _quad[c] = _projected[Faces[f][c]];
             var shade = n.Y < -.3 ? Shade.Top : n.Z > .8 ? Shade.Front : Shade.Side;
-            var set = shade == Shade.Top ? _top : shade == Shade.Front ? _front : _side;
-            set[grade].Quad(_quad, true);
+            Quad(shade == Shade.Top ? TronMesh.Top : shade == Shade.Front ? TronMesh.Front : TronMesh.Side, grade);
             if (shade == Shade.Top)
             {
                 // the top face's far edge catches the light; on the crest of a column it blooms
                 var top = TopEdge(_quad);
-                _glint[Grade(alpha * (crest ? 1 : .45))].Segment(_quad[top], _quad[(top + 1) % 4], GlintWidth / 2);
+                Segment(TronMesh.Glint, Grade(alpha * (crest ? 1 : .45)), _quad[top], _quad[(top + 1) % 4], GlintWidth / 2);
             }
 
-            if (flash > .02) _flash[Grade(flash * alpha)].Quad(_quad, true);
+            if (flash > .02) Quad(TronMesh.Flash, Grade(flash * alpha));
         }
 
         var corners = Hull(_projected, _hull);
-        _edges[grade].Outline(_hull, corners, EdgeWidth / 2);
-        _bloom[Grade(alpha * (crest ? 1 : .55))].Outline(_hull, corners, GlowWidth / 2);
+        Outline(TronMesh.Edges, grade, corners, EdgeWidth / 2);
+        Outline(TronMesh.Bloom, Grade(alpha * (crest ? 1 : .55)), corners, GlowWidth / 2);
+    }
+
+    // the ink sets, by TronMesh's numbering
+    private DerezzField.Batch[] Set(int set) => set switch
+    {
+        TronMesh.Side => _side,
+        TronMesh.Front => _front,
+        TronMesh.Top => _top,
+        TronMesh.Edges => _edges,
+        TronMesh.Glint => _glint,
+        TronMesh.Flash => _flash,
+        _ => _bloom,
+    };
+
+    private void Quad(int set, int grade)
+    {
+        if (_mesh is not null) _mesh.Quad(set, grade, _quad);
+        else Set(set)[grade].Quad(_quad, true);
+    }
+
+    private void Segment(int set, int grade, Point from, Point to, double half)
+    {
+        if (_mesh is not null) _mesh.Segment(set, grade, from, to, half);
+        else Set(set)[grade].Segment(from, to, half);
+    }
+
+    private void Outline(int set, int grade, int corners, double half)
+    {
+        if (_mesh is not null) _mesh.Outline(set, grade, _hull, corners, half);
+        else Set(set)[grade].Outline(_hull, corners, half);
     }
 
     // Convex hull of the projected corners (monotone chain) into hull; returns its corner count.
@@ -413,7 +480,12 @@ public sealed class TronCubes : FrameworkElement
     {
         var line = ThemePalette.LineColor;
         var hot = ThemePalette.HotColor;
-        if (_tinted && _line == line && _hot == hot) return;
+        if (_tinted && _line == line && _hot == hot)
+        {
+            if (_mesh is not null && !_meshInked) InkMesh();
+            return;
+        }
+
         _tinted = true;
         _line = line;
         _hot = hot;
@@ -426,6 +498,22 @@ public sealed class TronCubes : FrameworkElement
         _glintInk = Ladder(hot, 1);
         _flashInk = Ladder(hot, .85);
         _bloomInk = Ladder(line, .55);
+        if (_mesh is not null) InkMesh();
+    }
+
+    // the same ladders as the brushes above, for the GPU mesh
+    private void InkMesh()
+    {
+        var dim = ThemePalette.DimColor;
+        static System.Numerics.Vector3 Rgb(Color c) => new(c.R / 255f, c.G / 255f, c.B / 255f);
+        _mesh!.SetInk(TronMesh.Front, Rgb(Mix(Colors.Black, dim, .55)), .92);
+        _mesh.SetInk(TronMesh.Side, Rgb(Mix(Colors.Black, dim, .3)), .95);
+        _mesh.SetInk(TronMesh.Top, Rgb(Mix(dim, _line, .45)), .9);
+        _mesh.SetInk(TronMesh.Edges, Rgb(_line), 1);
+        _mesh.SetInk(TronMesh.Glint, Rgb(_hot), 1);
+        _mesh.SetInk(TronMesh.Flash, Rgb(_hot), .85);
+        _mesh.SetInk(TronMesh.Bloom, Rgb(_line), .55);
+        _meshInked = true;
     }
 
     private static Color Mix(Color a, Color b, double t) => Color.FromRgb(
@@ -485,6 +573,12 @@ public sealed class TronCubes : FrameworkElement
         _columns.Clear();
         using (_sharp.RenderOpen()) { }
         using (_glow.RenderOpen()) { }
+        if (_mesh is not null)
+        {
+            _mesh.Begin();
+            MeshChanged?.Invoke();
+        }
+
         _empty = true;
     }
 }

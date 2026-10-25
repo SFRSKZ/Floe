@@ -31,6 +31,7 @@ public partial class DockWindow
 
         _hwnd = new WindowInteropHelper(this).Handle;
         WindowStyling.MakeNonActivatingToolWindow(_hwnd);
+        if (DwmDock) DwmTransparency.Apply(this);
         DesktopController.RegisterHotKey(_hwnd, DesktopController.HotkeyIdVeil, DesktopController.ModControl | DesktopController.ModAlt, DesktopController.VkV);
         if (BlurBackdrop)
         {
@@ -196,6 +197,8 @@ public partial class DockWindow
         CaptureReveal.Shutdown();
         _activeFx?.Stop();
         StopAnimation();
+        _tronLayer?.Dispose();
+        _tronLayer = null;
         AuraSettings.Changed -= OnAuraSettingsChanged;
         _settings?.Close();
         for (var k = 0; k < _auraEffects.Length; k++)
