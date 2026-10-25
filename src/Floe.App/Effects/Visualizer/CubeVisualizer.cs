@@ -31,8 +31,8 @@ public sealed class CubeVisualizer : FrameworkElement
     private static double Cell => GlassSettings.CubeSize;
     private const double Gap = 1.2;
     // the glass: a bright rim this wide around each front, a gloss over its upper part and a streak of light
-    private const double Rim = .9;
-    private const double Gloss = .45;
+    private const double Rim = .6;
+    private const double Gloss = .32;
     private const int MaxColumns = 400;
     private const int MaxRows = 9;
     // The cube's depth: its side and top faces lean back up and to the right.
@@ -343,7 +343,8 @@ public sealed class CubeVisualizer : FrameworkElement
         // rim as four bars that do not overlap, so the translucent edge keeps one strength all round
         var rim = _rim[shade][grade];
         Bar(rim, tl.X, tl.Y, w, Rim);
-        Bar(rim, tl.X, bl.Y - Rim, w, Rim);
+        // The lower edge catches less light than the upper and side edges.
+        Bar(_rim[shade][Math.Max(1, grade - 2)], tl.X, bl.Y - Rim, w, Rim);
         Bar(rim, tl.X, tl.Y + Rim, Rim, h - (2 * Rim));
         Bar(rim, tr.X - Rim, tl.Y + Rim, Rim, h - (2 * Rim));
         Bar(_gloss[grade], tl.X + Rim, tl.Y + Rim, w - (2 * Rim), (h - (2 * Rim)) * Gloss);
@@ -482,14 +483,14 @@ public sealed class CubeVisualizer : FrameworkElement
             double k = s / (Shades - 1.0);
             var face = k < .5 ? Mix(body, core, k * 2) : Mix(core, tip, (k - .5) * 1.4);
             // tinted glass: the light behind shows through the faces, the rims carry the shape
-            FrontBrushes[s] = Ladder(face, .42);
-            SideBrushes[s] = Ladder(Mix(face, Colors.Black, .35), .5);
-            TopBrushes[s] = Ladder(Mix(face, Colors.White, .55), .55);
-            RimBrushes[s] = Ladder(Mix(face, Colors.White, .65), .85);
+            FrontBrushes[s] = Ladder(face, .34);
+            SideBrushes[s] = Ladder(Mix(face, Colors.Black, .42), .46);
+            TopBrushes[s] = Ladder(Mix(face, tip, .38), .64);
+            RimBrushes[s] = Ladder(Mix(face, tip, .42), .64);
         }
 
-        GlossBrushes = Ladder(Colors.White, .14);
-        StreakBrushes = Ladder(Colors.White, .5);
+        GlossBrushes = Ladder(tip, .10);
+        StreakBrushes = Ladder(tip, .32);
 
         GlintBrushes = Ladder(Colors.White, .85);
         var pool = new RadialGradientBrush();

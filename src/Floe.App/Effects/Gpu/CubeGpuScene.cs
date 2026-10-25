@@ -29,8 +29,8 @@ public sealed class CubeGpuScene : IGpuScene
 
     // the CPU look's geometry, in DIP
     private const float Gap = 1.2f;
-    private const float Rim = .9f;
-    private const float Gloss = .45f;
+    private const float Rim = .6f;
+    private const float Gloss = .32f;
     private const int MaxColumns = 400;
     private const int MaxRows = 9;
     private const float RiseSeconds = .06f;
@@ -118,9 +118,10 @@ public sealed class CubeGpuScene : IGpuScene
     private readonly Vector2[] _projected = new Vector2[8];
     private int _paletteVersion = -1;
     private int _paletteGrade = -1;
-    private readonly Vector4[] _front = new Vector4[Shades], _side = new Vector4[Shades], _top = new Vector4[Shades], _rim = new Vector4[Shades];
+    private readonly Vector4[] _front = new Vector4[Shades], _side = new Vector4[Shades], _top = new Vector4[Shades], _rim = new Vector4[Shades], _rimLow = new Vector4[Shades];
     private Vector4 _gloss, _streak, _glint;
     private Vector3 _poolColor;
+    private MediaColor _tip;
     private readonly MediaColor[] _faces = new MediaColor[Shades];
 
     public CubeGpuScene()
@@ -380,7 +381,8 @@ public sealed class CubeGpuScene : IGpuScene
         float w = tr.X - tl.X, h = bl.Y - tl.Y;
         var rim = _rim[shade];
         Bar(RimLayer + shade, tl.X, tl.Y, w, Rim, rim);
-        Bar(RimLayer + shade, tl.X, bl.Y - Rim, w, Rim, rim);
+        // The lower edge catches less light than the upper and side edges.
+        Bar(RimLayer + shade, tl.X, bl.Y - Rim, w, Rim, _rimLow[shade]);
         Bar(RimLayer + shade, tl.X, tl.Y + Rim, Rim, h - (2 * Rim), rim);
         Bar(RimLayer + shade, tr.X - Rim, tl.Y + Rim, Rim, h - (2 * Rim), rim);
         Bar(GlossLayer, tl.X + Rim, tl.Y + Rim, w - (2 * Rim), (h - (2 * Rim)) * Gloss, _gloss);
@@ -479,6 +481,7 @@ public sealed class CubeGpuScene : IGpuScene
                 _faces[s] = k < .5 ? Mix(body, core, k * 2) : Mix(core, tip, (k - .5) * 1.4);
             }
 
+            _tip = tip;
             _poolColor = Rgb(core);
         }
 
@@ -489,14 +492,15 @@ public sealed class CubeGpuScene : IGpuScene
         for (int s = 0; s < Shades; s++)
         {
             var face = _faces[s];
-            _front[s] = Ladder(face, .42, grade);
-            _side[s] = Ladder(Mix(face, black, .35), .5, grade);
-            _top[s] = Ladder(Mix(face, white, .55), .55, grade);
-            _rim[s] = Ladder(Mix(face, white, .65), .85, grade);
+            _front[s] = Ladder(face, .34, grade);
+            _side[s] = Ladder(Mix(face, black, .42), .46, grade);
+            _top[s] = Ladder(Mix(face, _tip, .38), .64, grade);
+            _rim[s] = Ladder(Mix(face, _tip, .42), .64, grade);
+            _rimLow[s] = Ladder(Mix(face, _tip, .42), .64, Math.Max(1, grade - 2));
         }
 
-        _gloss = Ladder(white, .14, grade);
-        _streak = Ladder(white, .5, grade);
+        _gloss = Ladder(_tip, .10, grade);
+        _streak = Ladder(_tip, .32, grade);
         _glint = Ladder(white, .85, grade);
     }
 
