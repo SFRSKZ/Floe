@@ -494,6 +494,7 @@ public partial class DockWindow : Window
         LoadPinned();
 
         AuraSettings.Load();
+        if (AuraSettings.ClickSound) ThreadPool.QueueUserWorkItem(_ => ClickSound.Warm());
         GlassSettings.Load();
         ApplyGlassSettings();
         GlassSettings.Changed += OnGlassSettingsChanged;

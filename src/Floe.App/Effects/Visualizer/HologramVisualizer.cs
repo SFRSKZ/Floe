@@ -195,6 +195,9 @@ public sealed class HologramVisualizer : FrameworkElement
         }
     }
 
+    /// <summary>Fixed animation time for repeatable diagnostic captures.</summary>
+    internal double DebugTime { get; set; } = -1;
+
     /// <summary>True when a media session is actually playing. Never throws.</summary>
     public static async Task<bool> ShouldRunAsync() => await MediaService.IsPlayingAsync();
 
@@ -218,7 +221,7 @@ public sealed class HologramVisualizer : FrameworkElement
             return;
         }
 
-        double t = _clock.Elapsed.TotalSeconds;
+        double t = DebugTime >= 0 ? DebugTime : _clock.Elapsed.TotalSeconds;
         double width = capsule.Width;
         double baseY = capsule.Bottom - 4;
         double maxHeight = Math.Max(1, capsule.Height * 0.95);
@@ -232,10 +235,10 @@ public sealed class HologramVisualizer : FrameworkElement
         dc.DrawEllipse(Graded(HazeBlueBrushes, 0.11 + 0.27 * energy), null,
             new Point(centerX, baseY - maxHeight * 0.30), width * 0.37, maxHeight * 0.64);
 
-        dc.DrawEllipse(Graded(HazeCoreBrushes, 0.08 + 0.20 * energy), null,
+        dc.DrawEllipse(Graded(HazeCoreBrushes, 0.05 + 0.14 * energy), null,
             new Point(centerX, baseY - maxHeight * 0.36), width * 0.125, maxHeight * 0.62);
 
-        dc.DrawEllipse(Graded(HazeCoreBrushes, 0.05 + 0.13 * energy), null,
+        dc.DrawEllipse(Graded(HazeCoreBrushes, 0.03 + 0.09 * energy), null,
             new Point(centerX, baseY - maxHeight * 0.44), width * 0.042, maxHeight * 0.54);
 
         // ------------------------------------------------------------------
@@ -271,7 +274,10 @@ public sealed class HologramVisualizer : FrameworkElement
                            0.38 * ValueNoise(t * (_flickerSpeed[i] * 2.3 + 0.4) + seed * 17.0, (int)(seed * 70001));
             noise = Math.Clamp(noise, 0, 1);
 
-            double h = envelope * maxHeight * amplitude * (0.35 + 0.65 * noise);
+            // A shared travelling flow gives adjacent strands a coherent motion,
+            // while their own noise preserves the fine filament texture.
+            double flow = ValueNoise(xn * 12.0 - t * .32 + 8.1, 0x48A2);
+            double h = envelope * maxHeight * amplitude * (0.30 + 0.42 * noise + 0.28 * flow);
 
             // Slow spatial clumps: neighbouring strands share a tongue of
             // height so the silhouette breaks into peaks instead of a lawn.
@@ -291,10 +297,11 @@ public sealed class HologramVisualizer : FrameworkElement
             double sway = Math.Sin(t * _swaySpeed[i] + _swayPhase[i]) * 1.5 * heightRatio * (0.35 + 0.65 * noise);
             double y0 = baseY - Math.Abs(_jitter[(i * 7 + 3) % MaxFilaments]) * 0.8;
             double distance = Math.Abs(xn - primaryCenter);
-            int family = distance < 0.055 ? 0 : distance < 0.26 ? 1 : 2;
+            int family = distance < 0.055 && flow > .48 ? 0 : distance < 0.26 ? 1 : 2;
             bool heavy = Hash01(i, 0x33A7) > 0.86;
 
-            var sprite = (heavy ? HeavySprites : StrandSprites)[family][grade];
+            int strandGrade = Math.Clamp((int)Math.Round(grade * (.66 + .34 * flow)), 0, AlphaGrades - 1);
+            var sprite = (heavy ? HeavySprites : StrandSprites)[family][strandGrade];
             double cx = x + sway * 0.5;
             dc.DrawImage(sprite, new Rect(cx - (SpriteWidth / 2), y0 - h - 1, SpriteWidth, h + 1));
 

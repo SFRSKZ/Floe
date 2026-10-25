@@ -36,6 +36,9 @@ public enum VisualizerStyle
     DustWave,
     SilkContour,
     Oled,
+    Prism,
+    Wheat,
+    Ribbon,
 }
 
 /// <summary>A theme dresses the whole dock (glass, rim, glows) and its visualizer in one look.</summary>
@@ -165,7 +168,11 @@ public static class GlassSettings
             Bulge = Enum.TryParse<BulgeStyle>(model.Bulge, true, out var bulge) ? bulge : BulgeStyle.Soft;
             Surface = Enum.TryParse<DockSurface>(model.Surface, true, out var surface) ? surface : DockSurface.Classic;
             Shrink = model.Shrink;
-            VisualizerLook = Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
+            // "Lamella" was the metal wave; that look is gone and its slot is the wheat field now.
+            var lookName = string.Equals(model.VisualizerLook, "Lamella", StringComparison.OrdinalIgnoreCase)
+                ? nameof(VisualizerStyle.Wheat)
+                : model.VisualizerLook;
+            VisualizerLook = Enum.TryParse<VisualizerStyle>(lookName, true, out var look) ? look : VisualizerStyle.Glow;
             HologramTint = Enum.TryParse<HologramColor>(model.HologramTint, true, out var tint) ? tint : HologramColor.Blue;
             Intro = Enum.TryParse<NowPlayingIntro>(model.Intro, true, out var intro) ? intro : NowPlayingIntro.Drop;
             OledEffect = Math.Clamp(model.OledEffect, -1, 10);

@@ -27,6 +27,7 @@ internal sealed class VisualizerWindow : Window
     private readonly StardustVisualizer _stardust = new();
     private readonly StardustVisualizer _dustWave = new() { Wave = true };
     private readonly SilkContourVisualizer _silkContour = new();
+    private readonly SculptedVisualizer _sculpted = new();
     private GpuLayerWindow? _gpu;
     private GpuLayerWindow? _holo;
     private GpuLayerWindow? _oled;
@@ -63,12 +64,13 @@ internal sealed class VisualizerWindow : Window
         root.Children.Add(_stardust);
         root.Children.Add(_dustWave);
         root.Children.Add(_silkContour);
+        root.Children.Add(_sculpted);
         Content = root;
         SizeChanged += (_, _) => UpdateCapsule();
         GlassSettings.Changed += OnGlassSettingsChanged;
     }
 
-    public bool IsRunning => _glow.IsActive || _hologram.IsActive || _cubes.IsActive || _stardust.IsActive || _dustWave.IsActive || _silkContour.IsActive;
+    public bool IsRunning => _glow.IsActive || _hologram.IsActive || _cubes.IsActive || _stardust.IsActive || _dustWave.IsActive || _silkContour.IsActive || _sculpted.IsActive;
 
     public IntPtr Handle => _hwnd;
 
@@ -174,6 +176,17 @@ internal sealed class VisualizerWindow : Window
         _stardust.IsActive = running && look == VisualizerStyle.Stardust;
         _dustWave.IsActive = running && look == VisualizerStyle.DustWave;
         _silkContour.IsActive = running && look == VisualizerStyle.SilkContour;
+        bool sculpted = look is VisualizerStyle.Prism or VisualizerStyle.Wheat or VisualizerStyle.Ribbon;
+        if (sculpted)
+        {
+            _sculpted.Look = look switch
+            {
+                VisualizerStyle.Wheat => SculptedLook.Wheat,
+                VisualizerStyle.Ribbon => SculptedLook.Ribbon,
+                _ => SculptedLook.Prism,
+            };
+        }
+        _sculpted.IsActive = running && sculpted;
 
         if (running)
         {
@@ -338,5 +351,6 @@ internal sealed class VisualizerWindow : Window
         _stardust.Capsule = strip;
         _dustWave.Capsule = strip;
         _silkContour.Capsule = strip;
+        _sculpted.Capsule = strip;
     }
 }

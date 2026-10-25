@@ -264,6 +264,13 @@ public partial class DockWindow
 
     private void ActivateItem(DockItemViewModel item)
     {
+        // The click answers first: the sound is mixed on its own stream, so launching an app cannot delay it.
+        var clicked = _slots.FirstOrDefault(s => ReferenceEquals(s.Item, item));
+        var pan = clicked is null || _windowWidth <= 0
+            ? 0
+            : (((clicked.Center / _windowWidth) * 2) - 1) * 0.32;
+        ClickSound.Play(AuraSettings.ClickTone, pan);
+
         PlayClickGlass(item);
 
         // group: cycle through the windows of the same app

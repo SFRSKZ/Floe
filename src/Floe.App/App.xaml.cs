@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Media;
@@ -68,9 +68,11 @@ public partial class App : Application
         if (Effects.MetalRim.MetalRimPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.VisualizerPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.HologramPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Visualizer.SculptedPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.CubePreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.StardustPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.StardustGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.MeltGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.OledGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.HologramGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.SilkContourPreview.TryRender(e.Args)) { Shutdown(); return; }
@@ -141,6 +143,15 @@ public partial class App : Application
                 // diagnostics must never crash
             }
 
+            Shutdown();
+            return;
+        }
+
+        if (e.Args.FirstOrDefault(a => a.StartsWith("--clicksound", StringComparison.OrdinalIgnoreCase)) is { } soundArg)
+        {
+            // Writes the click voices to a WAV so they can be heard without the dock.
+            var target = soundArg.Contains('=') ? soundArg[(soundArg.IndexOf('=') + 1)..] : System.IO.Path.Combine(System.IO.Path.GetTempPath(), "floe-click.wav");
+            Floe.App.Services.ClickSound.Export(target);
             Shutdown();
             return;
         }

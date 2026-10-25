@@ -41,6 +41,13 @@ public partial class SettingsWindow : Window
         ClickLight.IsChecked = AuraSettings.ClickTone == ClickTone.Light;
         ClickEffectToggle.Checked += (_, _) => AuraSettings.SetClickEffect(true);
         ClickEffectToggle.Unchecked += (_, _) => AuraSettings.SetClickEffect(false);
+        ClickSoundToggle.IsChecked = AuraSettings.ClickSound;
+        ClickSoundToggle.Checked += (_, _) =>
+        {
+            AuraSettings.SetClickSound(true);
+            ClickSound.Play(AuraSettings.ClickTone);
+        };
+        ClickSoundToggle.Unchecked += (_, _) => AuraSettings.SetClickSound(false);
         ClickDark.Checked += (_, _) => AuraSettings.SetClickTone(ClickTone.Dark);
         ClickLight.Checked += (_, _) => AuraSettings.SetClickTone(ClickTone.Light);
         ClickRainbow.IsChecked = AuraSettings.ClickPalette == ClickPalette.Rainbow;
@@ -394,6 +401,12 @@ public partial class SettingsWindow : Window
         VisualizerLookSilkContour.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.SilkContour);
         VisualizerLookOled.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Oled;
         VisualizerLookOled.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Oled);
+        VisualizerLookPrism.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Prism;
+        VisualizerLookPrism.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Prism);
+        VisualizerLookWheat.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Wheat;
+        VisualizerLookWheat.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Wheat);
+        VisualizerLookRibbon.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Ribbon;
+        VisualizerLookRibbon.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Ribbon);
 
         // the OLED panel has its own effects and none of the colour settings: each look shows only what it uses
         void ShowLookOptions()
@@ -403,7 +416,7 @@ public partial class SettingsWindow : Window
             LookOptions.Visibility = oled ? Visibility.Collapsed : Visibility.Visible;
         }
 
-        foreach (var look in new[] { VisualizerLookGlow, VisualizerLookHologram, VisualizerLookCubes, VisualizerLookStardust, VisualizerLookDustWave, VisualizerLookSilkContour, VisualizerLookOled })
+        foreach (var look in new[] { VisualizerLookGlow, VisualizerLookHologram, VisualizerLookCubes, VisualizerLookStardust, VisualizerLookDustWave, VisualizerLookSilkContour, VisualizerLookOled, VisualizerLookPrism, VisualizerLookWheat, VisualizerLookRibbon })
         {
             look.Checked += (_, _) => ShowLookOptions();
         }
