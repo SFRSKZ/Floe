@@ -39,6 +39,10 @@ public enum VisualizerStyle
     Prism,
     Wheat,
     Ribbon,
+    // the OLED panel's show on a colour LED wall: RGB triads, the user's colours, glass drops on the beat
+    Led,
+    // the dust wave on the GPU, its grains and trails swept by a MilkDrop flow
+    DustMilk,
 }
 
 /// <summary>A theme dresses the whole dock (glass, rim, glows) and its visualizer in one look.</summary>
@@ -84,7 +88,8 @@ public enum BulgeStyle
 public enum NowPlayingIntro
 {
     Drop,
-    Hologram,
+    Cubes,
+    Dust,
 }
 
 /// <summary>Dock glass look: rim style and the music visualizer glow.</summary>
@@ -104,6 +109,15 @@ public static class GlassSettings
     /// <summary>Stardust and the dust wave drawn by Direct3D in their own layer instead of WPF (experimental).</summary>
     public static bool GpuVisualizer { get; private set; }
 
+    /// <summary>The OLED panel lights in the user's colours, and glass drops swell on it with the beat.</summary>
+    public static bool OledColour { get; private set; }
+
+    /// <summary>Every other look is shown through a colour LED screen of RGB dots.</summary>
+    public static bool LedOverlay { get; private set; }
+
+    /// <summary>The dock as a window DWM blends on the GPU instead of a layered one; takes effect on restart.</summary>
+    public static bool FastDock { get; private set; }
+
     public static BulgeStyle Bulge { get; private set; } = BulgeStyle.Soft;
 
     public static DockSurface Surface { get; private set; } = DockSurface.Classic;
@@ -116,7 +130,11 @@ public static class GlassSettings
     /// <summary>Either Tron theme: black glass edged in neon light lines, with the OLED panel lit in the same colour.</summary>
     public static bool Tron => Theme is DockTheme.TronLegacy or DockTheme.TronAres;
 
-    public static VisualizerStyle VisualizerLook { get; private set; } = VisualizerStyle.Glow;
+    public static VisualizerStyle VisualizerLook { get; private set; } = VisualizerStyle.Stardust;
+
+    // still in the code but no longer offered: glow, cubes, silk contour, prism, wheat field, light ribbon
+    private static bool IsRetired(VisualizerStyle look) => look is VisualizerStyle.Glow or VisualizerStyle.Cubes
+        or VisualizerStyle.SilkContour or VisualizerStyle.Prism or VisualizerStyle.Wheat or VisualizerStyle.Ribbon;
 
     public static HologramColor HologramTint { get; private set; } = HologramColor.Blue;
 
@@ -163,16 +181,18 @@ public static class GlassSettings
             Rim = Enum.TryParse<RimStyle>(model.Rim, true, out var rim) ? rim : RimStyle.Plain;
             Visualizer = model.Visualizer;
             GpuVisualizer = model.GpuVisualizer;
+            OledColour = model.OledColour;
+            LedOverlay = model.LedOverlay;
+            FastDock = model.FastDock;
             // a theme that is gone (Mordor) falls back to none, as does its visualizer (the eye flame)
             Theme = Enum.TryParse<DockTheme>(model.Theme, true, out var theme) ? theme : DockTheme.None;
             Bulge = Enum.TryParse<BulgeStyle>(model.Bulge, true, out var bulge) ? bulge : BulgeStyle.Soft;
             Surface = Enum.TryParse<DockSurface>(model.Surface, true, out var surface) ? surface : DockSurface.Classic;
             Shrink = model.Shrink;
-            // "Lamella" was the metal wave; that look is gone and its slot is the wheat field now.
-            var lookName = string.Equals(model.VisualizerLook, "Lamella", StringComparison.OrdinalIgnoreCase)
-                ? nameof(VisualizerStyle.Wheat)
-                : model.VisualizerLook;
-            VisualizerLook = Enum.TryParse<VisualizerStyle>(lookName, true, out var look) ? look : VisualizerStyle.Glow;
+            // looks taken off the picker (and "Lamella", the old metal wave) fall back to the stardust
+            VisualizerLook = Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) && !IsRetired(look)
+                ? look
+                : VisualizerStyle.Stardust;
             HologramTint = Enum.TryParse<HologramColor>(model.HologramTint, true, out var tint) ? tint : HologramColor.Blue;
             Intro = Enum.TryParse<NowPlayingIntro>(model.Intro, true, out var intro) ? intro : NowPlayingIntro.Drop;
             OledEffect = Math.Clamp(model.OledEffect, -1, 10);
@@ -282,6 +302,30 @@ public static class GlassSettings
             VisualizerLook = VisualizerStyle.Oled;
         }
 
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetOledColour(bool enabled)
+    {
+        if (OledColour == enabled) return;
+        OledColour = enabled;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetFastDock(bool enabled)
+    {
+        if (FastDock == enabled) return;
+        FastDock = enabled;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetLedOverlay(bool enabled)
+    {
+        if (LedOverlay == enabled) return;
+        LedOverlay = enabled;
         Save();
         Changed?.Invoke();
     }
@@ -443,6 +487,9 @@ public static class GlassSettings
                 Rim = Rim.ToString(),
                 Visualizer = Visualizer,
                 GpuVisualizer = GpuVisualizer,
+                OledColour = OledColour,
+                LedOverlay = LedOverlay,
+                FastDock = FastDock,
                 Theme = Theme.ToString(),
                 Bulge = Bulge.ToString(),
                 Surface = Surface.ToString(),
@@ -471,6 +518,12 @@ public static class GlassSettings
 
         public bool GpuVisualizer { get; set; }
 
+        public bool OledColour { get; set; }
+
+        public bool LedOverlay { get; set; }
+
+        public bool FastDock { get; set; }
+
 
         public string Theme { get; set; } = nameof(DockTheme.None);
 
@@ -480,7 +533,7 @@ public static class GlassSettings
 
         public bool Shrink { get; set; } = true;
 
-        public string VisualizerLook { get; set; } = nameof(VisualizerStyle.Glow);
+        public string VisualizerLook { get; set; } = nameof(VisualizerStyle.Stardust);
 
         public double CubeSize { get; set; } = 17;
 

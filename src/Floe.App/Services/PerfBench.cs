@@ -26,6 +26,13 @@ internal static class PerfBench
         string? viz = Value(args, "--bench-viz=");
         string? dock = Value(args, "--bench-dock=");
         string? layered = Value(args, "--bench-window=");
+        if (Value(args, "--render-icon-menu=") is { } menuShot)
+        {
+            GlassSettings.Load();
+            MenuShot(Path.GetFullPath(menuShot));
+            return true;
+        }
+
         if (viz is null && dock is null && layered is null) return false;
         string output = Path.GetFullPath(Value(args, "--bench-out=") ?? Path.Combine(Path.GetTempPath(), "floe-bench.txt"));
         string label = Value(args, "--bench-label=") ?? string.Join(' ', args);
@@ -153,6 +160,34 @@ internal static class PerfBench
             }
 
             dock.Close();
+            Application.Current.Shutdown();
+        };
+        timer.Start();
+    }
+
+    // --render-icon-menu=<png>: an icon's right-click menu at the top left of the primary screen for a moment, grabbed off
+    // the screen with whatever is behind it (run with FLOE_NOFX=exclude, or the glass keeps itself out of screen grabs)
+    private static void MenuShot(string file)
+    {
+        var menu = new IconMenuWindow { KeepOpen = true };
+        var actions = new List<(string, Action)> { ("Aç", () => { }), ("Sabitle", () => { }), ("Konum", () => { }), ("Kapat", () => { }) };
+        menu.ShowFor("Google Chrome", null, actions, 200, 260, SystemParameters.WorkArea);
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            double scale = GetDpiForSystem() / 96.0;
+            int x = (int)(menu.Left * scale), y = (int)(menu.Top * scale), w = (int)(menu.ActualWidth * scale), h = (int)(menu.ActualHeight * scale);
+            if (Floe.App.Effects.Derezz.ScreenGrab.Capture(new Int32Rect(x, y, w, h), 0) is { } grabbed)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(grabbed));
+                using var stream = File.Create(file);
+                encoder.Save(stream);
+            }
+
+            menu.Close();
             Application.Current.Shutdown();
         };
         timer.Start();

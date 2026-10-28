@@ -41,6 +41,12 @@ public partial class SettingsWindow : Window
         ClickLight.IsChecked = AuraSettings.ClickTone == ClickTone.Light;
         ClickEffectToggle.Checked += (_, _) => AuraSettings.SetClickEffect(true);
         ClickEffectToggle.Unchecked += (_, _) => AuraSettings.SetClickEffect(false);
+        ClickScreenToggle.IsChecked = AuraSettings.ClickScreen;
+        ClickScreenToggle.Checked += (_, _) => AuraSettings.SetClickScreen(true);
+        ClickScreenToggle.Unchecked += (_, _) => AuraSettings.SetClickScreen(false);
+        ClickPaintToggle.IsChecked = AuraSettings.ClickPaint;
+        ClickPaintToggle.Checked += (_, _) => AuraSettings.SetClickPaint(true);
+        ClickPaintToggle.Unchecked += (_, _) => AuraSettings.SetClickPaint(false);
         ClickSoundToggle.IsChecked = AuraSettings.ClickSound;
         ClickSoundToggle.Checked += (_, _) =>
         {
@@ -297,6 +303,9 @@ public partial class SettingsWindow : Window
         RimGold.Checked += (_, _) => GlassSettings.SetRim(RimStyle.MetalGold);
         RimChromatic.Checked += (_, _) => GlassSettings.SetRim(RimStyle.MetalChromatic);
 
+        FastDockToggle.IsChecked = GlassSettings.FastDock;
+        FastDockToggle.Checked += (_, _) => GlassSettings.SetFastDock(true);
+        FastDockToggle.Unchecked += (_, _) => GlassSettings.SetFastDock(false);
         ShrinkToggle.IsChecked = GlassSettings.Shrink;
         ShrinkToggle.Checked += (_, _) => GlassSettings.SetShrink(true);
         ShrinkToggle.Unchecked += (_, _) => GlassSettings.SetShrink(false);
@@ -341,6 +350,12 @@ public partial class SettingsWindow : Window
             };
         }
 
+        OledColourToggle.IsChecked = GlassSettings.OledColour;
+        OledColourToggle.Checked += (_, _) => GlassSettings.SetOledColour(true);
+        OledColourToggle.Unchecked += (_, _) => GlassSettings.SetOledColour(false);
+        LedOverlayToggle.IsChecked = GlassSettings.LedOverlay;
+        LedOverlayToggle.Checked += (_, _) => GlassSettings.SetLedOverlay(true);
+        LedOverlayToggle.Unchecked += (_, _) => GlassSettings.SetLedOverlay(false);
         GpuVisualizerToggle.IsChecked = GlassSettings.GpuVisualizer;
         GpuVisualizerToggle.Checked += (_, _) => GlassSettings.SetGpuVisualizer(true);
         GpuVisualizerToggle.Unchecked += (_, _) => GlassSettings.SetGpuVisualizer(false);
@@ -397,6 +412,8 @@ public partial class SettingsWindow : Window
         VisualizerLookStardust.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Stardust);
         VisualizerLookDustWave.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.DustWave;
         VisualizerLookDustWave.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.DustWave);
+        VisualizerLookDustMilk.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.DustMilk;
+        VisualizerLookDustMilk.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.DustMilk);
         VisualizerLookSilkContour.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.SilkContour;
         VisualizerLookSilkContour.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.SilkContour);
         VisualizerLookOled.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Oled;
@@ -407,16 +424,21 @@ public partial class SettingsWindow : Window
         VisualizerLookWheat.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Wheat);
         VisualizerLookRibbon.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Ribbon;
         VisualizerLookRibbon.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Ribbon);
+        VisualizerLookLed.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Led;
+        VisualizerLookLed.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Led);
 
         // the OLED panel has its own effects and none of the colour settings: each look shows only what it uses
         void ShowLookOptions()
         {
-            var oled = VisualizerLookOled.IsChecked == true;
+            var led = VisualizerLookLed.IsChecked == true;
+            var oled = led || VisualizerLookOled.IsChecked == true;
             OledOptions.Visibility = oled ? Visibility.Visible : Visibility.Collapsed;
+            // the LED look is always in colour; the toggle is the OLED panel's
+            OledColourToggle.Visibility = led ? Visibility.Collapsed : Visibility.Visible;
             LookOptions.Visibility = oled ? Visibility.Collapsed : Visibility.Visible;
         }
 
-        foreach (var look in new[] { VisualizerLookGlow, VisualizerLookHologram, VisualizerLookCubes, VisualizerLookStardust, VisualizerLookDustWave, VisualizerLookSilkContour, VisualizerLookOled, VisualizerLookPrism, VisualizerLookWheat, VisualizerLookRibbon })
+        foreach (var look in new[] { VisualizerLookGlow, VisualizerLookHologram, VisualizerLookCubes, VisualizerLookStardust, VisualizerLookDustWave, VisualizerLookDustMilk, VisualizerLookSilkContour, VisualizerLookOled, VisualizerLookLed, VisualizerLookPrism, VisualizerLookWheat, VisualizerLookRibbon })
         {
             look.Checked += (_, _) => ShowLookOptions();
         }
@@ -478,9 +500,11 @@ public partial class SettingsWindow : Window
         DustColorsSilk.Checked += (_, _) => GlassSettings.SetDustColors(DustPalette.Silk);
 
         IntroDrop.IsChecked = GlassSettings.Intro == NowPlayingIntro.Drop;
-        IntroHologram.IsChecked = GlassSettings.Intro == NowPlayingIntro.Hologram;
         IntroDrop.Checked += (_, _) => GlassSettings.SetIntro(NowPlayingIntro.Drop);
-        IntroHologram.Checked += (_, _) => GlassSettings.SetIntro(NowPlayingIntro.Hologram);
+        IntroCubes.IsChecked = GlassSettings.Intro == NowPlayingIntro.Cubes;
+        IntroCubes.Checked += (_, _) => GlassSettings.SetIntro(NowPlayingIntro.Cubes);
+        IntroDust.IsChecked = GlassSettings.Intro == NowPlayingIntro.Dust;
+        IntroDust.Checked += (_, _) => GlassSettings.SetIntro(NowPlayingIntro.Dust);
     }
 
     /// <summary>

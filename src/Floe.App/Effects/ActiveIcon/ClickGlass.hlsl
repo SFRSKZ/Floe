@@ -13,9 +13,13 @@ float4 ColorB : register(c5);
 float Inward : register(c6);
 // 1 keeps the icon unbent under the glass (the active icon's loop): only the glass's light moves
 float Sharp : register(c7);
+// 1 shows the icon through the glass as an LED screen: rows of light dots that curve with the lens
+float Screen : register(c8);
 
 float Dist(float2 uv) { return (tex2D(Field, uv).r - 0.5) * 32.0; }
 float Bell(float x, float width) { x /= width; return exp(-x * x); }
+// one lit dot of the screen grid, slightly taller than wide like a row of LEDs
+float Dot(float2 q, float pitch) { float2 c = frac(q / pitch) - 0.5; float soft = 0.5 / pitch; return 1.0 - smoothstep(0.30 - soft, 0.30 + soft, length(c * float2(1.0, 0.85))); }
 
 // Three wavelength bands replace the reference's 32-band integration on ps_3_0.
 float2 Bend(float3 normal, float wavelength, float spread, float depth)
@@ -66,12 +70,27 @@ float4 main(float2 uv : TEXCOORD0) : COLOR0
     float profile = lerp(0.7 + 0.6 * radius * radius, 1.0 - 0.9 * radius * radius, opening);
     float2 samplePoint = p * lerp(1.0, profile, focus) + float2(0.025, 0.10) * unit * opening;
     float bendScale = lerp(1.0, lerp(0.35, 0.12, opening), focus) * (1.0 - sharp);
+    float screen = saturate(Screen);
+    // as the lens is born it drags what it shows sideways, like a picture pulled across a curved screen
+    samplePoint.x *= lerp(1.0, 0.55, screen * youth * smoothstep(0.35, 1.0, radius));
     samplePoint = lerp(samplePoint, p, sharp);
     float4 red = tex2D(Input, 0.5 + (samplePoint + Bend(normal, 0.65, spread, depth) * bendScale) / total);
     float4 green = tex2D(Input, 0.5 + (samplePoint + Bend(normal, 0.55, spread, depth) * bendScale) / total);
     float4 blue = tex2D(Input, 0.5 + (samplePoint + Bend(normal, 0.45, spread, depth) * bendScale) / total);
     float3 color = float3(red.r, green.g, blue.b) * 0.94;
     float alpha = max(red.a, max(green.a, blue.a));
+
+    // The screen: the grid lives in the bent space, so its rows curve with the glass, and each colour's grid is
+    // a hair larger than the last, so where the lens squeezes them they beat into rainbow moire.
+    float2 bent = lerp(p, samplePoint + Bend(normal, 0.55, spread, depth) * bendScale, 0.6);
+    float pitch = max(unit / 15.0, 3.0);
+    float3 dots = float3(Dot(bent, pitch), Dot(bent * 1.008, pitch), Dot(bent * 1.016, pitch));
+    float lit = screen * glass;
+    color = lerp(color, color * (0.22 + dots * 1.6), lit);
+    // the empty glass between the icon's shapes glows as a dim, unlit screen
+    float idle = Dot(bent, pitch) * 0.09 * lit * (1.0 - alpha);
+    color += idle * float3(0.75, 0.85, 1.0);
+    alpha = max(alpha, idle);
 
     // Fixed studio lights and a separate inner wall give the shoulder its thickness.
     float key = pow(saturate(0.5 + 0.5 * dot(outward, float2(-0.486, -0.874))), 5.0);

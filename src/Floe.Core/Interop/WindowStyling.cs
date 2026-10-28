@@ -37,6 +37,19 @@ public static class WindowStyling
         NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GwlExStyle, new IntPtr(style));
     }
 
+    /// <summary>Turns mouse input on the window off (clicks fall to what lies below) or back on.</summary>
+    public static void SetClickThrough(IntPtr hwnd, bool through)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var style = NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GwlExStyle).ToInt64();
+        style = through ? style | NativeMethods.WsExTransparent : style & ~(long)NativeMethods.WsExTransparent;
+        NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GwlExStyle, new IntPtr(style));
+    }
+
     public static void SetTopmost(IntPtr hwnd, bool topmost)
     {
         if (hwnd != IntPtr.Zero)

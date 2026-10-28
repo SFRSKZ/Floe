@@ -175,10 +175,13 @@ public partial class DockWindow
     internal static double? BenchTop { get; set; }
 
     /// <summary>
-    /// Prototype (FLOE_DWM_DOCK=1 or --dwm-dock): a plain window DWM blends by its alpha instead of a layered one,
-    /// so frames stay on the GPU. Clicks on the transparent margins are not passed through yet.
+    /// The fast dock (the setting, FLOE_DWM_DOCK=1 or --dwm-dock): a plain window DWM blends by its alpha instead of a
+    /// layered one, so frames stay on the GPU; clicks off the glass pass through (DockWindow.ClickThrough.cs).
+    /// Read once, when the dock is built: a window cannot switch between the two.
     /// </summary>
-    internal static readonly bool DwmDock = Environment.GetEnvironmentVariable("FLOE_DWM_DOCK") == "1"
+    internal static bool DwmDock { get; private set; }
+
+    private static bool WantsDwmDock() => GlassSettings.FastDock || Environment.GetEnvironmentVariable("FLOE_DWM_DOCK") == "1"
         || Environment.GetCommandLineArgs().Any(a => a.Equals("--dwm-dock", StringComparison.OrdinalIgnoreCase));
 
     private void UpdateMonitor()

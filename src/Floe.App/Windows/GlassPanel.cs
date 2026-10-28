@@ -28,11 +28,11 @@ public sealed class GlassPanel : Grid
     private static readonly string NoFx = Environment.GetEnvironmentVariable("FLOE_NOFX") ?? "";
 
     /// <summary>Extra shade over the dock's tint: text needs more contrast than icons do.</summary>
-    private static readonly Brush ReadingShade = Frozen(new SolidColorBrush(Color.FromArgb(0x8C, 0x08, 0x09, 0x0C)));
+    private static readonly Brush ReadingShadeBrush = Frozen(new SolidColorBrush(Color.FromArgb(0x8C, 0x08, 0x09, 0x0C)));
 
     private readonly GlassBackdrop _backdrop = new();
     private readonly Rectangle _tint = new() { Fill = DockWindow.BuildGlassBrush(), IsHitTestVisible = false };
-    private readonly Rectangle _shade = new() { Fill = ReadingShade, IsHitTestVisible = false };
+    private readonly Rectangle _shade = new() { Fill = ReadingShadeBrush, IsHitTestVisible = false };
     private readonly Rectangle _sheen = new() { Fill = Frozen(DockWindow.BuildSheenBrush()), IsHitTestVisible = false };
     private readonly Rectangle _grain = new() { IsHitTestVisible = false };
     private readonly Rectangle _hairline = new() { Stroke = DockWindow.BuildRimBrush(), StrokeThickness = 1, IsHitTestVisible = false };
@@ -86,6 +86,13 @@ public sealed class GlassPanel : Grid
                 _metal.CursorY = Math.Clamp(p.Y / ActualHeight, 0, 1);
             }
         };
+    }
+
+    /// <summary>How much of the extra reading shade lies over the tint, 0..1; lighter lets more of the glass show.</summary>
+    public double ReadingShade
+    {
+        get => _shade.Opacity;
+        set => _shade.Opacity = value;
     }
 
     public double CornerRadius

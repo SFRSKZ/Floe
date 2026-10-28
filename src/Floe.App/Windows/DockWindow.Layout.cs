@@ -273,6 +273,14 @@ public partial class DockWindow
 
         PlayClickGlass(item);
 
+        // the app already in front: its icon puts the window away, as the taskbar does
+        if (WindowActivator.ForegroundAmong(item.Windows) is var front && front != IntPtr.Zero)
+        {
+            WindowActivator.Minimize(front);
+            Log($"click {item.Name} -> minimize foreground {front}");
+            return;
+        }
+
         // group: cycle through the windows of the same app
         if (item.Windows.Count > 0)
         {

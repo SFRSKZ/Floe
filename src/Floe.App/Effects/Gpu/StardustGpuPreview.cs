@@ -16,7 +16,7 @@ namespace Floe.App.Effects.Gpu;
 
 /// <summary>
 /// --render-gpu-stardust=&lt;dir&gt; writes 90 PNG frames (30 fps) of <see cref="StardustGpuScene"/> over a dark stage,
-/// fed the same made-up beat as the CPU preview; --stardust-wave renders the dust wave look and --stardust-live
+/// fed the same made-up beat as the CPU preview; --stardust-wave renders the dust wave look, --stardust-milk its MilkDrop flow, and --stardust-live
 /// feeds it what the speakers play instead, in real time. --dust-colors=&lt;name&gt; previews other colours.
 /// <para>
 /// It runs its own little offscreen swap: a hardware D3D11 device (WARP when there is none), a 1800x220 render
@@ -46,7 +46,8 @@ public static class StardustGpuPreview
             }
 
             bool live = args.Contains("--stardust-live", StringComparer.OrdinalIgnoreCase);
-            bool wave = args.Contains("--stardust-wave", StringComparer.OrdinalIgnoreCase);
+            bool milk = args.Contains("--stardust-milk", StringComparer.OrdinalIgnoreCase);
+            bool wave = milk || args.Contains("--stardust-wave", StringComparer.OrdinalIgnoreCase);
             var dir = Path.GetFullPath(argument[option.Length..]);
             Directory.CreateDirectory(dir);
 
@@ -59,7 +60,7 @@ public static class StardustGpuPreview
                 using var staging = device.CreateTexture2D(new Texture2DDescription(Format.B8G8R8A8_UNorm, Width, Height, 1, 1,
                     BindFlags.None, ResourceUsage.Staging, CpuAccessFlags.Read, 1, 0, ResourceOptionFlags.None));
 
-                using var scene = new StardustGpuScene();
+                using var scene = new StardustGpuScene { Milk = milk };
                 scene.Initialize(device);
                 scene.Resize(Width, Height);
 

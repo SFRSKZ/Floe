@@ -89,6 +89,12 @@ public static class AuraSettings
     /// <summary>The glass tinkle a click plays; independent of the visual click effect.</summary>
     public static bool ClickSound { get; private set; } = true;
 
+    /// <summary>The click's glass shows the icon as an LED screen of light dots instead of clear glass.</summary>
+    public static bool ClickScreen { get; private set; }
+
+    /// <summary>The click as Van Gogh's brush: swirling impasto strokes of the icon's own colours.</summary>
+    public static bool ClickPaint { get; private set; }
+
     public static ClickTone ClickTone { get; private set; } = ClickTone.Dark;
 
     public static ClickPalette ClickPalette { get; private set; } = ClickPalette.Clear;
@@ -123,6 +129,8 @@ public static class AuraSettings
 
             ClickEffect = model.ClickEffect;
             ClickSound = model.ClickSound;
+            ClickScreen = model.ClickScreen;
+            ClickPaint = model.ClickPaint;
             ClickTone = Enum.TryParse<ClickTone>(model.ClickTone, true, out var tone) && Enum.IsDefined(tone) ? tone : ClickTone.Dark;
             ClickPalette = Enum.TryParse<ClickPalette>(model.ClickPalette, true, out var palette) && Enum.IsDefined(palette) ? palette : ClickPalette.Clear;
             ClickSpeed = model.ClickSpeed <= 0 ? 1.0 : Math.Clamp(model.ClickSpeed, 0.5, 2.0);
@@ -144,6 +152,22 @@ public static class AuraSettings
     {
         if (ClickEffect == enabled) return;
         ClickEffect = enabled;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetClickPaint(bool enabled)
+    {
+        if (ClickPaint == enabled) return;
+        ClickPaint = enabled;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetClickScreen(bool enabled)
+    {
+        if (ClickScreen == enabled) return;
+        ClickScreen = enabled;
         Save();
         Changed?.Invoke();
     }
@@ -285,6 +309,8 @@ public static class AuraSettings
             {
                 ClickEffect = ClickEffect,
                 ClickSound = ClickSound,
+                ClickScreen = ClickScreen,
+                ClickPaint = ClickPaint,
                 ClickTone = ClickTone.ToString(),
                 ClickPalette = ClickPalette.ToString(),
                 ClickSpeed = ClickSpeed,
@@ -310,6 +336,10 @@ public static class AuraSettings
         public bool ClickEffect { get; set; } = true;
 
         public bool ClickSound { get; set; } = true;
+
+        public bool ClickScreen { get; set; }
+
+        public bool ClickPaint { get; set; }
 
         public string ClickTone { get; set; } = nameof(global::Floe.App.Services.ClickTone.Dark);
 

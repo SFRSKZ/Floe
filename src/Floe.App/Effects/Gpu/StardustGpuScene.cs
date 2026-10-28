@@ -106,13 +106,20 @@ public sealed class StardustGpuScene : IGpuScene
     private readonly ID3D11SamplerState[] _pointSampler = new ID3D11SamplerState[1];
     private readonly uint[] _instanceStride = { InstanceFloats * sizeof(float) };
     private readonly uint[] _instanceOffset = { 0 };
-    private readonly float[] _cb = new float[8];
+    private readonly float[] _cb = new float[20];
     private readonly float[] _instanceData = new float[MaxInstances * InstanceFloats];
     private readonly byte[] _instanceBytes = new byte[MaxInstances * InstanceFloats * sizeof(float)];
     private int _instanceCount;
 
     private int _ping;
     private bool _needClear;
+
+    // the MilkDrop dust: the wave's grains and their trails ride one flow, a slow zoom out of the middle plus
+    // swirling cells, so the picture the feedback warps and the grains drawn on it move together
+    private double _milkTime, _milkZoom, _milkSwirl;
+
+    /// <summary>The dust wave in a MilkDrop flow (needs <see cref="GpuFrame.Wave"/> too).</summary>
+    public bool Milk { get; set; }
 
     // ---- lifecycle --------------------------------------------------------------------------------
 
@@ -134,7 +141,7 @@ public sealed class StardustGpuScene : IGpuScene
             new InputElementDescription("INSTANCE", 1, Format.R32G32B32A32_Float, 16, 0, InputClassification.PerInstanceData, 1),
         }, particleVs.Span);
 
-        _constants = device.CreateBuffer(new BufferDescription(32, BindFlags.ConstantBuffer, ResourceUsage.Default, CpuAccessFlags.None, ResourceOptionFlags.None, 0));
+        _constants = device.CreateBuffer(new BufferDescription(80, BindFlags.ConstantBuffer, ResourceUsage.Default, CpuAccessFlags.None, ResourceOptionFlags.None, 0));
         _instanceBuffer = device.CreateBuffer(new BufferDescription(MaxInstances * InstanceFloats * sizeof(float), BindFlags.VertexBuffer, ResourceUsage.Dynamic, CpuAccessFlags.Write, ResourceOptionFlags.None, 0));
         _constantBuffer[0] = _constants;
         _vertexBuffer[0] = _instanceBuffer;
@@ -245,8 +252,9 @@ public sealed class StardustGpuScene : IGpuScene
         }
 
         // the frame constants: feedback reads Lift and Decay, the particles Size, the composite Size and Fade
-        float lift = (frame.Wave ? .6f : .35f) * _ppd * dt * 30;
-        float decay = (float)Math.Exp(-dt / (frame.Wave ? .30 : .055));
+        bool milk = Milk && frame.Wave;
+        float lift = milk ? 0 : (frame.Wave ? .6f : .35f) * _ppd * dt * 30;
+        float decay = (float)Math.Exp(-dt / (milk ? .9 : frame.Wave ? .30 : .055));
         _cb[0] = frame.Width;
         _cb[1] = frame.Height;
         _cb[2] = 1f / frame.Width;
@@ -255,6 +263,16 @@ public sealed class StardustGpuScene : IGpuScene
         _cb[5] = decay;
         _cb[6] = Math.Clamp(frame.Fade, 0, 1);
         _cb[7] = 0;
+        _cb[8] = milk ? 1 : 0;
+        _cb[9] = _ppd;
+        _cb[10] = dt;
+        _cb[11] = (float)_milkTime;
+        _cb[12] = (float)_milkZoom;
+        _cb[13] = (float)_milkSwirl;
+        _cb[14] = MilkKx;
+        _cb[15] = MilkKy();
+        _cb[16] = _width / 2;
+        _cb[17] = _height * .6f;
         context.UpdateSubresource(_cb, _constants!);
 
         int source = _ping, dest = 1 - _ping;
@@ -399,6 +417,7 @@ public sealed class StardustGpuScene : IGpuScene
 
         if (f.Snare > 0) _shimmer = Math.Max(_shimmer, f.Snare);
 
+        if (wave && Milk) Flow(dt);
         if (wave) MoveWave(dt);
         Emit(dt, f, wave);
         Move(dt);
@@ -500,8 +519,10 @@ public sealed class StardustGpuScene : IGpuScene
             _vy[p] -= (2 + (4 * _depth[p])) * d;
             _vx[p] *= drag;
             _vy[p] *= drag;
-            _x[p] += _vx[p] * d;
-            _y[p] += _vy[p] * d;
+            float fx = 0, fy = 0;
+            if (Milk) Field(_x[p], _y[p], out fx, out fy);
+            _x[p] += (_vx[p] + fx) * d;
+            _y[p] += (_vy[p] + fy) * d;
             _flare[p] *= flareDecay;
             if (_age[p] >= _life[p] || _y[p] < -6 || _y[p] > height + 6 || _x[p] < -8 || _x[p] > width + 8)
             {
@@ -572,15 +593,52 @@ public sealed class StardustGpuScene : IGpuScene
         // no sound, no flow
         _wavePhase += dt * _level * 1.6;
 
+        // in the MilkDrop flow the springs are loose, so the grains drift off the line with the swirls and come back
+        bool milk = Milk;
+        float stiffness = milk ? 9 : SpringStiffness, damping = milk ? 4 : SpringDamping;
         for (int i = 0; i < _waveCount; i++)
         {
             Home(i, out float hx, out float hy);
             // a stiff spring, nearly critically damped: back home in about a tenth of a second
-            _wvx[i] += ((SpringStiffness * (hx - _wx[i])) - (SpringDamping * _wvx[i])) * dt;
-            _wvy[i] += ((SpringStiffness * (hy - _wy[i])) - (SpringDamping * _wvy[i])) * dt;
-            _wx[i] += _wvx[i] * dt;
-            _wy[i] += _wvy[i] * dt;
+            _wvx[i] += ((stiffness * (hx - _wx[i])) - (damping * _wvx[i])) * dt;
+            _wvy[i] += ((stiffness * (hy - _wy[i])) - (damping * _wvy[i])) * dt;
+            float fx = 0, fy = 0;
+            if (milk) Field(_wx[i], _wy[i], out fx, out fy);
+            _wx[i] += (_wvx[i] + fx) * dt;
+            _wy[i] += (_wvy[i] + fy) * dt;
         }
+    }
+
+    // ---- the MilkDrop flow ------------------------------------------------------------------------
+
+    // swirl cells about 260 DIP wide and a little taller than the strip
+    private const float MilkKx = 2 * MathF.PI / 260;
+    private float MilkKy() => 2 * MathF.PI / Math.Max(40, _height * 1.3f);
+
+    // The music drives the flow: the bass zooms out of the middle, the level spins the cells, a kick does both.
+    private void Flow(float dt)
+    {
+        _milkTime += dt * (.35 + (1.4 * _level));
+        double zoom = .08 + (.5 * _bass) + (.9 * _pulse);
+        double swirl = (18 + (120 * _level) + (90 * _pulse)) * Math.Sin((_milkTime * .23) + .8);
+        _milkZoom += (zoom - _milkZoom) * (1 - Math.Exp(-dt / .12));
+        _milkSwirl += (swirl - _milkSwirl) * (1 - Math.Exp(-dt / .2));
+    }
+
+    // The flow at a point, DIP per second; FeedbackPs runs the same sum so the trails follow the grains.
+    private void Field(float x, float y, out float vx, out float vy)
+    {
+        float t = (float)_milkTime, zoom = (float)_milkZoom, v = (float)_milkSwirl;
+        float kx = MilkKx, ky = MilkKy();
+        float dx = x - (_width / 2), dy = y - (_height * .6f);
+        // a zoom out of the middle, flattened sideways so a wide strip does not tear apart at its ends
+        vx = zoom * dx * .25f;
+        vy = zoom * dy;
+        // two layers of cells, the finer one turning the other way: a stream function, so nothing piles up
+        float ax = (kx * x) + (t * .7f), ay = (ky * y) - (t * .5f);
+        float bx = (kx * 2.3f * x) - (t * 1.1f), by = (ky * 1.7f * y) + (t * .8f);
+        vx += v * ((MathF.Sin(ax) * MathF.Cos(ay)) - (.5f * MathF.Sin(bx) * MathF.Cos(by)));
+        vy += v * ((-(kx / ky) * MathF.Cos(ax) * MathF.Sin(ay)) + (.5f * (2.3f * kx / (1.7f * ky)) * MathF.Cos(bx) * MathF.Sin(by)));
     }
 
     // A beat throws the grains off their wave; the springs pull them back.
@@ -766,15 +824,46 @@ public sealed class StardustGpuScene : IGpuScene
             float Decay;
             float Fade;
             float Pad;
+            float MilkOn;
+            float Ppd;
+            float Dt;
+            float MilkT;
+            float Zoom;
+            float Swirl;
+            float Kx;
+            float Ky;
+            float2 Centre;
         };
 
         Texture2D Dust : register(t0);
         SamplerState LinearClamp : register(s0);
 
+        // StardustGpuScene.Field, in DIP per second
+        float2 Field(float2 q)
+        {
+            float2 v = Zoom * (q - Centre) * float2(0.25, 1.0);
+            float ax = Kx * q.x + MilkT * 0.7, ay = Ky * q.y - MilkT * 0.5;
+            float bx = Kx * 2.3 * q.x - MilkT * 1.1, by = Ky * 1.7 * q.y + MilkT * 0.8;
+            v.x += Swirl * (sin(ax) * cos(ay) - 0.5 * sin(bx) * cos(by));
+            v.y += Swirl * (-(Kx / Ky) * cos(ax) * sin(ay) + 0.5 * (2.3 * Kx / (1.7 * Ky)) * cos(bx) * sin(by));
+            return v;
+        }
+
         float4 main(float4 position : SV_Position) : SV_Target
         {
-            // sample from below: the picture slides up, exactly like the CPU blur's lift
             float2 p = position.xy;
+            if (MilkOn > 0.5)
+            {
+                // MilkDrop: each pixel fetches what the flow carried here, softened a touch so the trails blur out
+                float2 uv = (p - Field(p / Ppd) * Ppd * Dt) / Size;
+                if (any(uv < 0) || any(uv > 1)) return 0;
+                float4 c = Dust.Sample(LinearClamp, uv) * 0.6
+                    + (Dust.Sample(LinearClamp, uv + float2(Texel.x, 0)) + Dust.Sample(LinearClamp, uv - float2(Texel.x, 0))
+                    + Dust.Sample(LinearClamp, uv + float2(0, Texel.y)) + Dust.Sample(LinearClamp, uv - float2(0, Texel.y))) * 0.1;
+                return c * Decay;
+            }
+
+            // sample from below: the picture slides up, exactly like the CPU blur's lift
             if (p.y + Lift >= Size.y - 0.5) return 0;
             float2 uv = (p + float2(0, Lift)) / Size;
             return Dust.Sample(LinearClamp, uv) * Decay;

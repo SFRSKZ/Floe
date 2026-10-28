@@ -342,6 +342,10 @@
                 <UniformGrid x:Name="PaletteList" Columns="2" Margin="0,2,-6,0" />
                 <TextBlock Text="Tıklama efekti" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,10,0,6" />
                 <CheckBox x:Name="ClickEffectToggle" Style="{StaticResource GlassToggle}" Content="Cam damla" />
+                <CheckBox x:Name="ClickScreenToggle" Style="{StaticResource GlassToggle}" Content="LED ekran camı" Margin="0,6,0,0"
+                          ToolTip="Cam, ikonu nokta nokta bir LED ekran gibi gösterir" />
+                <CheckBox x:Name="ClickPaintToggle" Style="{StaticResource GlassToggle}" Content="Yağlı boya (Van Gogh)" Margin="0,6,0,0"
+                          ToolTip="Cam yerine ikon, kendi renkleriyle kalın, dönen fırça darbelerine dönüşür" />
                 <CheckBox x:Name="ClickSoundToggle" Style="{StaticResource GlassToggle}" Content="Cam sesi" Margin="0,6,0,0" />
                 <WrapPanel Margin="0,6,0,0">
                     <RadioButton x:Name="ClickDark" GroupName="ClickTone" Style="{StaticResource ModeToggle}" Content="Koyu" />
@@ -389,6 +393,11 @@
                     <RadioButton x:Name="ThemeTronAres" GroupName="Theme" Style="{StaticResource ModeToggle}" Content="Tron: Ares"
                                  ToolTip="Siyah cam, kırmızı ışık çizgileri, kırmızı OLED" />
                 </WrapPanel>
+                <Border Height="6" />
+                <CheckBox x:Name="FastDockToggle"
+                          Style="{StaticResource GlassToggle}"
+                          Content="Hızlı dock (deneysel, Floe yeniden açılınca)"
+                          ToolTip="Dock kareleri GPU'da kalır, animasyonlar daha akıcı olur" />
                 <Border Height="6" />
                 <CheckBox x:Name="ShrinkToggle"
                           Style="{StaticResource GlassToggle}"
@@ -455,19 +464,25 @@
 
                 <TextBlock Text="Görselleştirici stili" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
                 <WrapPanel>
-                    <RadioButton x:Name="VisualizerLookGlow" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Işıltı" />
+                    <RadioButton x:Name="VisualizerLookGlow" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Işıltı" />
                     <RadioButton x:Name="VisualizerLookHologram" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Hologram" />
-                    <RadioButton x:Name="VisualizerLookCubes" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Küpler" />
+                    <RadioButton x:Name="VisualizerLookCubes" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Küpler" />
                     <RadioButton x:Name="VisualizerLookStardust" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Yıldız tozu" />
                     <RadioButton x:Name="VisualizerLookDustWave" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Toz dalgası" />
-                    <RadioButton x:Name="VisualizerLookSilkContour" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="İpek kontur" />
+                    <RadioButton x:Name="VisualizerLookDustMilk" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Toz girdabı"
+                                 ToolTip="Toz dalgası MilkDrop akışında: tanecikler ve izleri birlikte döner, bas vuruşta dışa açılır" />
+                    <RadioButton x:Name="VisualizerLookSilkContour" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="İpek kontur" />
                     <RadioButton x:Name="VisualizerLookOled" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="OLED ekran" />
-                    <RadioButton x:Name="VisualizerLookPrism" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Cam prizma" />
-                    <RadioButton x:Name="VisualizerLookWheat" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Başak tarlası" />
-                    <RadioButton x:Name="VisualizerLookRibbon" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Işık şeridi" />
+                    <RadioButton x:Name="VisualizerLookLed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="LED ekran"
+                                 ToolTip="OLED şovu renkli RGB LED noktalarda, vuruşlarda cam damlalarla" />
+                    <RadioButton x:Name="VisualizerLookPrism" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Cam prizma" />
+                    <RadioButton x:Name="VisualizerLookWheat" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Başak tarlası" />
+                    <RadioButton x:Name="VisualizerLookRibbon" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Işık şeridi" />
                 </WrapPanel>
 
                 <StackPanel x:Name="OledOptions">
+                    <CheckBox x:Name="OledColourToggle" Style="{StaticResource GlassToggle}" Content="Renkli noktalar ve cam damla" Margin="0,8,0,0"
+                              ToolTip="OLED noktaları efekt renginde yanar, vuruşlarda üstünde cam damlalar şişer" />
                     <TextBlock Text="OLED efekti" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
                     <WrapPanel>
                         <RadioButton x:Name="OledEffectCycle" GroupName="OledEffect" Style="{StaticResource ModeToggle}" Content="Sırayla" ToolTip="Efektler 20 saniyede bir değişir" />
@@ -487,6 +502,8 @@
 
                 <StackPanel x:Name="LookOptions">
 
+                    <CheckBox x:Name="LedOverlayToggle" Style="{StaticResource GlassToggle}" Content="LED ekran camı" Margin="0,8,0,0"
+                              ToolTip="Seçili görünüm renkli RGB LED noktalardan oluşan bir ekranda oynar" />
                     <CheckBox x:Name="GpuVisualizerToggle"
                               Style="{StaticResource GlassToggle}"
                               Content="Toz stillerini GPU ile çiz (deneysel)"
@@ -551,7 +568,8 @@
                 <TextBlock Text="Şarkı girişi" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
                 <WrapPanel>
                     <RadioButton x:Name="IntroDrop" GroupName="NowPlayingIntro" Style="{StaticResource ModeToggle}" Content="Damla" />
-                    <RadioButton x:Name="IntroHologram" GroupName="NowPlayingIntro" Style="{StaticResource ModeToggle}" Content="Hologram" />
+                    <RadioButton x:Name="IntroCubes" GroupName="NowPlayingIntro" Style="{StaticResource ModeToggle}" Content="Küpler" />
+                    <RadioButton x:Name="IntroDust" GroupName="NowPlayingIntro" Style="{StaticResource ModeToggle}" Content="Toz" />
                 </WrapPanel>
             </StackPanel>
             </StackPanel>

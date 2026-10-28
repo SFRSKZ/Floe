@@ -16,9 +16,11 @@
     <EmbeddedResource Include="Effects\MetalRim\MetalRim.hlsl" LogicalName="Floe.MetalRim.hlsl" />
     <EmbeddedResource Include="Effects\ActiveIcon\ActiveIcon.hlsl" LogicalName="Floe.ActiveIcon.hlsl" />
     <EmbeddedResource Include="Effects\ActiveIcon\ClickGlass.hlsl" LogicalName="Floe.ClickGlass.hlsl" />
+    <EmbeddedResource Include="Effects\ActiveIcon\ClickPaint.hlsl" LogicalName="Floe.ClickPaint.hlsl" />
     <EmbeddedResource Include="Effects\Chromatic\Chromatic.hlsl" LogicalName="Floe.Chromatic.hlsl" />
     <EmbeddedResource Include="Effects\Glass\DropLens.hlsl" LogicalName="Floe.DropLens.hlsl" />
     <EmbeddedResource Include="Effects\Glass\DozeGhost.hlsl" LogicalName="Floe.DozeGhost.hlsl" />
+    <EmbeddedResource Include="Effects\Visualizer\LedScreen.hlsl" LogicalName="Floe.LedScreen.hlsl" />
   </ItemGroup>
 
   <ItemGroup>

@@ -230,7 +230,7 @@ public partial class DockWindow : Window
     private double _shapeWidth = double.NaN;
     private double _shapeScale = double.NaN;
     private int _shapeCount = -1;
-    private RadialMenuWindow? _radial;
+    private IconMenuWindow? _iconMenu;
 
     public bool AutoHide { get; set; }
 
@@ -253,6 +253,9 @@ public partial class DockWindow : Window
     public DockWindow()
     {
         InitializeComponent();
+        // the settings are read again further down; the window kind has to be known before it is shown
+        GlassSettings.Load();
+        DwmDock = WantsDwmDock();
         if (DwmDock) AllowsTransparency = false;
 
         Root.RenderTransformOrigin = new Point(0.5, 1.0);

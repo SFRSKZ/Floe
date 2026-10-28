@@ -18,7 +18,12 @@ internal static class CaptureReveal
     private static long _deadline;
     private static long _screenshotDeadline;
     private static bool _recording;
+    private static bool _snipRecording;
+    private static DispatcherTimer? _snipTimer;
     private static bool _stopped;
+
+    // The Snipping Tool's recording toolbar, by its title in Turkish and English: while it is up a recording runs.
+    private static readonly string[] SnipToolbarTitles = { "Kayıt araç çubuğu", "Recording toolbar" };
 
     public static bool Recording
     {
@@ -50,6 +55,16 @@ internal static class CaptureReveal
                 timer.Stop();
             }
         };
+        // a screen recording outlasts the screenshot window, so the dock stays in it while the toolbar is up
+        _snipTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher) { Interval = TimeSpan.FromSeconds(1) };
+        _snipTimer.Tick += (_, _) =>
+        {
+            var recording = IsSnipRecording();
+            if (recording == _snipRecording) return;
+            _snipRecording = recording;
+            Apply();
+        };
+        _snipTimer.Start();
         _signal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\Floe.Reveal");
         _wait = ThreadPool.RegisterWaitForSingleObject(_signal, (_, _) =>
             _dispatcher.BeginInvoke(new Action(() => { if (!_stopped) Reveal(TimeSpan.FromSeconds(4)); })), null, Timeout.Infinite, false);
@@ -99,7 +114,7 @@ internal static class CaptureReveal
 
     private static void Apply()
     {
-        var reveal = _recording || Environment.TickCount64 < Math.Max(_deadline, _screenshotDeadline);
+        var reveal = _recording || _snipRecording || Environment.TickCount64 < Math.Max(_deadline, _screenshotDeadline);
         if (reveal == BackdropCapture.Frozen) return;
         if (reveal) BackdropCapture.Frozen = true;
         foreach (var hwnd in Windows.Keys)
@@ -127,6 +142,8 @@ internal static class CaptureReveal
         _wait?.Unregister(null);
         _signal?.Dispose();
         _timer?.Stop();
+        _snipTimer?.Stop();
+        _snipRecording = false;
         if (_source is not null)
         {
             RemoveClipboardFormatListener(_source.Handle);
@@ -138,6 +155,39 @@ internal static class CaptureReveal
         Windows.Clear();
     }
 
+    /// <summary>Whether a visible Snipping Tool recording toolbar is on screen.</summary>
+    private static bool IsSnipRecording()
+    {
+        var found = false;
+        var title = new System.Text.StringBuilder(64);
+        EnumWindows((hwnd, _) =>
+        {
+            if (!IsWindowVisible(hwnd)) return true;
+            title.Clear();
+            if (GetWindowText(hwnd, title, title.Capacity) == 0) return true;
+            var text = title.ToString();
+            if (!SnipToolbarTitles.Any(t => text.Equals(t, StringComparison.OrdinalIgnoreCase))) return true;
+            GetWindowThreadProcessId(hwnd, out var pid);
+            try
+            {
+                using var process = System.Diagnostics.Process.GetProcessById((int)pid);
+                found = process.ProcessName.Equals("SnippingTool", StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                // the window's process went away between the two calls
+            }
+            return !found;
+        }, IntPtr.Zero);
+        return found;
+    }
+
+    private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hwnd, System.Text.StringBuilder text, int count);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
     [DllImport("user32.dll")] private static extern bool AddClipboardFormatListener(IntPtr hwnd);
     [DllImport("user32.dll")] private static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
     [DllImport("user32.dll")] private static extern bool IsClipboardFormatAvailable(uint format);

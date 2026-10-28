@@ -37,6 +37,7 @@ internal sealed class GpuLayerWindow : IDisposable
     private readonly float[] _paletteG = new float[GpuFrame.PaletteSize];
     private readonly float[] _paletteB = new float[GpuFrame.PaletteSize];
     private readonly IntPtr[] _waitOne = new IntPtr[1];
+    private readonly ID3D11ShaderResourceView[] _noInputs = new ID3D11ShaderResourceView[1];
     private readonly WndProc _wndProc;
 
     // Requests from the WPF thread, guarded by _gate.
@@ -48,6 +49,7 @@ internal sealed class GpuLayerWindow : IDisposable
     private IntPtr _requestedDock;
     private volatile bool _runningWanted;
     private volatile bool _waveRequested;
+    private volatile bool _led;
     private volatile bool _disposed;
 
     // Render-thread state; nothing below is touched from the WPF thread.
@@ -60,6 +62,8 @@ internal sealed class GpuLayerWindow : IDisposable
     private ID3D11DeviceContext? _context;
     private GpuSwapChain? _swapChain;
     private ID3D11RenderTargetView? _renderTarget;
+    private LedScreenPass? _ledPass;
+    private bool _ledUnavailable;
     private AudioSpectrum? _audio;
     private bool _active;
     private bool _shown;
@@ -127,6 +131,13 @@ internal sealed class GpuLayerWindow : IDisposable
     {
         get => _waveRequested;
         set => _waveRequested = value;
+    }
+
+    /// <summary>Shows the strip as a colour LED screen instead of the plain picture.</summary>
+    public bool LedScreen
+    {
+        get => _led;
+        set => _led = value;
     }
 
     /// <summary>Physical-pixel strip, in screen coordinates, kept just below <paramref name="dock"/>.</summary>
@@ -456,6 +467,7 @@ internal sealed class GpuLayerWindow : IDisposable
         _swapChain.Resize(_width, _height);
         CreateTarget();
         _scene.Resize(_width, _height);
+        _ledPass?.Resize(_width, _height);
         _lastPresent = 0;
     }
 
@@ -480,7 +492,27 @@ internal sealed class GpuLayerWindow : IDisposable
         }
 
         _context.ClearRenderTargetView(_renderTarget, new Color4(0, 0, 0, 0));
-        _scene.Render(_context, _renderTarget, _frame);
+        if (_led && !_ledUnavailable)
+        {
+            // The scene draws into the pass's own picture, then the pass turns that into the LED grid; a failed
+            // pass falls back to the plain picture rather than taking the strip down.
+            _context.PSSetShaderResources(0, _noInputs);
+            _ledPass ??= CreateLedPass();
+            if (_ledPass?.SceneTarget is { } sceneTarget)
+            {
+                _context.ClearRenderTargetView(sceneTarget, new Color4(0, 0, 0, 0));
+                _scene.Render(_context, sceneTarget, _frame);
+                _ledPass.Apply(_context, _renderTarget, _width, _height, (float)_ppd, (float)_time);
+            }
+            else
+            {
+                _scene.Render(_context, _renderTarget, _frame);
+            }
+        }
+        else
+        {
+            _scene.Render(_context, _renderTarget, _frame);
+        }
 
         // Pace from the start of the present: Present(1) itself waits for the monitor's vblank, so the
         // interval has to cover that wait or 30 fps would come out as 20.
@@ -518,6 +550,27 @@ internal sealed class GpuLayerWindow : IDisposable
         _renderTarget = _device.CreateRenderTargetView(backBuffer, null);
     }
 
+    // Made on first use, so a layer that never turns the LED look on never pays for its picture and shaders.
+    private LedScreenPass? CreateLedPass()
+    {
+        if (_device is null) return null;
+        LedScreenPass? pass = null;
+        try
+        {
+            pass = new LedScreenPass();
+            pass.Initialize(_device);
+            pass.Resize(_width, _height);
+            return pass;
+        }
+        catch (Exception ex)
+        {
+            pass?.Dispose();
+            _ledUnavailable = true;
+            Debug.WriteLine($"[Floe.Gpu] led pass: {ex.Message}");
+            return null;
+        }
+    }
+
     private void RecoverDevice()
     {
         _scene.ReleaseDevice();
@@ -534,6 +587,10 @@ internal sealed class GpuLayerWindow : IDisposable
 
     private void ReleaseDevice()
     {
+        _ledPass?.Dispose();
+        _ledPass = null;
+        // a new device may compile the pass fine even if the last one could not
+        _ledUnavailable = false;
         _renderTarget?.Dispose();
         _renderTarget = null;
         _swapChain?.Dispose();

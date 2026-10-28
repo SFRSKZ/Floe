@@ -26,8 +26,9 @@ public partial class DockWindow
         var loop = grid.Children.Contains(_glassLoop!) ? _glassLoop : null;
         if (loop is not null) loop.Opacity = 0;
 
-        var effect = new ClickGlassEffect(IconBox)
+        var effect = new ClickGlassEffect(IconBox, paint: AuraSettings.ClickPaint && ClickGlassEffect.IsPaintAvailable)
         {
+            Screen = AuraSettings.ClickScreen ? 1 : 0, // the LED-screen glass, when picked in the settings
             Field = IconField.For(icon.Source, IconBox, solid: true),
             Tone = (double)AuraSettings.ClickTone,
             Palette = (double)AuraSettings.ClickPalette,

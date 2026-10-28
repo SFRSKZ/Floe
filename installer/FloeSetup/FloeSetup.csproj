@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>FloeSetup</AssemblyName>
+    <RootNamespace>FloeSetup</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- one file that runs on any 64-bit Windows: it carries its own trimmed runtime, and the payload carries
+         Floe's, so nothing has to be installed first -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <PublishTrimmed>true</PublishTrimmed>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- the built app, zipped by build-setup.ps1 -->
+    <EmbeddedResource Include="$(FloePayload)" LogicalName="Floe.zip" />
+  </ItemGroup>
+
+</Project>

@@ -28,7 +28,9 @@ internal sealed class VisualizerWindow : Window
     private readonly StardustVisualizer _dustWave = new() { Wave = true };
     private readonly SilkContourVisualizer _silkContour = new();
     private readonly SculptedVisualizer _sculpted = new();
+    private readonly Grid _root;
     private GpuLayerWindow? _gpu;
+    private StardustGpuScene? _dust;
     private GpuLayerWindow? _holo;
     private GpuLayerWindow? _cubeLayer;
     private GpuLayerWindow? _oled;
@@ -67,6 +69,9 @@ internal sealed class VisualizerWindow : Window
         root.Children.Add(_dustWave);
         root.Children.Add(_silkContour);
         root.Children.Add(_sculpted);
+        // the LED screen over the WPF looks needs the strip's size in pixels
+        root.SizeChanged += (_, _) => ApplyLedScreen();
+        _root = root;
         Content = root;
         SizeChanged += (_, _) => UpdateCapsule();
         GlassSettings.Changed += OnGlassSettingsChanged;
@@ -158,14 +163,20 @@ internal sealed class VisualizerWindow : Window
     {
         var look = GlassSettings.VisualizerLook;
         // the OLED panel only exists on the GPU; the dust looks move there when the setting asks for it
+        // the LED look is the OLED panel's show on a colour LED wall: the same layer, other flags
+        if (look == VisualizerStyle.Led) look = VisualizerStyle.Oled;
         bool oled = running && look == VisualizerStyle.Oled && Layer(ref _oled, () => _panel = new OledGpuScene { Theme = GlassSettings.Theme }, capturable: true);
         PlacePanel(_bounds);
         ApplyPanelSettings();
-        bool dust = running && GlassSettings.GpuVisualizer && look is VisualizerStyle.Stardust or VisualizerStyle.DustWave
-            && Layer(ref _gpu, () => new StardustGpuScene());
+        // without the GPU the MilkDrop dust plays as the plain dust wave
+        bool milk = look == VisualizerStyle.DustMilk;
+        if (milk && !GlassSettings.GpuVisualizer) look = VisualizerStyle.DustWave;
+        bool dust = running && GlassSettings.GpuVisualizer && look is VisualizerStyle.Stardust or VisualizerStyle.DustWave or VisualizerStyle.DustMilk
+            && Layer(ref _gpu, () => _dust = new StardustGpuScene());
+        if (_dust is not null) _dust.Milk = milk;
         if (_gpu is not null)
         {
-            _gpu.Wave = look == VisualizerStyle.DustWave;
+            _gpu.Wave = look is VisualizerStyle.DustWave or VisualizerStyle.DustMilk;
             _gpu.SetRunning(dust);
         }
 
@@ -204,6 +215,7 @@ internal sealed class VisualizerWindow : Window
             };
         }
         _sculpted.IsActive = running && sculpted;
+        ApplyLedScreen();
 
         if (running)
         {
@@ -287,6 +299,7 @@ internal sealed class VisualizerWindow : Window
         }
 
         ApplyPanelSettings();
+        ApplyLedScreen();
     }
 
     private void ApplyPanelSettings()
@@ -294,6 +307,30 @@ internal sealed class VisualizerWindow : Window
         if (_panel is null) return;
         _panel.Theme = GlassSettings.Theme;
         _panel.ForcedEffect = GlassSettings.OledEffect >= 0 ? GlassSettings.OledEffect : null;
+        bool led = GlassSettings.VisualizerLook == VisualizerStyle.Led;
+        _panel.Colour = led || GlassSettings.OledColour;
+        _panel.Lens = led || GlassSettings.OledColour;
+        _panel.Subpixels = led;
+    }
+
+    // The LED screen glass over every other look: the GPU layers run it as a last pass, the WPF looks as an effect.
+    private void ApplyLedScreen()
+    {
+        bool on = GlassSettings.LedOverlay;
+        if (_gpu is not null) _gpu.LedScreen = on;
+        if (_holo is not null) _holo.LedScreen = on;
+        if (_cubeLayer is not null) _cubeLayer.LedScreen = on;
+        if (!on || !LedScreenEffect.IsAvailable)
+        {
+            _root.Effect = null;
+            return;
+        }
+
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var size = new Point(_root.ActualWidth * dpi.DpiScaleX, _root.ActualHeight * dpi.DpiScaleY);
+        if (_root.Effect is not LedScreenEffect effect) _root.Effect = effect = new LedScreenEffect();
+        effect.Size = size;
+        effect.Pitch = 3 * dpi.DpiScaleX; // 3 DIP, as the GPU layers draw it
     }
 
     private bool Layer(ref GpuLayerWindow? layer, Func<IGpuScene> scene, bool capturable = false)

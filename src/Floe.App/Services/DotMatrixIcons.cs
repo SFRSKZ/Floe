@@ -597,6 +597,9 @@ public static class DotMatrixIcons
     private static readonly Dictionary<(string Key, double Size, Color Color, double Dpi), BitmapSource> Cache = new();
     private static readonly object CacheGate = new();
 
+    /// <summary>The raw GridSize x GridSize rows of an icon ('#' lit), for effects that build it from their own dots.</summary>
+    public static bool TryGetGrid(string key, out string[] grid) => Grids.TryGetValue(key, out grid!);
+
     /// <summary>
     /// Renders the icon identified by <paramref name="key"/> at the given size
     /// in DIP, or returns <c>null</c> when the key is unknown.

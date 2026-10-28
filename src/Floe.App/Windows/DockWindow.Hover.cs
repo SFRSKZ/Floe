@@ -106,7 +106,7 @@ public partial class DockWindow
         HidePreview();
         _tooltipTimer.Stop();
 
-        if (index >= 0 && _radial?.IsVisible != true)
+        if (index >= 0 && _iconMenu?.IsVisible != true)
         {
             _tooltipTimer.Start();
         }
@@ -164,7 +164,7 @@ public partial class DockWindow
     private void ShowTooltip()
     {
         _tooltipTimer.Stop();
-        if (_hoveredIndex < 0 || _hoveredIndex >= _slots.Count || _radial?.IsVisible == true)
+        if (_hoveredIndex < 0 || _hoveredIndex >= _slots.Count || _iconMenu?.IsVisible == true)
         {
             return;
         }

@@ -11,6 +11,8 @@ public sealed class ClickGlassEffect : ShaderEffect
     public const double Pad = ActiveIconEffect.Pad;
 
     private static readonly Lazy<PixelShader?> Shader = new(() => ShaderCompiler.LoadShader("Floe.ClickGlass.hlsl"));
+    // the oil-paint click: same first registers (Progress, Tone, Box), a different picture
+    private static readonly Lazy<PixelShader?> PaintShader = new(() => ShaderCompiler.LoadShader("Floe.ClickPaint.hlsl"));
 
     public static readonly DependencyProperty InputProperty = RegisterPixelShaderSamplerProperty(nameof(Input), typeof(ClickGlassEffect), 0);
     public Brush Input { get => (Brush)GetValue(InputProperty); set => SetValue(InputProperty, value); }
@@ -43,6 +45,10 @@ public sealed class ClickGlassEffect : ShaderEffect
     /// <summary>1 leaves the icon unbent under the glass, so a glass that stays on it never blurs it.</summary>
     public static readonly DependencyProperty SharpProperty = Register(nameof(Sharp), 0.0, 7);
     public double Sharp { get => (double)GetValue(SharpProperty); set => SetValue(SharpProperty, value); }
+
+    /// <summary>1 shows the icon through the glass as an LED screen of light dots that bend with the lens.</summary>
+    public static readonly DependencyProperty ScreenProperty = Register(nameof(Screen), 0.0, 8);
+    public double Screen { get => (double)GetValue(ScreenProperty); set => SetValue(ScreenProperty, value); }
 
     /// <summary>
     /// Seconds into the active icon's loop; animate it from 0 to <see cref="LoopSeconds"/> forever. It drives
@@ -79,20 +85,22 @@ public sealed class ClickGlassEffect : ShaderEffect
         return (.06 + (.24 * (1 - Math.Pow(1 - y, 2.2))), 0);
     }
 
-    public ClickGlassEffect(double iconSize)
+    /// <param name="paint">true plays the click as swirling impasto brush strokes instead of glass.</param>
+    public ClickGlassEffect(double iconSize, bool paint = false)
     {
-        PixelShader = Shader.Value;
+        PixelShader = paint ? PaintShader.Value : Shader.Value;
         PaddingLeft = PaddingTop = PaddingRight = PaddingBottom = Pad;
         Box = new Point(iconSize + (2 * Pad), 0);
         UpdateShaderValue(InputProperty);
         UpdateShaderValue(FieldProperty);
-        foreach (var property in new[] { ProgressProperty, ToneProperty, BoxProperty, PaletteProperty, ColorAProperty, ColorBProperty, InwardProperty, SharpProperty })
+        foreach (var property in new[] { ProgressProperty, ToneProperty, BoxProperty, PaletteProperty, ColorAProperty, ColorBProperty, InwardProperty, SharpProperty, ScreenProperty })
         {
             UpdateShaderValue(property);
         }
     }
 
     public static bool IsAvailable => Shader.Value is not null;
+    public static bool IsPaintAvailable => PaintShader.Value is not null;
 
     private static DependencyProperty Register<T>(string name, T value, int register) =>
         DependencyProperty.Register(name, typeof(T), typeof(ClickGlassEffect), new UIPropertyMetadata(value, PixelShaderConstantCallback(register)));

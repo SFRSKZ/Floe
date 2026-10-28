@@ -49,8 +49,9 @@ public partial class DockWindow
     private readonly Rectangle _settingsDivider = new();
 
     private LiquidDropWindow? _dropWindow;
-    private HologramIntroWindow? _hologramIntroWindow;
-    private bool _introIsHologram;
+    private CubesIntroWindow? _cubesIntroWindow;
+    private bool _introIsCubes;
+    private bool _cubesOutro;
     private double _dropImpact = LiquidDropWindow.ImpactTime;
     private double _dropX;
 
@@ -70,7 +71,7 @@ public partial class DockWindow
     private static double TrailWidth(double media) =>
         ClockGap + ((MediaWidth + ClockGap) * media) + WeatherWidth + TrayWidth + ClockGap + ClockWidth + StartGap + StartWidth + ClockPad;
 
-    private bool SectionsSettled => _dropTime < 0 && Math.Abs(_mediaReveal - _mediaTarget) < 0.002 && Math.Abs(_mediaRevealVel) < 0.01;
+    private bool SectionsSettled => _dropTime < 0 && !_cubesOutro && Math.Abs(_mediaReveal - _mediaTarget) < 0.002 && Math.Abs(_mediaRevealVel) < 0.01;
 
     private void InitializeSections()
     {
@@ -101,7 +102,7 @@ public partial class DockWindow
             _mediaTimer.Stop();
             _weatherTimer.Stop();
             _dropWindow?.Close();
-            _hologramIntroWindow?.Close();
+            _cubesIntroWindow?.Close();
         };
 
         _ = RefreshMediaAsync();
@@ -327,6 +328,7 @@ public partial class DockWindow
             {
                 // a closed player leaves at once; a short pause from the dock itself should not
                 _mediaTarget = 0;
+                StartCubesOutro();
                 EnsureAnimation();
             }
         }
@@ -369,12 +371,13 @@ public partial class DockWindow
             return;
         }
 
-        _introIsHologram = GlassSettings.Intro == NowPlayingIntro.Hologram;
-        _dropImpact = _introIsHologram ? HologramIntroWindow.ImpactTime : LiquidDropWindow.ImpactTime;
-        if (_introIsHologram)
+        _introIsCubes = GlassSettings.Intro is NowPlayingIntro.Cubes or NowPlayingIntro.Dust;
+        _dropImpact = _introIsCubes ? CubesIntroWindow.ImpactTime : LiquidDropWindow.ImpactTime;
+        if (_introIsCubes)
         {
-            _hologramIntroWindow ??= new HologramIntroWindow(!NoFx.Contains("exclude"));
-            _hologramIntroWindow.Start(RimOnScreen(), _mediaArt.Source);
+            _cubesOutro = false;
+            _cubesIntroWindow ??= new CubesIntroWindow(!NoFx.Contains("exclude"));
+            _cubesIntroWindow.Start(SlotOnScreen(), _mediaArt.Source, _mediaPlaying, SlotScale(), GlassSettings.Intro == NowPlayingIntro.Dust);
         }
         else
         {
@@ -394,6 +397,38 @@ public partial class DockWindow
         return new Point(p.X / DpiScale, p.Y / DpiScale);
     }
 
+    /// <summary>Where the cubes build the section: the middle of the now-playing slot, in screen DIP.</summary>
+    private Point SlotOnScreen()
+    {
+        // _dropX centres the gap with its divider; the section itself sits half a divider gap to the left
+        var p = _clockLayer.PointToScreen(new Point(_dropX - (ClockGap * Math.Max(0, _mediaReveal) / 2), RestTop + (RestBarHeight / 2)));
+        return new Point(p.X / DpiScale, p.Y / DpiScale);
+    }
+
+    /// <summary>How large the sections are drawn on screen in DIP per layout DIP: below 1 while the dock is shrunk.</summary>
+    private double SlotScale()
+    {
+        var a = _clockLayer.PointToScreen(new Point(0, 0));
+        var b = _clockLayer.PointToScreen(new Point(100, 0));
+        var scale = (b.X - a.X) / (100 * DpiScale);
+        return scale > 0.1 && scale < 4 ? scale : 1;
+    }
+
+    /// <summary>With the cubes or dust intro the section breaks back into cubes or dust that scatter as it closes.</summary>
+    private void StartCubesOutro()
+    {
+        if (GlassSettings.Intro is not (NowPlayingIntro.Cubes or NowPlayingIntro.Dust) || !IsVisible || !_shown || _mediaReveal < 0.3)
+        {
+            return;
+        }
+
+        _dropTime = -1;
+        _introIsCubes = true;
+        _cubesIntroWindow ??= new CubesIntroWindow(!NoFx.Contains("exclude"));
+        _cubesIntroWindow.StartOutro(SlotOnScreen(), _mediaArt.Source, _mediaPlaying, SlotScale(), GlassSettings.Intro == NowPlayingIntro.Dust);
+        _cubesOutro = true;
+    }
+
     /// <summary>Advances the drop and the now-playing width; called from the dock's frame loop.</summary>
     private void AnimateSections(double dt)
     {
@@ -406,8 +441,8 @@ public partial class DockWindow
                 _mediaTarget = 1;
             }
 
-            var advanced = _introIsHologram
-                ? _hologramIntroWindow?.Advance(dt, RimOnScreen().X) ?? false
+            var advanced = _introIsCubes
+                ? _cubesIntroWindow?.Advance(dt, SlotOnScreen().X, SlotScale()) ?? false
                 : _dropWindow?.Advance(dt, RimOnScreen().X) ?? false;
             if (!advanced)
             {
@@ -415,11 +450,16 @@ public partial class DockWindow
             }
         }
 
+        if (_cubesOutro)
+        {
+            _cubesOutro = _cubesIntroWindow?.Advance(dt, SlotOnScreen().X, SlotScale()) ?? false;
+        }
+
         if (_metalEffect is not null)
         {
             // the metal rim lights up where the drop lands and the glints run off along it
             var age = _dropTime - _dropImpact;
-            _metalEffect.FlashAge = _dropTime >= 0 && age >= 0 ? age : -1;
+            _metalEffect.FlashAge = _dropTime >= 0 && age >= 0 && !_introIsCubes ? age : -1;
             _metalEffect.FlashX = _dropX - _capsuleLeft;
         }
 
@@ -449,7 +489,9 @@ public partial class DockWindow
         var mediaSpan = (MediaWidth + ClockGap) * reveal;
         Canvas.SetLeft(_media, x + ((mediaSpan - ClockGap * reveal - MediaWidth) / 2));
         Canvas.SetTop(_media, RestTop + ((RestBarHeight - ArtSize) / 2));
-        _media.Opacity = Math.Clamp((reveal - 0.55) / 0.4, 0, 1);
+        // while the cubes stand in for the section the real one stays hidden under them
+        var veil = _introIsCubes && _cubesIntroWindow is not null ? _cubesIntroWindow.ContentVeil : 1;
+        _media.Opacity = Math.Clamp((reveal - 0.55) / 0.4, 0, 1) * veil;
         _media.IsHitTestVisible = reveal > 0.9;
         _media.Visibility = reveal > 0.01 ? Visibility.Visible : Visibility.Collapsed;
         x += mediaSpan;

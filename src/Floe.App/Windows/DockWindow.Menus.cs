@@ -44,7 +44,7 @@ public partial class DockWindow
         return menu;
     }
 
-    private void OpenRadialMenu(IconSlot slot)
+    private void OpenIconMenu(IconSlot slot)
     {
         var item = slot.Item;
         var actions = new List<(string Label, Action Run)>
@@ -69,10 +69,10 @@ public partial class DockWindow
         _tooltipTimer.Stop();
         _tooltip.IsOpen = false;
 
-        if (_radial is null)
+        if (_iconMenu is null)
         {
-            _radial = new RadialMenuWindow();
-            _radial.Dismissed += () =>
+            _iconMenu = new IconMenuWindow();
+            _iconMenu.Dismissed += () =>
             {
                 _menuOpen = false;
 
@@ -88,14 +88,10 @@ public partial class DockWindow
 
         _menuOpen = true;
 
-        var radius = RadialMenuWindow.Radius;
-        var hit = RadialMenuWindow.HitRadius + 16;
+        // above the icon at its hovered size
         var work = SettingsWindow.GetWorkArea(this);
-        var centerX = Math.Clamp(ToScreenX(slot.Center), work.Left + hit, Math.Max(work.Left + hit, work.Right - hit));
-        var centerY = Math.Clamp(Top + IconBottom - (IconBox / 2), work.Top + hit, Math.Max(work.Top + hit, work.Bottom - hit));
-        _radial.Left = centerX - radius;
-        _radial.Top = centerY - radius;
-        _radial.ShowFor(item.Icon, actions);
+        var bottom = Top + IconBottom - (IconBox * HoverMaxScale) - 6;
+        _iconMenu.ShowFor(item.Name, item.Icon, actions, ToScreenX(slot.Center), bottom, work);
     }
 
     private static MenuItem MenuAction(string header, Action action)
@@ -149,7 +145,7 @@ public partial class DockWindow
         var slot = _slots.FirstOrDefault(s => s.Button.IsMouseOver);
         if (slot is not null)
         {
-            OpenRadialMenu(slot);
+            OpenIconMenu(slot);
             e.Handled = true;
             return;
         }

@@ -31,7 +31,11 @@ public partial class DockWindow
 
         _hwnd = new WindowInteropHelper(this).Handle;
         WindowStyling.MakeNonActivatingToolWindow(_hwnd);
-        if (DwmDock) DwmTransparency.Apply(this);
+        if (DwmDock)
+        {
+            DwmTransparency.Apply(this);
+            StartClickThrough();
+        }
         DesktopController.RegisterHotKey(_hwnd, DesktopController.HotkeyIdVeil, DesktopController.ModControl | DesktopController.ModAlt, DesktopController.VkV);
         if (BlurBackdrop)
         {

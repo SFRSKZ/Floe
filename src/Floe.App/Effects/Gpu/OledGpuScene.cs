@@ -19,7 +19,8 @@ namespace Floe.App.Effects.Gpu;
 /// as rounded dots with a faint glow. The presets take turns every <see cref="CycleSeconds"/>, changing on a
 /// kick: five bend the waveform into shapes (0..4), five draw something else (6..10: spectrum bars, sonar rings,
 /// a starfield, rain and plasma blobs). A Tron theme lights the dots in its colours and adds the grid floor (5),
-/// which plays alone when the theme comes on.
+/// which plays alone when the theme comes on. Three switches dress the panel up further: the user's own colours
+/// across the strip, an RGB triad in every cell like a video wall, and glass drops that swell in on every kick.
 /// </para>
 /// </summary>
 public sealed class OledGpuScene : IGpuScene
@@ -31,8 +32,10 @@ public sealed class OledGpuScene : IGpuScene
     private const int GridPreset = 5;
     private const float GridSeconds = 20;
 
-    // one panel pixel every 3 DIP, as chunky as the little screens; the feedback runs at 3x3 samples per pixel
+    // one panel pixel every 2 DIP, as chunky as the little screens; the feedback runs at 3x3 samples per pixel
     private const float PitchDip = 2;
+    // an RGB triad packs three emitters into one cell, so the wall gets finer when it is on
+    private const float TriadPitchDip = 1.5f;
 
     // the bezel along the top and the sides, and how round its top corners are
     private const float BezelDip = 8;
@@ -43,6 +46,12 @@ public sealed class OledGpuScene : IGpuScene
     private const float Decay = .9f;
     // a change of preset dims the old one out, then brings the new one up: they never draw over each other
     private const float BlendSeconds = 1.2f;
+
+    // the glass drops: four at most on the glass, each swelling in on a kick and then fading out
+    private const int MaxLenses = 4;
+    private const float LensSwell = .15f;
+    private const float LensLife = 1.05f;
+    private const float LensRadius = .45f;
 
     private readonly float[] _bands = new float[Bands];
     private float _beat, _flash, _level, _bass, _mid, _treble, _hat;
@@ -77,8 +86,8 @@ public sealed class OledGpuScene : IGpuScene
     private readonly ID3D11ShaderResourceView[] _inputs = new ID3D11ShaderResourceView[2];
     private readonly ID3D11ShaderResourceView[] _noInputs = new ID3D11ShaderResourceView[2];
     private readonly float[] _warpCb = new float[20];
-    // the cells, then the dots' off, lit and hot colours as three float4
-    private readonly float[] _panelCb = new float[24];
+    // the cells, the dots' off, lit and hot colours as three float4, the user's 16 colours, then four glass drops
+    private readonly float[] _panelCb = new float[24 + (GpuFrame.PaletteSize * 4) + (MaxLenses * 4)];
     // row 0: the waveform; row 1: the bands
     private readonly float[] _audio = new float[SpectrumFrame.WaveLength * 2];
     private Viewport[] _feedbackViewport = Array.Empty<Viewport>(), _cellViewport = Array.Empty<Viewport>(), _viewport = Array.Empty<Viewport>();
@@ -87,14 +96,28 @@ public sealed class OledGpuScene : IGpuScene
     private float _pixelsPerDip = 1;
     private float _pitch, _bezel;
     private int _cols, _rows;
+    private bool _subpixel;
 
     private int _preset, _previous;
     private float _presetTime, _blend = 1;
     private DockTheme _theme;
     private float _tronTime;
 
+    // where the drops sit and how old they are, in cells; an age past their life means they are gone
+    private readonly float[] _lensX = new float[MaxLenses], _lensY = new float[MaxLenses];
+    private readonly float[] _lensAge = { 9, 9, 9, 9 };
+
     /// <summary>The theme whose light the dots carry; set from the UI, read again on the render thread every frame.</summary>
     public DockTheme Theme { get; set; }
+
+    /// <summary>The dots take the user's colours, picked by how far they sit from the middle of the strip.</summary>
+    public bool Colour { get; set; }
+
+    /// <summary>Each cell becomes an RGB triad, like the emitters of a real LED video wall.</summary>
+    public bool Subpixels { get; set; }
+
+    /// <summary>Glass drops swell in on every kick, magnifying the cells under them.</summary>
+    public bool Lens { get; set; }
 
     /// <summary>How long each preset plays before the next one blends in.</summary>
     public float CycleSeconds { get; set; } = 20;
@@ -163,7 +186,8 @@ public sealed class OledGpuScene : IGpuScene
         _pixelW = width;
         _pixelH = height;
         _pixelsPerDip = pixelsPerDip > 0 ? pixelsPerDip : 1;
-        _pitch = PitchDip * _pixelsPerDip;
+        _subpixel = Subpixels;
+        _pitch = (Subpixels ? TriadPitchDip : PitchDip) * _pixelsPerDip;
         _bezel = BezelDip * _pixelsPerDip;
         _cols = Math.Max(8, (int)((width - (2 * _bezel)) / _pitch));
         _rows = Math.Max(4, (int)((height - _bezel) / _pitch));
@@ -201,7 +225,7 @@ public sealed class OledGpuScene : IGpuScene
 
         // the host knows the DPI only with the frame, so the grid is built here the first time
         var ppd = frame.PixelsPerDip > 0 ? frame.PixelsPerDip : 1;
-        if (frame.Width != _pixelW || frame.Height != _pixelH || MathF.Abs(ppd - _pixelsPerDip) > .001f)
+        if (frame.Width != _pixelW || frame.Height != _pixelH || MathF.Abs(ppd - _pixelsPerDip) > .001f || _subpixel != Subpixels)
         {
             Build(frame.Width, frame.Height, ppd);
         }
@@ -215,6 +239,9 @@ public sealed class OledGpuScene : IGpuScene
         bool kick = UpdateAudio(dt, frame.Audio);
         Advance(dt, kick, tron);
         _activity += ((MusicPlaying ? 1 : 0) - _activity) * (1 - MathF.Exp(-dt * 2));
+        // a Tron theme keeps its own light, whatever the user asked for
+        bool colour = Colour && !tron;
+        UpdateLenses(dt, kick);
 
         _overlay.Draw(_overlayValue, _overlayMask, _cols, _rows, dt, _time);
         for (int i = 0; i < _overlayValue.Length; i++)
@@ -268,15 +295,20 @@ public sealed class OledGpuScene : IGpuScene
         // 3: the cells as dots on the black glass
         _panelCb[0] = _pixelW; _panelCb[1] = _pixelH;
         _panelCb[2] = _cols; _panelCb[3] = _rows;
-        _panelCb[4] = (_pixelW - (_cols * _pitch)) * .5f;
+        float originX = (_pixelW - (_cols * _pitch)) * .5f;
+        // each triad bar is about a pixel wide, so the cells have to sit on the pixel grid to read as three
+        if (Subpixels) originX = MathF.Floor(originX);
+        _panelCb[4] = originX;
         _panelCb[5] = _pixelH - (_rows * _pitch);
         _panelCb[6] = _pitch;
         _panelCb[7] = Math.Clamp(frame.Fade, 0, 1);
         _panelCb[8] = _bezel;
         _panelCb[9] = CornerDip * _pixelsPerDip;
         _panelCb[10] = _pixelsPerDip;
-        _panelCb[11] = 0;
+        _panelCb[11] = (colour ? 1 : 0) | (Subpixels ? 2 : 0) | (Lens ? 4 : 0);
         SetDotColors(theme, tron);
+        SetPalette(frame);
+        SetLenses();
         Pass(context, _panelPs!, target, _viewport, _panelConstants!, _panelCb, _cells.Srv, null);
         context.PSSetShaderResources(0, _noInputs);
     }
@@ -380,6 +412,57 @@ public sealed class OledGpuScene : IGpuScene
         _panelCb[12] = .063f; _panelCb[13] = .067f; _panelCb[14] = .078f; _panelCb[15] = 1;
         _panelCb[16] = .90f; _panelCb[17] = .95f; _panelCb[18] = 1; _panelCb[19] = 1;
         _panelCb[20] = .90f; _panelCb[21] = .95f; _panelCb[22] = 1; _panelCb[23] = 1;
+    }
+
+    // The user's colours, from the middle of the strip out to its ends, as 16 float4 for the panel shader.
+    private void SetPalette(GpuFrame frame)
+    {
+        for (int i = 0; i < GpuFrame.PaletteSize; i++)
+        {
+            var colour = frame.Palette[i];
+            int at = 24 + (i * 4);
+            _panelCb[at] = colour.X;
+            _panelCb[at + 1] = colour.Y;
+            _panelCb[at + 2] = colour.Z;
+            _panelCb[at + 3] = 1;
+        }
+    }
+
+    // The drops age every frame; a kick brings a new one in at a random spot along the strip. When all four
+    // are still on the glass the oldest one makes way, so the show never loses the music's pulse.
+    private void UpdateLenses(float dt, bool kick)
+    {
+        for (int i = 0; i < MaxLenses; i++) _lensAge[i] += dt;
+        if (!Lens || !kick) return;
+
+        int oldest = 0;
+        for (int i = 1; i < MaxLenses; i++) if (_lensAge[i] > _lensAge[oldest]) oldest = i;
+        _lensAge[oldest] = 0;
+        _lensX[oldest] = (.06f + (.88f * (float)_random.NextDouble())) * _cols;
+        _lensY[oldest] = _rows * .5f;
+    }
+
+    // The drops as the shader wants them: centre, radius and strength in cells, strength 0 once they have gone.
+    private void SetLenses()
+    {
+        for (int i = 0; i < MaxLenses; i++)
+        {
+            int at = 24 + (GpuFrame.PaletteSize * 4) + (i * 4);
+            float age = _lensAge[i];
+            if (age >= LensLife)
+            {
+                _panelCb[at] = _panelCb[at + 1] = _panelCb[at + 2] = _panelCb[at + 3] = 0;
+                continue;
+            }
+
+            // it swells in over a moment, then fades away slowly while it magnifies
+            float swell = Smooth(Math.Clamp(age / LensSwell, 0, 1));
+            float fade = 1 - Smooth(Math.Clamp((age - LensSwell) / (LensLife - LensSwell), 0, 1));
+            _panelCb[at] = _lensX[i];
+            _panelCb[at + 1] = _lensY[i];
+            _panelCb[at + 2] = LensRadius * _rows * swell;
+            _panelCb[at + 3] = fade * swell;
+        }
     }
 
     private static float Smooth(float t) => t * t * (3 - (2 * t));
@@ -842,7 +925,8 @@ public sealed class OledGpuScene : IGpuScene
 
     // Each cell is a rounded dot: off pixels stay a faint grid on the black glass, lit ones glow cool white or the
     // theme's light lines, and the hottest ones heat up to its hot colour. A graphite bezel frames the glass along
-    // the top and the sides; the bottom runs on to the screen's edge.
+    // the top and the sides; the bottom runs on to the screen's edge. Three extras sit on top of that: the user's
+    // colours across the strip, an RGB triad per cell like a video wall, and glass drops that swell in on a kick.
     private const string PanelPs = """
         cbuffer Params : register(b0)
         {
@@ -854,10 +938,13 @@ public sealed class OledGpuScene : IGpuScene
             float Bezel;
             float Corner;
             float PixelsPerDip;
-            float Unused;
+            float Modes;
             float4 DotOff;
             float4 DotLit;
             float4 DotHot;
+            float4 Palette[16];
+            // x, y, radius and strength of the glass drops, in cells
+            float4 Lens[4];
         };
 
         // distance to a box open at the bottom with rounded top corners, negative inside
@@ -870,13 +957,48 @@ public sealed class OledGpuScene : IGpuScene
 
         Texture2D<float> Cells : register(t0);
 
-        float Cell(int2 c)
+        float CellAt(int2 c)
         {
             return all(c >= 0) && all(c < (int2)Grid) ? Cells.Load(int3(c, 0)) : 0;
         }
 
+        float CellAt(float2 p)
+        {
+            return CellAt((int2)floor(p));
+        }
+
+        // a rounded vertical bar in the cell, centred on x: one of the triad's three emitters
+        float Bar(float2 local, float x)
+        {
+            float2 d = abs(local - float2(x, .5)) - float2(.10, .30);
+            float sd = (length(max(d, 0)) + min(max(d.x, d.y), 0) - .10) * Pitch;
+            return saturate(.5 - (sd / .6));
+        }
+
+        // A glass drop pulls the lookup point towards its middle, strongest at the centre (a convex lens). Each
+        // colour channel bends a little more than the one before, so the rim splits into a thin rainbow.
+        float2 Bend(float2 p, float channel)
+        {
+            [unroll] for (int i = 0; i < 4; i++)
+            {
+                float4 lens = Lens[i];
+                if (lens.w <= 0) continue;
+                float2 d = p - lens.xy;
+                float k = saturate(length(d) / max(lens.z, .001));
+                float pull = lens.w * sqrt(1 - (k * k)) * (.34 + (.09 * channel));
+                p = lens.xy + (d * (1 - pull));
+            }
+            return p;
+        }
+
         float4 main(float4 position : SV_Position) : SV_Target
         {
+            // Modes bits: 1 the user's colours, 2 the RGB triads, 4 the glass drops
+            int modes = (int)Modes;
+            bool colour = (modes & 1) != 0;
+            bool triads = (modes & 2) != 0;
+            bool drops = (modes & 4) != 0;
+
             float2 p = (position.xy - Origin) / Pitch;
             int2 cell = (int2)floor(p);
             float2 local = p - cell;
@@ -887,8 +1009,6 @@ public sealed class OledGpuScene : IGpuScene
             bool inside = all(cell >= 0) && all(cell < (int2)Grid);
             float dotMask = inside ? saturate(.5 - (sd / .6)) : 0;
 
-            float v = saturate(Cell(cell));
-
             // a faint glow from the lit neighbours, as the real panels bleed a little light into the glass
             float bloom = 0;
             [unroll] for (int y = -1; y <= 1; y++)
@@ -897,19 +1017,78 @@ public sealed class OledGpuScene : IGpuScene
                 {
                     float2 c = cell + int2(x, y) + .5;
                     float2 o = p - c;
-                    bloom += saturate(Cell(cell + int2(x, y))) * exp(-dot(o, o) * 2.2);
+                    bloom += saturate(CellAt(cell + int2(x, y))) * exp(-dot(o, o) * 2.2);
                 }
             }
+
+            // the triads: three bars in the cell, red, green and blue, each lit by its own channel
+            float3 mask = dotMask.xxx;
+            if (triads)
+            {
+                mask = 0;
+                if (inside)
+                {
+                    mask = float3(Bar(local, 1.0 / 6), Bar(local, .5), Bar(local, 5.0 / 6));
+                }
+            }
+
+            float v = saturate(CellAt(cell));
+
+            // under a drop the lookup point is bent per channel, so the cells there read as if through glass
+            float3 vv = v.xxx;
+            if (drops) vv = float3(CellAt(Bend(p, 0)), CellAt(Bend(p, 1)), CellAt(Bend(p, 2)));
 
             float3 off = DotOff.rgb;
             float3 lit = DotLit.rgb;
             float3 hot = DotHot.rgb;
-            float3 c = lerp(off, lit, v);
-            // the brightest cells run hotter than the lines, up to the theme's heat
-            c = lerp(c, hot, saturate((v - .8) * 5));
-            c *= dotMask;
-            c += lit * bloom * .16;
-            c += float3(.008, .008, .012) * (1 - dotMask);
+            if (colour)
+            {
+                // the user's colours, picked by how far the cell sits from the middle of the strip
+                float at = saturate(abs(((cell.x + .5) / Grid.x) - .5) * 2) * 15;
+                int low = (int)floor(at);
+                lit = lerp(Palette[low].rgb, Palette[min(low + 1, 15)].rgb, at - low);
+                hot = lerp(lit, float3(1, 1, 1), .85);
+            }
+
+            float3 c;
+            if (colour)
+            {
+                // dim cells keep a darker shade of their colour; the hottest run towards white
+                float3 tint = lerp(lit * .16, lit, saturate((vv - .15) / .6));
+                tint = lerp(tint, float3(1, 1, 1), saturate((vv - .8) * 5) * .8);
+                c = lerp(off, tint, saturate(vv * 2.5));
+            }
+            else
+            {
+                c = lerp(off, lit, vv);
+                // the brightest cells run hotter than the lines, up to the theme's heat
+                c = lerp(c, hot, saturate((vv - .8) * 5));
+            }
+
+            c *= mask;
+            // each bar is a third of the cell and lights one channel: pushed up, the wall reads as bright as the dots
+            if (triads) c = saturate(c * 2.8);
+            float3 bleed = triads ? mask : float3(1, 1, 1);
+            c += lit * bloom * .16 * bleed;
+            c += float3(.008, .008, .012) * (1 - mask);
+
+            // the drops lie on the glass: a soft highlight towards the upper left, and a faint bright rim
+            float3 glare = 0;
+            if (drops)
+            {
+                [unroll] for (int i = 0; i < 4; i++)
+                {
+                    float4 lens = Lens[i];
+                    if (lens.w <= 0) continue;
+                    float r = max(lens.z, .001);
+                    float2 o = p - lens.xy;
+                    float k = length(o) / r;
+                    float2 spot = o - (float2(-.36, -.34) * r);
+                    float spec = exp(-dot(spot, spot) / (r * r * .05)) * lens.w;
+                    float rim = saturate(1 - (abs(k - .94) / .06)) * lens.w;
+                    glare += (float3(.85, .92, 1) * spec * .55) + (float3(.7, .85, 1) * rim * .18);
+                }
+            }
 
             // the bezel: its outer edge catches a little light, its inner lip is dark where it meets the glass
             float outer = Box(position.xy, 0, 0, Size.x, Corner);
@@ -923,6 +1102,7 @@ public sealed class OledGpuScene : IGpuScene
             frame += float3(.30, .31, .33) * saturate(1 - abs(outer + (.6 * PixelsPerDip)) / PixelsPerDip);
             frame *= lerp(.25, 1, saturate(inner / (1.5 * PixelsPerDip)));
             c = lerp(frame, c, glass);
+            c += glare * glass;
 
             float a = .95 * Fade * shape;
             return float4(saturate(c) * a, a);
