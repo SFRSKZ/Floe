@@ -12,6 +12,9 @@ public sealed record MediaInfo(string Title, string Artist, double Progress, Ima
     public double Duration { get; init; }
 
     public bool Playing { get; init; }
+
+    /// <summary>The player's app id as Windows reports it (an exe name or a package family).</summary>
+    public string Source { get; init; } = string.Empty;
 }
 
 public static class MediaService
@@ -65,6 +68,16 @@ public static class MediaService
             var title = properties.Title ?? string.Empty;
             var artist = properties.Artist ?? string.Empty;
             bool playing = false;
+            var source = string.Empty;
+            try
+            {
+                source = session.SourceAppUserModelId ?? string.Empty;
+            }
+            catch
+            {
+                // the id may be unavailable
+            }
+
             try
             {
                 playing = session.GetPlaybackInfo()?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
@@ -83,6 +96,7 @@ public static class MediaService
                 Position = position,
                 Duration = duration,
                 Playing = playing,
+                Source = source,
             };
         }
         catch

@@ -56,6 +56,7 @@ public partial class DockWindow
         _capsuleLeft = _restCapsuleLeft;
         _backdrop.Width = _windowWidth;
         _backdrop.Height = WindowHeight;
+        UpdateBackdropUnscale();
 
         Width = _windowWidth;
         Height = WindowHeight;
@@ -189,6 +190,13 @@ public partial class DockWindow
         var startX = _capsuleLeft + LeadX;
         var x = startX;
         var separatorX = double.NaN;
+
+        // a held icon leaves its place and the rest slide over to open a gap where it would land
+        var held = _isDragging ? _dragSlot : null;
+        var heldIndex = held is null ? -1 : _slots.IndexOf(held);
+        var gapWidth = heldIndex < 0 ? 0 : (IconBox * scales[heldIndex]) + Spacing;
+        var ease = Math.Min(1.0, _frameDt * 16);
+        var order = 0;
         for (var i = 0; i < count; i++)
         {
             if (HasSeparator && i == _separatorIndex)
@@ -202,8 +210,25 @@ public partial class DockWindow
             var slot = _slots[i];
 
             slot.Center = center;
-            Canvas.SetLeft(slot.Button, center - (IconBox / 2));
-            Canvas.SetTop(slot.Button, IconBottom - IconBox);
+            var shift = 0.0;
+            if (heldIndex >= 0 && i != heldIndex)
+            {
+                shift = (i > heldIndex ? -gapWidth : 0) + (_dragGap >= 0 && order >= _dragGap ? gapWidth : 0);
+                order++;
+            }
+
+            slot.Shift += (shift - slot.Shift) * ease;
+            if (slot == held)
+            {
+                Canvas.SetLeft(slot.Button, _dragX - (IconBox / 2));
+                // lifted a little off the shelf, and down with the cursor when pulled out to unpin
+                Canvas.SetTop(slot.Button, IconBottom - IconBox - 6 + Math.Clamp(_dragY - (IconBottom - (IconBox / 2)), 0, IconBox));
+            }
+            else
+            {
+                Canvas.SetLeft(slot.Button, center - (IconBox / 2) + slot.Shift);
+                Canvas.SetTop(slot.Button, IconBottom - IconBox);
+            }
 
             slot.Scale.ScaleX = scales[i];
             slot.Scale.ScaleY = scales[i];

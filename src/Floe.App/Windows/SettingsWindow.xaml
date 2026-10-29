@@ -471,6 +471,12 @@
                     <RadioButton x:Name="VisualizerLookDustWave" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Toz dalgası" />
                     <RadioButton x:Name="VisualizerLookDustMilk" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Toz girdabı"
                                  ToolTip="Toz dalgası MilkDrop akışında: tanecikler ve izleri birlikte döner, bas vuruşta dışa açılır" />
+                    <RadioButton x:Name="VisualizerLookChladni" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Chladni kumu"
+                                 ToolTip="Titreşen levhadaki kum: tanecikler baskın notanın düğüm çizgilerine dizilir, nota değişince yeni desene akar" />
+                    <RadioButton x:Name="VisualizerLookFireflies" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Ateşböcekleri"
+                                 ToolTip="Rastgele yanıp sönen ateşböcekleri şarkı ilerledikçe ritme kilitlenip birlikte yanar" />
+                    <RadioButton x:Name="VisualizerLookFerrofluid" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Ferrosıvı"
+                                 ToolTip="Manyetik sıvı şerit: her frekans bandı sıvıdan diken çıkarır, bas vuruşta dikenler fışkırır" />
                     <RadioButton x:Name="VisualizerLookSilkContour" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="İpek kontur" />
                     <RadioButton x:Name="VisualizerLookOled" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="OLED ekran" />
                     <RadioButton x:Name="VisualizerLookLed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="LED ekran"

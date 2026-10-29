@@ -49,6 +49,11 @@ internal sealed class GpuLayerWindow : IDisposable
     private IntPtr _requestedDock;
     private volatile bool _runningWanted;
     private volatile bool _waveRequested;
+    // the album cover and the playing icon's place, handed over from the UI thread
+    private volatile byte[]? _cover;
+    private volatile int _coverSize;
+    private int _coverVersion;
+    private float _sourceX = 0.5f;
     private volatile bool _led;
     private volatile bool _disposed;
 
@@ -134,6 +139,22 @@ internal sealed class GpuLayerWindow : IDisposable
     }
 
     /// <summary>Shows the strip as a colour LED screen instead of the plain picture.</summary>
+    /// <summary>The album cover as square BGRA rows (null: none); a new array counts as a new song.</summary>
+    public void SetCover(byte[]? bgra, int size)
+    {
+        if (ReferenceEquals(bgra, _cover)) return;
+        _coverSize = size;
+        _cover = bgra;
+        Interlocked.Increment(ref _coverVersion);
+    }
+
+    /// <summary>Where the playing app's icon sits along the strip, 0..1.</summary>
+    public float SourceX
+    {
+        get => Volatile.Read(ref _sourceX);
+        set => Volatile.Write(ref _sourceX, value);
+    }
+
     public bool LedScreen
     {
         get => _led;
@@ -484,6 +505,11 @@ internal sealed class GpuLayerWindow : IDisposable
         _frame.Performance = Performance.Level;
         _frame.Wave = _waveRequested;
         _audio?.Read(_frame.Audio, dt);
+        _frame.Balance = _frame.Audio.Balance;
+        _frame.Cover = _cover;
+        _frame.CoverSize = _coverSize;
+        _frame.CoverVersion = Volatile.Read(ref _coverVersion);
+        _frame.SourceX = SourceX;
 
         VisualizerPalette.Fill(_paletteR, _paletteG, _paletteB, _time, BasePrimary);
         for (int i = 0; i < GpuFrame.PaletteSize; i++)

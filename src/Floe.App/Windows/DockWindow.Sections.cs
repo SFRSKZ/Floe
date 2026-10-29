@@ -65,6 +65,8 @@ public partial class DockWindow
     private DateTime _lastPlaying = DateTime.MinValue;
     private bool _mediaRefreshing;
     private bool _mediaPlaying;
+    // the app that plays, so a click on the cover can bring it forward
+    private string? _mediaSource;
     private double _restContent;
 
     /// <summary>Width of everything after the icons, with now playing grown to <paramref name="media"/>.</summary>
@@ -139,6 +141,15 @@ public partial class DockWindow
         buttons.Children.Add(GlyphButton(Glyph("next", 20), MediaButton, () => _ = MediaService.NextAsync()));
         Grid.SetColumn(buttons, 1);
         _media.Children.Add(buttons);
+
+        // the cover and the titles open the player; the buttons handle their own clicks first
+        _media.Background = Brushes.Transparent;
+        _media.Cursor = Cursors.Hand;
+        _media.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            BringPlayerForward(_mediaSource);
+        };
     }
 
     // The album cover as the section's backdrop: it melts into the glass at both ends, darkens under the text and
@@ -297,6 +308,8 @@ public partial class DockWindow
                     _mediaArtist.Text = media.Artist;
                 }
 
+                _mediaSource = media.Source;
+
                 // MediaService hands back the same frozen bitmap for the same track
                 if (!ReferenceEquals(_mediaArt.Source, media.Artwork))
                 {
@@ -442,7 +455,7 @@ public partial class DockWindow
             }
 
             var advanced = _introIsCubes
-                ? _cubesIntroWindow?.Advance(dt, SlotOnScreen().X, SlotScale()) ?? false
+                ? _cubesIntroWindow?.Advance(dt, SlotOnScreen(), SlotScale()) ?? false
                 : _dropWindow?.Advance(dt, RimOnScreen().X) ?? false;
             if (!advanced)
             {
@@ -452,7 +465,7 @@ public partial class DockWindow
 
         if (_cubesOutro)
         {
-            _cubesOutro = _cubesIntroWindow?.Advance(dt, SlotOnScreen().X, SlotScale()) ?? false;
+            _cubesOutro = _cubesIntroWindow?.Advance(dt, SlotOnScreen(), SlotScale()) ?? false;
         }
 
         if (_metalEffect is not null)

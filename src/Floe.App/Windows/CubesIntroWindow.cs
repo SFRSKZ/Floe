@@ -99,15 +99,17 @@ internal sealed class CubesIntroWindow : Window
         Present();
     }
 
-    /// <summary>Advances the effect; <paramref name="slotX"/> follows the dock as it widens. False once finished.</summary>
-    public bool Advance(double dt, double slotX, double scale)
+    /// <summary>Advances the effect; the overlay rides along with <paramref name="slot"/> while the dock opens, grows or moves. False once finished.</summary>
+    public bool Advance(double dt, Point slot, double scale)
     {
         if (_followSlot)
         {
             _visual.Scale = scale;
+            // the whole overlay moves with the slot, so the cubes stay on it however the dock shifts or scales
+            Place(slot);
         }
 
-        var alive = _visual.Advance(dt, _followSlot ? slotX - Left : double.NaN);
+        var alive = _visual.Advance(dt, _followSlot ? OverlayWidth / 2 : double.NaN);
         if (!alive)
         {
             Hide();

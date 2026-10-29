@@ -414,6 +414,12 @@ public partial class SettingsWindow : Window
         VisualizerLookDustWave.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.DustWave);
         VisualizerLookDustMilk.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.DustMilk;
         VisualizerLookDustMilk.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.DustMilk);
+        VisualizerLookChladni.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Chladni;
+        VisualizerLookChladni.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Chladni);
+        VisualizerLookFireflies.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Fireflies;
+        VisualizerLookFireflies.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Fireflies);
+        VisualizerLookFerrofluid.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Ferrofluid;
+        VisualizerLookFerrofluid.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Ferrofluid);
         VisualizerLookSilkContour.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.SilkContour;
         VisualizerLookSilkContour.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.SilkContour);
         VisualizerLookOled.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Oled;
@@ -438,7 +444,7 @@ public partial class SettingsWindow : Window
             LookOptions.Visibility = oled ? Visibility.Collapsed : Visibility.Visible;
         }
 
-        foreach (var look in new[] { VisualizerLookGlow, VisualizerLookHologram, VisualizerLookCubes, VisualizerLookStardust, VisualizerLookDustWave, VisualizerLookDustMilk, VisualizerLookSilkContour, VisualizerLookOled, VisualizerLookLed, VisualizerLookPrism, VisualizerLookWheat, VisualizerLookRibbon })
+        foreach (var look in new[] { VisualizerLookGlow, VisualizerLookHologram, VisualizerLookCubes, VisualizerLookStardust, VisualizerLookDustWave, VisualizerLookDustMilk, VisualizerLookSilkContour, VisualizerLookOled, VisualizerLookLed, VisualizerLookPrism, VisualizerLookWheat, VisualizerLookRibbon, VisualizerLookChladni, VisualizerLookFireflies, VisualizerLookFerrofluid })
         {
             look.Checked += (_, _) => ShowLookOptions();
         }

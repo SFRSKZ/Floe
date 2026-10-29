@@ -43,6 +43,15 @@ public enum VisualizerStyle
     Led,
     // the dust wave on the GPU, its grains and trails swept by a MilkDrop flow
     DustMilk,
+    // particle looks of their own, each a GPU scene (see Effects/Gpu/GpuSceneCatalog)
+    Chladni,
+    Fireflies,
+    CoverDust,
+    Ferrofluid,
+    IconDust,
+    GlassRain,
+    Murmuration,
+    StereoField,
 }
 
 /// <summary>A theme dresses the whole dock (glass, rim, glows) and its visualizer in one look.</summary>
@@ -134,7 +143,8 @@ public static class GlassSettings
 
     // still in the code but no longer offered: glow, cubes, silk contour, prism, wheat field, light ribbon
     private static bool IsRetired(VisualizerStyle look) => look is VisualizerStyle.Glow or VisualizerStyle.Cubes
-        or VisualizerStyle.SilkContour or VisualizerStyle.Prism or VisualizerStyle.Wheat or VisualizerStyle.Ribbon;
+        or VisualizerStyle.SilkContour or VisualizerStyle.Prism or VisualizerStyle.Wheat or VisualizerStyle.Ribbon
+        or VisualizerStyle.CoverDust or VisualizerStyle.IconDust or VisualizerStyle.GlassRain or VisualizerStyle.Murmuration or VisualizerStyle.StereoField;
 
     public static HologramColor HologramTint { get; private set; } = HologramColor.Blue;
 

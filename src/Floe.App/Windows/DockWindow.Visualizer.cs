@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using Floe.Core.Interop;
 using Floe.App.Effects.Visualizer;
 using Floe.App.Services;
 
@@ -41,9 +42,12 @@ public partial class DockWindow
                 bool panel = GlassSettings.VisualizerLook is VisualizerStyle.Oled or VisualizerStyle.Led;
                 _visualizerRunning = GlassSettings.Visualizer && IsVisible && _shown && !_fullscreenHidden && (playing || panel);
                 ApplyVisualizerState();
-                if (panel && _visualizerWindow is not null)
+                // the catalog's looks read the cover and where the player sits in the dock
+                bool novel = Effects.Gpu.GpuSceneCatalog.Has(GlassSettings.VisualizerLook) && _visualizerRunning;
+                if ((panel || novel) && _visualizerWindow is not null)
                 {
-                    _visualizerWindow.SetMusic(playing, await MediaService.GetAsync());
+                    var media = await MediaService.GetAsync();
+                    _visualizerWindow.SetMusic(playing, media, PlayerIconX(media?.Source));
                 }
             }
             finally
@@ -91,6 +95,64 @@ public partial class DockWindow
             new Rect(new Point(ToScreenX(_capsuleLeft), ToScreenY(RestTop)), new Point(ToScreenX(_capsuleLeft + _capsuleWidth), ToScreenY(RestTop + RestBarHeight))));
         _visualizerWindow.SetRunning(_visualizerRunning);
         SinkBelowVisualizer();
+    }
+
+    // where the player's icon sits along the visualizer strip (0..1); the middle when it is not in the dock
+    private double PlayerIconX(string? source)
+    {
+        if (PlayerSlot(source) is not { } slot) return 0.5;
+        var area = _monitorInfo.Monitor;
+        var scale = DockScale;
+        var left = area.Left / scale;
+        var width = Math.Max(1, (area.Right - area.Left) / scale);
+        return Math.Clamp((ToScreenX(_restCapsuleLeft + slot.CenterLocal) - left) / width, 0, 1);
+    }
+
+    // the player's name as a process would carry it: Spotify.exe, or SpotifyAB.SpotifyMusic_...!Spotify
+    private static string PlayerKey(string source) => source.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? source[..^4] : source;
+
+    private IconSlot? PlayerSlot(string? source)
+    {
+        if (string.IsNullOrWhiteSpace(source)) return null;
+        var key = PlayerKey(source);
+        foreach (var slot in _slots)
+        {
+            var name = slot.Item.ProcessName;
+            if (!string.IsNullOrEmpty(name) && key.Contains(name, StringComparison.OrdinalIgnoreCase)) return slot;
+        }
+
+        return null;
+    }
+
+    // The cover was clicked: bring the app that plays forward, from its dock icon, its process or its package.
+    private void BringPlayerForward(string? source)
+    {
+        if (string.IsNullOrWhiteSpace(source)) return;
+        if (PlayerSlot(source) is { } slot && slot.Item.Windows.Count > 0 && WindowActivator.Activate(slot.Item.Windows[0])) return;
+
+        var key = PlayerKey(source);
+        if (!key.Contains('!'))
+        {
+            foreach (var process in System.Diagnostics.Process.GetProcessesByName(key))
+            {
+                using (process)
+                {
+                    if (process.MainWindowHandle != IntPtr.Zero && WindowActivator.Activate(process.MainWindowHandle)) return;
+                }
+            }
+
+            return;
+        }
+
+        // a store app: asking the shell to start it again brings its window up
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", "shell:AppsFolder\\" + key) { UseShellExecute = true })?.Dispose();
+        }
+        catch
+        {
+            // the shell may refuse; nothing to bring forward then
+        }
     }
 
     /// <summary>Icons rest a little faded while the pointer is away, so the glass reads through.</summary>

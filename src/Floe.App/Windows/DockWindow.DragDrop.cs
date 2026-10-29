@@ -59,8 +59,15 @@ public partial class DockWindow
         }
 
         e.Handled = true;
-        Canvas.SetLeft(_dragSlot.Button, position.X - (IconBox / 2));
+        _dragX = position.X;
+        _dragY = position.Y;
+        var current = _pinnedList.IndexOf(_dragSlot.Item);
+        var target = ComputeDropIndex(position.X);
+        // pulled down far enough to unpin: no gap, the others close up
+        _dragGap = position.Y > IconBottom + (IconBox * 0.5) || current < 0 ? -1 : target > current ? target - 1 : target;
         Canvas.SetZIndex(_dragSlot.Button, 1000);
+        _dragSlot.Button.Opacity = _dragGap < 0 ? 0.45 : 0.9;
+        EnsureAnimation();
     }
 
     private void DragEnd(MouseButtonEventArgs e)
@@ -74,6 +81,8 @@ public partial class DockWindow
         _dragSlot = null;
         slot.Button.ReleaseMouseCapture();
         Canvas.SetZIndex(slot.Button, 0);
+        slot.Button.Opacity = 1;
+        _dragGap = -1;
 
         if (!_isDragging)
         {

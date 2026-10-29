@@ -33,6 +33,9 @@ internal sealed class VisualizerWindow : Window
     private StardustGpuScene? _dust;
     private GpuLayerWindow? _holo;
     private GpuLayerWindow? _cubeLayer;
+    // the catalog's looks share one layer, rebuilt when the look changes
+    private GpuLayerWindow? _novelLayer;
+    private VisualizerStyle _novelLook;
     private GpuLayerWindow? _oled;
     private OledGpuScene? _panel;
     private CubeGpuScene? _cubeScene;
@@ -83,12 +86,12 @@ internal sealed class VisualizerWindow : Window
 
     /// <summary>The window the light is drawn in right now: the GPU layer when it carries the look.</summary>
     public IntPtr TopHandle => _oled is { IsRunning: true } oled ? oled.Handle  : _gpu is { IsRunning: true } gpu ? gpu.Handle : _holo is { IsRunning: true } holo ? holo.Handle
-        : _cubeLayer is { IsRunning: true } cubes ? cubes.Handle : _hwnd;
+        : _cubeLayer is { IsRunning: true } cubes ? cubes.Handle : _novelLayer is { IsRunning: true } novel ? novel.Handle : _hwnd;
 
     /// <summary>The OLED panel runs under the dock: its glass has to keep up with what moves behind it.</summary>
     public bool PanelBehindDock => _oled is { IsRunning: true };
 
-    public bool Showing => IsVisible || _gpu is { IsRunning: true } || _holo is { IsRunning: true } || _oled is { IsRunning: true } || _cubeLayer is { IsRunning: true };
+    public bool Showing => IsVisible || _gpu is { IsRunning: true } || _holo is { IsRunning: true } || _oled is { IsRunning: true } || _cubeLayer is { IsRunning: true } || _novelLayer is { IsRunning: true };
 
     /// <summary>The GPU cube scene while it exists; the benchmark holds its level.</summary>
     internal CubeGpuScene? CubeScene => _cubeScene;
@@ -107,6 +110,8 @@ internal sealed class VisualizerWindow : Window
         _holo = null;
         _cubeLayer?.Dispose();
         _cubeLayer = null;
+        _novelLayer?.Dispose();
+        _novelLayer = null;
         _oled?.Dispose();
         _oled = null;
         base.OnClosed(e);
@@ -156,6 +161,7 @@ internal sealed class VisualizerWindow : Window
         _gpu?.PlaceBelowDock(dock);
         _holo?.PlaceBelowDock(dock);
         _cubeLayer?.PlaceBelowDock(dock);
+        _novelLayer?.PlaceBelowDock(dock);
         _oled?.PlaceBelowDock(dock);
     }
 
@@ -190,13 +196,28 @@ internal sealed class VisualizerWindow : Window
             && Layer(ref _cubeLayer, () => _cubeScene = new CubeGpuScene());
         _cubeLayer?.SetRunning(cubes);
 
+        bool novel = running && GlassSettings.GpuVisualizer && GpuSceneCatalog.Has(look);
+        if (novel && _novelLayer is not null && _novelLook != look)
+        {
+            _novelLayer.Dispose();
+            _novelLayer = null;
+        }
+        if (novel)
+        {
+            _novelLook = look;
+            novel = Layer(ref _novelLayer, () => GpuSceneCatalog.Create(look));
+        }
+        _novelLayer?.SetRunning(novel);
+        // without the GPU these looks play as stardust
+        if (GpuSceneCatalog.Has(look) && !novel) look = VisualizerStyle.Stardust;
+
         _oled?.SetRunning(oled);
 
         // without a GPU the OLED panel falls back to stardust
         if (look == VisualizerStyle.Oled && !oled) look = VisualizerStyle.Stardust;
 
         // a GPU layer carries its look by itself; this window only fades out what it drew before
-        running &= !(dust || oled || holo || cubes);
+        running &= !(dust || oled || holo || cubes || novel);
         _running = running;
         _glow.IsActive = running && look == VisualizerStyle.Glow;
         _hologram.IsActive = running && look == VisualizerStyle.Hologram;
@@ -240,20 +261,26 @@ internal sealed class VisualizerWindow : Window
     }
 
     /// <summary>What plays, for the OLED panel: whether it plays, and the song for its left wing.</summary>
-    public void SetMusic(bool playing, MediaInfo? media)
+    public void SetMusic(bool playing, MediaInfo? media, double sourceX = 0.5)
     {
+        if (media is not null && !ReferenceEquals(media.Artwork, _coverSource))
+        {
+            _coverSource = media.Artwork;
+            _cover = CoverPixels(media.Artwork as BitmapSource);
+        }
+
+        if (_novelLayer is not null)
+        {
+            _novelLayer.SetCover(media is null ? null : _cover, OledOverlay.CoverPixels);
+            _novelLayer.SourceX = (float)Math.Clamp(sourceX, 0, 1);
+        }
+
         if (_panel is null) return;
         _panel.MusicPlaying = playing;
         if (media is null || string.IsNullOrWhiteSpace(media.Title))
         {
             _panel.SetMedia(string.Empty, string.Empty, 0, 0, false, null);
             return;
-        }
-
-        if (!ReferenceEquals(media.Artwork, _coverSource))
-        {
-            _coverSource = media.Artwork;
-            _cover = CoverPixels(media.Artwork as BitmapSource);
         }
 
         _panel.SetMedia(media.Title, media.Artist, media.Position, media.Duration, media.Playing, _cover);
@@ -320,6 +347,7 @@ internal sealed class VisualizerWindow : Window
         if (_gpu is not null) _gpu.LedScreen = on;
         if (_holo is not null) _holo.LedScreen = on;
         if (_cubeLayer is not null) _cubeLayer.LedScreen = on;
+        if (_novelLayer is not null) _novelLayer.LedScreen = on;
         if (!on || !LedScreenEffect.IsAvailable)
         {
             _root.Effect = null;
@@ -374,6 +402,7 @@ internal sealed class VisualizerWindow : Window
         _gpu?.Place(pixels, _scale, _dock);
         _holo?.Place(pixels, _scale, _dock);
         _cubeLayer?.Place(pixels, _scale, _dock);
+        _novelLayer?.Place(pixels, _scale, _dock);
         _oled?.Place(pixels, _scale, _dock);
     }
 

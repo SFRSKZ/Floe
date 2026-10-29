@@ -62,6 +62,14 @@ public partial class App : Application
             return;
         }
 
+        var gpuBackdropTest = e.Args
+            .FirstOrDefault(a => a.StartsWith("--gpu-backdrop-test=", StringComparison.OrdinalIgnoreCase))?["--gpu-backdrop-test=".Length..];
+        if (gpuBackdropTest is not null)
+        {
+            RunGpuBackdropTest(gpuBackdropTest.Trim('"'));
+            return;
+        }
+
         // the benchmarks run their own windows and quit when done
         if (Services.PerfBench.TryStart(e.Args)) return;
         if (Effects.ActiveIcon.ClickGlassPreview.TryRender(e.Args)) { Shutdown(); return; }
@@ -293,6 +301,89 @@ public partial class App : Application
         }
 
         return true;
+    }
+
+    // --gpu-backdrop-test=<png>: runs the live GPU backdrop against a small hidden window, so the
+    // capture can be checked without starting the dock. Writes the first half-res, blurred strip.
+    private static void RunGpuBackdropTest(string path)
+    {
+        var area = SystemParameters.WorkArea;
+        var window = new Window
+        {
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Opacity = 0.01,
+            Width = 800,
+            Height = 120,
+            Left = area.Left + ((area.Width - 800) / 2),
+            Top = area.Bottom - 128,
+        };
+        window.Show();
+
+        byte[]? pixels = null;
+        int width = 0, height = 0, stride = 0;
+        var capture = Services.GpuBackdropCapture.TryCreate(window, (data, w, h, s) =>
+        {
+            pixels = (byte[])data.Clone();
+            width = w;
+            height = h;
+            stride = s;
+        }, null, () => 12);
+
+        void Finish(bool ok)
+        {
+            try
+            {
+                if (ok && pixels is not null)
+                {
+                    var bitmap = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
+                    var encoder = new PngBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                    using var stream = System.IO.File.Create(path);
+                    encoder.Save(stream);
+                    Console.WriteLine($"gpu-backdrop: {width}x{height} ok");
+                }
+                else
+                {
+                    Console.WriteLine("gpu-backdrop: unsupported/timeout");
+                }
+            }
+            catch (Exception)
+            {
+                Console.WriteLine("gpu-backdrop: unsupported/timeout");
+            }
+
+            Console.Out.Flush();
+            capture?.Dispose();
+            window.Close();
+            Current.Shutdown();
+        }
+
+        if (capture is null)
+        {
+            Finish(false);
+            return;
+        }
+
+        // presents arrive through the dispatcher, so the wait has to leave it running
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+        timer.Tick += (_, _) =>
+        {
+            if (pixels is not null)
+            {
+                timer.Stop();
+                Finish(true);
+            }
+            else if (clock.Elapsed > TimeSpan.FromSeconds(5))
+            {
+                timer.Stop();
+                Finish(false);
+            }
+        };
+        timer.Start();
     }
 
     private static void RenderDock(DockWindow dock, string path, string? backgroundPath)

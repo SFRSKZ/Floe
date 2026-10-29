@@ -218,7 +218,9 @@ public partial class DockWindow
             && Math.Abs(_dockScale - _targetDockScale) < 0.002
             && Math.Abs(_dockScaleVel) < 0.02
             && scales.All(s => Math.Abs(s - 1) < 0.0015)
-            && SectionsSettled;
+            && SectionsSettled
+            && !_isDragging
+            && _slots.All(s => Math.Abs(s.Shift) < 0.3);
 
         if (settled)
         {

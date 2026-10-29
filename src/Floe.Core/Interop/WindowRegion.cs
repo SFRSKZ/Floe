@@ -15,6 +15,9 @@ public static class WindowRegion
     private static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int ellipseWidth, int ellipseHeight);
 
     [DllImport("gdi32.dll")]
+    private static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
+
+    [DllImport("gdi32.dll")]
     private static extern IntPtr CreatePolygonRgn(Point32[] points, int count, int fillMode);
 
     [DllImport("user32.dll")]
@@ -51,6 +54,28 @@ public static class WindowRegion
         if (hRgn != IntPtr.Zero)
         {
             SetWindowRgn(hwnd, hRgn, true);
+        }
+    }
+
+    public static void SetRect(IntPtr hwnd, int left, int top, int right, int bottom)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var hRgn = CreateRectRgn(left, top, right, bottom);
+        if (hRgn != IntPtr.Zero)
+        {
+            SetWindowRgn(hwnd, hRgn, true);
+        }
+    }
+
+    public static void Clear(IntPtr hwnd)
+    {
+        if (hwnd != IntPtr.Zero)
+        {
+            SetWindowRgn(hwnd, IntPtr.Zero, true);
         }
     }
 }

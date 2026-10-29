@@ -19,7 +19,7 @@ namespace Floe.App.Effects.Gpu;
 /// one composite pass adds the aurora the CPU computed per column and writes the premultiplied strip.
 /// </para>
 /// </summary>
-public sealed class StardustGpuScene : IGpuScene
+public sealed partial class StardustGpuScene : IGpuScene
 {
     private const int Bands = 24;
     private const int MaxParticles = 2500;
@@ -236,11 +236,13 @@ public sealed class StardustGpuScene : IGpuScene
         _height = frame.Height / _ppd;
         var dt = Math.Clamp(frame.Dt, .001f, .1f);
 
-        EnsureCpu(frame.Performance, frame.Wave);
+        // the shapes ride the wave's grains
+        bool wave = frame.Wave || Shaped;
+        EnsureCpu(frame.Performance, wave);
 
         // the simulation first: it leaves the particles where this frame draws them
-        Simulate(dt, frame.Audio, frame.Palette, frame.Wave);
-        BuildInstances(frame.Fade, frame.Wave);
+        Simulate(dt, frame.Audio, frame.Palette, wave);
+        BuildInstances(frame.Fade, wave);
         BuildAurora();
 
         if (_needClear)
@@ -253,8 +255,8 @@ public sealed class StardustGpuScene : IGpuScene
 
         // the frame constants: feedback reads Lift and Decay, the particles Size, the composite Size and Fade
         bool milk = Milk && frame.Wave;
-        float lift = milk ? 0 : (frame.Wave ? .6f : .35f) * _ppd * dt * 30;
-        float decay = (float)Math.Exp(-dt / (milk ? .9 : frame.Wave ? .30 : .055));
+        float lift = milk || Shaped ? 0 : (frame.Wave ? .6f : .35f) * _ppd * dt * 30;
+        float decay = (float)Math.Exp(-dt / (Shaped ? ShapeDecayTau : milk ? .9 : frame.Wave ? .30 : .055));
         _cb[0] = frame.Width;
         _cb[1] = frame.Height;
         _cb[2] = 1f / frame.Width;
@@ -361,7 +363,7 @@ public sealed class StardustGpuScene : IGpuScene
         if (wave && (_waveCount == 0 || MathF.Abs(_waveWidth - _width) > .5f))
         {
             // one grain every ~1.2 DIP of width
-            int n = Math.Clamp((int)(_width / 1.2f * (performance == PerformanceLevel.Lite ? .5f : 1)), 60, 2400);
+            int n = Shaped ? ShapeCount(performance) : Math.Clamp((int)(_width / 1.2f * (performance == PerformanceLevel.Lite ? .5f : 1)), 60, 2400);
             _waveCount = n;
             _waveWidth = _width;
             _wx = new float[n];
@@ -371,9 +373,11 @@ public sealed class StardustGpuScene : IGpuScene
             _wPhase = new float[n];
             for (int i = 0; i < n; i++)
             {
-                Home(i, out _wx[i], out _wy[i]);
+                if (!Shaped) Home(i, out _wx[i], out _wy[i]);
                 _wPhase[i] = (float)(_random.NextDouble() * 100);
             }
+
+            if (Shaped) ShapeInit(n);
         }
 
         if (_auraReach.Length != _pixelW)
@@ -410,7 +414,8 @@ public sealed class StardustGpuScene : IGpuScene
         _shimmer *= Math.Exp(-dt / .15);
         if (f.Kick > 0)
         {
-            if (wave) Scatter(.15f + (.35f * (float)Math.Max(_bass, f.Kick)));
+            if (Shaped) ShapeKick(f.Kick);
+            else if (wave) Scatter(.15f + (.35f * (float)Math.Max(_bass, f.Kick)));
             _pulse = Math.Max(_pulse, f.Kick);
             Lift(f.Kick);
         }
@@ -418,8 +423,10 @@ public sealed class StardustGpuScene : IGpuScene
         if (f.Snare > 0) _shimmer = Math.Max(_shimmer, f.Snare);
 
         if (wave && Milk) Flow(dt);
-        if (wave) MoveWave(dt);
-        Emit(dt, f, wave);
+        if (Shaped) MoveShape(dt);
+        else if (wave) MoveWave(dt);
+        // the shapes are the whole picture; only the ferrofluid throws sparks of its own
+        if (!Shaped) Emit(dt, f, wave);
         Move(dt);
     }
 
@@ -664,7 +671,7 @@ public sealed class StardustGpuScene : IGpuScene
         _instanceData[o + 4] = r;
         _instanceData[o + 5] = g;
         _instanceData[o + 6] = b;
-        _instanceData[o + 7] = 0;
+        _instanceData[o + 7] = Shaped ? 1 : 0;
         return _instanceCount + 1;
     }
 
@@ -692,7 +699,11 @@ public sealed class StardustGpuScene : IGpuScene
                 Light(_palR[hue]) * i * _norm[s], Light(_palG[hue]) * i * _norm[s], Light(_palB[hue]) * i * _norm[s]);
         }
 
-        if (wave && _waveCount > 0)
+        if (Shaped)
+        {
+            n = ShapeInstances(n, fade);
+        }
+        else if (wave && _waveCount > 0)
         {
             int main = _waveCount * 2 / 3;
             float energy = .45f + (.55f * (float)_level);
@@ -735,7 +746,7 @@ public sealed class StardustGpuScene : IGpuScene
             float reach = (.13f + (.80f * MathF.Pow(band, 1.2f) * (.6f + (.4f * level))) + (.25f * (bass + pulse))) * height;
             _auraReach[x] = Math.Max(_ppd, reach);
             int hue = (int)(xn * (PaletteSize - 1));
-            float glow = .24f + (.40f * band) + (.28f * pulse);
+            float glow = (.24f + (.40f * band) + (.28f * pulse)) * ShapeAura;
             _auraR[x] = _palR[hue] * glow;
             _auraG[x] = _palG[hue] * glow;
             _auraB[x] = _palB[hue] * glow;
@@ -897,8 +908,11 @@ public sealed class StardustGpuScene : IGpuScene
 
         VSOut main(uint id : SV_VertexID, Instance instance)
         {
-            // the two triangles of the quad, from the vertex id
-            float2 corner = float2((id == 1 || id == 4 || id == 5) ? 1 : -1, (id < 2) ? -1 : 1);
+            // the two triangles of the quad, from the vertex id; the dust and wave looks were tuned with the
+            // second one collapsed (half a quad), so only grains flagged in b.w get the whole sprite
+            float2 corner = instance.b.w > .5
+                ? float2((id == 1 || id == 3 || id == 4) ? 1 : -1, (id == 2 || id == 4 || id == 5) ? 1 : -1)
+                : float2((id == 1 || id == 4 || id == 5) ? 1 : -1, (id < 2) ? -1 : 1);
             float2 p = instance.a.xy + (corner * instance.a.z);
             VSOut o;
             o.position = float4((p.x / Size.x * 2) - 1, 1 - (p.y / Size.y * 2), 0, 1);

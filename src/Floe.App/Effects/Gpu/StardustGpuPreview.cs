@@ -60,7 +60,11 @@ public static class StardustGpuPreview
                 using var staging = device.CreateTexture2D(new Texture2DDescription(Format.B8G8R8A8_UNorm, Width, Height, 1, 1,
                     BindFlags.None, ResourceUsage.Staging, CpuAccessFlags.Read, 1, 0, ResourceOptionFlags.None));
 
-                using var scene = new StardustGpuScene { Milk = milk };
+                // --scene=<look> previews one of the catalog's scenes instead
+                var sceneArgument = args.FirstOrDefault(a => a.StartsWith("--scene=", StringComparison.OrdinalIgnoreCase))?["--scene=".Length..];
+                using IGpuScene scene = sceneArgument is not null && Enum.TryParse<VisualizerStyle>(sceneArgument, true, out var look) && GpuSceneCatalog.Has(look)
+                    ? GpuSceneCatalog.Create(look)
+                    : new StardustGpuScene { Milk = milk };
                 scene.Initialize(device);
                 scene.Resize(Width, Height);
 
@@ -92,6 +96,7 @@ public static class StardustGpuPreview
                     }
 
                     frame.Time = (f + 1) / 30f;
+                    FakeExtras(frame, f);
                     VisualizerPalette.Fill(red, green, blue, frame.Time, BasePrimary);
                     for (int i = 0; i < GpuFrame.PaletteSize; i++) frame.Palette[i] = new Vector3(red[i], green[i], blue[i]);
 
@@ -113,6 +118,39 @@ public static class StardustGpuPreview
         }
 
         return true;
+    }
+
+    // a made-up cover that turns into another at frame 45 (a song change), the playing icon a third of the way in,
+    // and the sound swaying from left to right
+    private static void FakeExtras(GpuFrame frame, int f)
+    {
+        const int size = 64;
+        int version = f < 45 ? 1 : 2;
+        if (frame.CoverVersion != version)
+        {
+            var pixels = new byte[size * size * 4];
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                int i = (y * size + x) * 4;
+                float u = x / (float)size, v = y / (float)size;
+                bool ring = Math.Abs(Math.Sqrt((u - .5) * (u - .5) + (v - .5) * (v - .5)) - .3) < .06;
+                if (version == 1)
+                {
+                    pixels[i] = (byte)(ring ? 240 : 60 + 120 * v); pixels[i + 1] = (byte)(ring ? 240 : 40 + 60 * u); pixels[i + 2] = (byte)(ring ? 250 : 200 - 80 * v);
+                }
+                else
+                {
+                    pixels[i] = (byte)(ring ? 30 : 40 + 30 * u); pixels[i + 1] = (byte)(ring ? 200 : 140 + 90 * v); pixels[i + 2] = (byte)(ring ? 255 : 230 - 60 * u);
+                }
+                pixels[i + 3] = 255;
+            }
+            frame.Cover = pixels;
+            frame.CoverSize = size;
+            frame.CoverVersion = version;
+        }
+        frame.SourceX = 0.33f;
+        frame.Balance = (float)Math.Sin(f / 30.0 * 1.3) * 0.8f;
     }
 
     private static ID3D11Device CreateDevice(out ID3D11DeviceContext context)

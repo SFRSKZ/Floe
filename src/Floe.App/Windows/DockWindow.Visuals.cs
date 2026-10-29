@@ -11,6 +11,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using System.Windows.Media.Media3D;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
@@ -151,6 +152,10 @@ public partial class DockWindow
     private readonly Image _metalPreview = new();
     private MetalRimEffect? _metalEffect;
     private RimWarpEffect? _rimWarp;
+    private LiquidGlassEffect? _liquid;
+    private Point4D _liquidCapsule;
+    private Point _liquidSize;
+    private double _liquidHover = double.NaN, _liquidBulge = double.NaN, _liquidPlateau = double.NaN, _liquidSigma = double.NaN, _liquidRadius = double.NaN;
     private bool _glassPreview;
     private RimStyle _appliedRim = (RimStyle)(-1);
     private double _metalTime;
@@ -202,7 +207,12 @@ public partial class DockWindow
         _outerRim.Stroke = new SolidColorBrush(Color.FromArgb(0x30, 0, 0, 0));
         _smallBackdrop.Effect = _smallBlur;
         RenderOptions.SetBitmapScalingMode(_backdrop, BitmapScalingMode.Linear);
-        if (RenderCapability.IsPixelShaderVersionSupported(3, 0) && !NoFx.Contains("vibrancy")) _backdrop.Effect = new VibrancyEffect();
+        if (RenderCapability.IsPixelShaderVersionSupported(3, 0) && !NoFx.Contains("vibrancy"))
+        {
+            // the liquid pass carries the same vibrancy, plus the refracting rim
+            if (!NoFx.Contains("liquid") && LiquidGlassEffect.IsAvailable) _backdrop.Effect = _liquid = new LiquidGlassEffect();
+            else _backdrop.Effect = new VibrancyEffect();
+        }
         _metalHost.Children.Add(_metalSurface);
         _metalHost.Children.Add(_metalPreview);
         Canvas.SetLeft(_metalSurface, 24);
@@ -322,6 +332,35 @@ public partial class DockWindow
     }
 
     // Dependency-property writes re-upload pixel-shader constants, so only push parameters that moved.
+    // The backdrop is a picture of the screen behind the window, so it must not shrink with the dock, or the
+    // compact glass shows what lies above it (a dark window edge, say) long after the dock left it. It gets the
+    // root's scale undone round the same origin, and the liquid pass maps the capsule into its pixels.
+    private void UpdateBackdropUnscale()
+    {
+        var scale = Math.Max(0.05, _rootScale.ScaleX);
+        _backdropUnscale.CenterX = _windowWidth / 2;
+        _backdropUnscale.CenterY = WindowHeight;
+        _backdropUnscale.ScaleX = _backdropUnscale.ScaleY = 1 / scale;
+        UpdateLiquidGlass();
+    }
+
+    private void UpdateLiquidGlass()
+    {
+        if (_liquid is null) return;
+        var size = new Point(_windowWidth, WindowHeight);
+        if (_liquidSize != size) { _liquidSize = size; _liquid.Size = size; }
+        // root coordinates into the unscaled backdrop's pixels
+        double scale = _rootScale.ScaleX, centerX = _windowWidth / 2, centerY = WindowHeight;
+        var capsule = new Point4D(centerX + ((_capsuleLeft - centerX) * scale), centerY + ((RestTop - centerY) * scale),
+            Math.Max(1, _capsuleWidth * scale), RestBarHeight * scale);
+        if (_liquidCapsule != capsule) { _liquidCapsule = capsule; _liquid.Capsule = capsule; }
+        if (Changed(ref _liquidHover, centerX + ((_currentHoverX - centerX) * scale))) _liquid.Hover = _liquidHover;
+        if (Changed(ref _liquidBulge, EffectiveBulge * scale)) _liquid.Bulge = _liquidBulge;
+        if (Changed(ref _liquidPlateau, BulgeShape.Plateau * scale)) _liquid.Plateau = _liquidPlateau;
+        if (Changed(ref _liquidSigma, BulgeShape.Sigma * scale)) _liquid.Sigma = _liquidSigma;
+        if (Changed(ref _liquidRadius, CornerRadius * scale)) _liquid.Radius = _liquidRadius;
+    }
+
     private static bool Changed(ref double cache, double value)
     {
         if (cache.Equals(value)) return false;
@@ -347,6 +386,7 @@ public partial class DockWindow
         // the loose cubes draw over the whole canvas, in window coordinates
         _tronCubes.Width = _windowWidth;
         _tronCubes.Height = WindowHeight;
+        UpdateLiquidGlass();
         if (_metalEffect is null) return;
         var width = Math.Max(1, _capsuleWidth);
         var hover = _currentHoverX - _capsuleLeft;
@@ -410,6 +450,12 @@ public partial class DockWindow
         {
             _backdropBitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgr32, null);
             _smallBackdrop.Source = _backdropBitmap;
+            if (_gpuBackdrop) _backdrop.Source = _backdropBitmap;
+        }
+        if (_gpuBackdrop)
+        {
+            _backdropBitmap.WritePixels(new Int32Rect(0, 0, width, height), pixels, stride, 0);
+            return;
         }
         // Blur in the small visual's coordinate system, then upscale the result.
         if (_smallBackdrop.Width != width || _smallBackdrop.Height != height || _backdropLogicalWidth != _windowWidth)

@@ -62,6 +62,10 @@ public partial class DockWindow : Window
     private IconSlot? _dragSlot;
     private Point _dragStart;
     private bool _isDragging;
+    // while an icon is held: the cursor x it follows, and where the others open a gap for it (-1: none)
+    private double _dragX;
+    private double _dragY;
+    private int _dragGap = -1;
     private readonly Dictionary<string, DockItemViewModel> _pinned = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<DockItemViewModel> _pinnedList = new();
     private readonly DispatcherTimer _hideTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
@@ -178,8 +182,12 @@ public partial class DockWindow : Window
     private readonly Canvas _glowLayer = new() { IsHitTestVisible = false };
     private readonly Canvas _clockLayer = new();
     private readonly Image _backdrop = new() { IsHitTestVisible = false, Stretch = Stretch.Fill };
+    private readonly Canvas _backdropHost = new() { IsHitTestVisible = false };
+    private readonly ScaleTransform _backdropUnscale = new(1, 1);
     private WriteableBitmap? _backdropBitmap;
-    private BackdropCapture? _backdropCapture;
+    private IDisposable? _backdropCapture;
+    // the live GPU capture hands over frames it already blurred
+    private bool _gpuBackdrop;
     private readonly StackPanel _clock = new();
     private readonly TextBlock _clockTime = new();
     private readonly TextBlock _clockDate = new();
@@ -260,6 +268,7 @@ public partial class DockWindow : Window
 
         Root.RenderTransformOrigin = new Point(0.5, 1.0);
         Root.RenderTransform = _rootScale;
+        _rootScale.Changed += (_, _) => UpdateBackdropUnscale();
         AllowDrop = true;
         Root.AllowDrop = true;
         IconLayer.AllowDrop = true;
@@ -357,7 +366,9 @@ public partial class DockWindow : Window
         _backdrop.Height = WindowHeight;
         Canvas.SetLeft(_backdrop, 0);
         Canvas.SetTop(_backdrop, 0);
-        ShapeLayer.Children.Insert(0, _backdrop);
+        _backdrop.RenderTransform = _backdropUnscale;
+        _backdropHost.Children.Add(_backdrop);
+        ShapeLayer.Children.Insert(0, _backdropHost);
 
         _shapeFigure.Segments.Add(_shapeSegment);
         _shapeGeometry.Figures.Add(_shapeFigure);
@@ -366,7 +377,7 @@ public partial class DockWindow : Window
         _sheen.Data = _shapeGeometry;
         _specular.Data = _shapeGeometry;
         _glowLayer.Clip = _shapeGeometry;
-        _backdrop.Clip = _shapeGeometry;
+        _backdropHost.Clip = _shapeGeometry;
 
         ShapeLayer.Children.Add(_outerRim);
         ShapeLayer.Children.Add(_glass);
@@ -534,7 +545,11 @@ public partial class DockWindow : Window
 
             if (BlurBackdrop && !NoFx.Contains("capture"))
             {
-                _backdropCapture = new BackdropCapture(this, PresentBackdrop, () => _renderingHooked || _menuOpen || _visualizerWindow is { PanelBehindDock: true });
+                Func<bool> active = () => _renderingHooked || _menuOpen || _visualizerWindow is { PanelBehindDock: true };
+                // WPF's radius is about three sigmas, the GPU pass takes two, at half the physical resolution
+                var gpu = NoFx.Contains("gpubackdrop") ? null : GpuBackdropCapture.TryCreate(this, PresentBackdrop, active, () => BlurSettings.Radius * _dpi / 3);
+                _gpuBackdrop = gpu is not null;
+                _backdropCapture = gpu ?? (IDisposable)new BackdropCapture(this, PresentBackdrop, active);
             }
 
             InitializeSections();
@@ -573,5 +588,8 @@ public partial class DockWindow : Window
         public ScaleTransform Scale { get; }
 
         public TranslateTransform Translate { get; }
+
+        // eased x offset while another icon is held over the dock, so the gap slides open
+        public double Shift { get; set; }
     }
 }

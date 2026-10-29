@@ -134,6 +134,15 @@ public partial class DockWindow
     {
         base.OnPreviewMouseRightButtonUp(e);
 
+        // a press can still land on the empty room above the bar (a touch, or before the click-through timer
+        // caught up): that belongs to the window behind, so no dock menu there
+        if (!IsSolidAt(e.GetPosition(this)))
+        {
+            e.Handled = true;
+            if (DwmDock) UpdateClickThrough();
+            return;
+        }
+
         if (_clock.IsMouseOver || _clockDivider.IsMouseOver)
         {
             if (!_settingsClosedByClick) OpenSettings();

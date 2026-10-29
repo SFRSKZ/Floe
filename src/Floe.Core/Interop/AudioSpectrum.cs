@@ -18,6 +18,9 @@ public sealed class SpectrumFrame
     /// <summary>Overall loudness 0..1 against the recent loudest; 0 in silence.</summary>
     public float Level { get; set; }
 
+    /// <summary>Stereo balance, -1 (all left) .. 1 (all right), smoothed.</summary>
+    public float Balance { get; set; }
+
     /// <summary>Onsets since the last read: a kick in the lows, a snare in the mids, a hat in the highs; 0 or its strength 0..1.</summary>
     public float Kick { get; set; }
     public float Snare { get; set; }
@@ -94,6 +97,18 @@ public sealed class AudioSpectrum : IDisposable
             for (int i = 0; i < _scope.Length; i++) _scope[i] = _ring[(scopeStart + i) % Ring];
             rate = _sampleRate;
             received = _received;
+            float energy = _leftEnergy + _rightEnergy;
+            if (energy > 1e-6f)
+            {
+                float balance = (_rightEnergy - _leftEnergy) / energy;
+                frame.Balance += (balance - frame.Balance) * (float)Math.Min(1, dt * 6);
+            }
+            else
+            {
+                frame.Balance -= frame.Balance * (float)Math.Min(1, dt * 2);
+            }
+
+            _leftEnergy = _rightEnergy = 0;
         }
 
         // nothing new arrived: loopback sends no packets while nothing plays
@@ -374,6 +389,8 @@ public sealed class AudioSpectrum : IDisposable
         return now != id;
     }
 
+    private float _leftEnergy, _rightEnergy;
+
     private unsafe void Push(IntPtr data, int frames, int channels, bool isFloat, bool silent)
     {
         lock (_gate)
@@ -385,7 +402,11 @@ public sealed class AudioSpectrum : IDisposable
                 {
                     for (int c = 0; c < channels; c++)
                     {
-                        mono += isFloat ? ((float*)data)[(f * channels) + c] : ((short*)data)[(f * channels) + c] / 32768f;
+                        float sample = isFloat ? ((float*)data)[(f * channels) + c] : ((short*)data)[(f * channels) + c] / 32768f;
+                        mono += sample;
+                        // the first two channels are left and right
+                        if (c == 0) _leftEnergy += sample * sample;
+                        else if (c == 1) _rightEnergy += sample * sample;
                     }
 
                     mono /= channels;

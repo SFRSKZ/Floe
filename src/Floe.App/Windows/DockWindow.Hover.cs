@@ -48,7 +48,16 @@ public partial class DockWindow
             return;
         }
 
-        var position = e.GetPosition(this);
+        var position = e.GetPosition(Root);
+        if (!IsOverHoverArea(position))
+        {
+            if (_targetBulge != 0 || _hoveredIndex != -1)
+            {
+                LeaveHover();
+            }
+            return;
+        }
+
         _targetHoverX = Math.Min(_windowWidth, Math.Max(0, position.X));
         _targetBulge = MaxBulge;
         _targetDockScale = 1;
@@ -58,6 +67,33 @@ public partial class DockWindow
     }
 
     private void Window_MouseLeave(object sender, MouseEventArgs e)
+    {
+        LeaveHover();
+    }
+
+    private bool IsOverHoverArea(Point position)
+    {
+        var active = _targetBulge > 0;
+        var margin = (active ? 12.0 : 6.0) / _dockScale;
+        var left = _capsuleLeft - margin;
+        var right = _capsuleLeft + _capsuleWidth + margin;
+        var top = RestTop;
+        if (active)
+        {
+            top = Math.Max(0, RestTop - (EffectiveBulge * BulgeProfile(position.X - _currentHoverX)));
+            foreach (var slot in _slots)
+            {
+                var bounds = slot.Button.TransformToAncestor(Root).TransformBounds(new Rect(slot.Button.RenderSize));
+                bounds.Inflate(margin, margin);
+                if (bounds.Contains(position)) return true;
+            }
+        }
+
+        return position.X >= left && position.X <= right
+            && position.Y >= top - margin && position.Y <= RestTop + RestBarHeight + margin;
+    }
+
+    private void LeaveHover()
     {
         if (_menuOpen)
         {
