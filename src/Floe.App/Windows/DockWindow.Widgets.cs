@@ -31,6 +31,7 @@ public partial class DockWindow
         if (_clockTime.Text != time)
         {
             _clockTime.Text = time;
+            if (GlassSettings.Cyber && !_dozeHidden && _sleepRun is null && Root.OpacityMask is null) PlayClockSplit();
         }
 
         var date = now.ToString("ddd d MMM");

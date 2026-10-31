@@ -15,6 +15,11 @@
         FontFamily="Segoe UI">
 
     <Window.Resources>
+        <SolidColorBrush x:Key="FloeAccent" Color="#FF5BC8FF" />
+        <SolidColorBrush x:Key="FloeAccentDim" Color="#3D5BC8FF" />
+        <SolidColorBrush x:Key="FloeAccentEdge" Color="#8A5BC8FF" />
+        <SolidColorBrush x:Key="FloeOnAccent" Color="#F2FFFFFF" />
+        <CornerRadius x:Key="FloeCorner">9</CornerRadius>
         <Style x:Key="ModeToggle" TargetType="RadioButton">
             <Setter Property="Foreground" Value="#F2FFFFFF" />
             <Setter Property="FontSize" Value="13" />
@@ -28,19 +33,19 @@
                             </Grid.RenderTransform>
                             <!-- face for the chromatic material; the code-behind gives it the shader -->
                             <Border x:Name="Chroma"
-                                    Background="#FF5BC8FF"
-                                    CornerRadius="9"
+                                    Background="{DynamicResource FloeAccent}"
+                                    CornerRadius="{DynamicResource FloeCorner}"
                                     Visibility="Collapsed" />
                             <Border x:Name="Bd"
                                     Background="#14FFFFFF"
                                     BorderBrush="#24FFFFFF"
                                     BorderThickness="1"
-                                    CornerRadius="9"
+                                    CornerRadius="{DynamicResource FloeCorner}"
                                     Padding="14,7">
                                 <ContentPresenter x:Name="Label" HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                             <Border x:Name="Edge"
-                                    CornerRadius="9"
+                                    CornerRadius="{DynamicResource FloeCorner}"
                                     BorderThickness="1"
                                     IsHitTestVisible="False"
                                     Visibility="Collapsed">
@@ -55,7 +60,7 @@
                             <!-- transparent metal-ring overlay; the code-behind gives it the shader -->
                             <Border x:Name="Rim"
                                     Background="Transparent"
-                                    CornerRadius="9"
+                                    CornerRadius="{DynamicResource FloeCorner}"
                                     IsHitTestVisible="False" />
                         </Grid>
                         <ControlTemplate.Triggers>
@@ -63,6 +68,7 @@
                                 <Setter TargetName="Bd" Property="Background" Value="#24FFFFFF" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource FloeOnAccent}" />
                                 <Setter TargetName="Chroma" Property="Visibility" Value="Visible" />
                                 <Setter TargetName="Edge" Property="Visibility" Value="Visible" />
                                 <Setter TargetName="Bd" Property="Background" Value="Transparent" />
@@ -126,7 +132,7 @@
                                     <Thumb Width="14" Height="14">
                                         <Thumb.Template>
                                             <ControlTemplate TargetType="Thumb">
-                                                <Ellipse Fill="#F2FFFFFF" Stroke="#5BC8FF" StrokeThickness="2" />
+                                                <Ellipse Fill="#F2FFFFFF" Stroke="{DynamicResource FloeAccent}" StrokeThickness="2" />
                                             </ControlTemplate>
                                         </Thumb.Template>
                                     </Thumb>
@@ -175,7 +181,7 @@
                                 Background="#14FFFFFF"
                                 BorderBrush="#24FFFFFF"
                                 BorderThickness="1"
-                                CornerRadius="9"
+                                CornerRadius="{DynamicResource FloeCorner}"
                                 Padding="14,7">
                             <StackPanel Orientation="Horizontal">
                                 <Ellipse x:Name="Dot"
@@ -192,9 +198,9 @@
                                 <Setter TargetName="Bd" Property="Background" Value="#24FFFFFF" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#3D5BC8FF" />
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#8A5BC8FF" />
-                                <Setter TargetName="Dot" Property="Fill" Value="#5BC8FF" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource FloeAccentDim}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource FloeAccentEdge}" />
+                                <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource FloeAccent}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -215,10 +221,10 @@
                                 <TranslateTransform x:Name="Lift" />
                             </Grid.RenderTransform>
                             <Border x:Name="Chroma"
-                                    Background="#FF5BC8FF"
-                                    CornerRadius="9" />
+                                    Background="{DynamicResource FloeAccent}"
+                                    CornerRadius="{DynamicResource FloeCorner}" />
                             <Border x:Name="Edge"
-                                    CornerRadius="9"
+                                    CornerRadius="{DynamicResource FloeCorner}"
                                     BorderThickness="1"
                                     IsHitTestVisible="False">
                                 <Border.BorderBrush>
@@ -232,7 +238,7 @@
                             <!-- transparent metal-ring overlay; the code-behind gives it the shader -->
                             <Border x:Name="Rim"
                                     Background="Transparent"
-                                    CornerRadius="9"
+                                    CornerRadius="{DynamicResource FloeCorner}"
                                     IsHitTestVisible="False" />
                             <ContentPresenter Margin="14,7" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <ContentPresenter.Effect>
@@ -392,7 +398,35 @@
                                  ToolTip="Siyah cam, buz mavisi ışık çizgileri, mavi OLED" />
                     <RadioButton x:Name="ThemeTronAres" GroupName="Theme" Style="{StaticResource ModeToggle}" Content="Tron: Ares"
                                  ToolTip="Siyah cam, kırmızı ışık çizgileri, kırmızı OLED" />
+                    <RadioButton x:Name="ThemeCyberHud" GroupName="Theme" Style="{StaticResource ModeToggle}" Content="Sarı HUD"
+                                 ToolTip="Köşeleri kesik düz sarı bar, siyah yazı" />
+                    <RadioButton x:Name="ThemeCyberModules" GroupName="Theme" Style="{StaticResource ModeToggle}" Content="Ayrık modüller"
+                                 ToolTip="Başlat, ikonlar, bölümler ve saat ayrı sarı bloklar" />
+                    <RadioButton x:Name="ThemeCyberCorporate" GroupName="Theme" Style="{StaticResource ModeToggle}" Content="Beyaz kurumsal"
+                                 ToolTip="Köşeli beyaz modüller, kırmızı vurgu, sarı şerit" />
                 </WrapPanel>
+                <Border Height="6" />
+                <CheckBox x:Name="DockColorToggle"
+                          Style="{StaticResource GlassToggle}"
+                          Content="Dock rengini kendim seçeyim"
+                          ToolTip="Tema ve yüzeyin rengi yerine bu renk; Tron temaları kendi rengini korur" />
+                <Grid x:Name="DockColorPicker" Margin="0,6,0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="70" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="28" />
+                        <RowDefinition Height="28" />
+                        <RowDefinition Height="28" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Renk" Foreground="#C8FFFFFF" FontSize="12" VerticalAlignment="Center" />
+                    <Slider x:Name="DockHue" Grid.Column="1" Style="{StaticResource ColorSlider}" Minimum="0" Maximum="360" />
+                    <TextBlock Grid.Row="1" Text="Doygunluk" Foreground="#C8FFFFFF" FontSize="12" VerticalAlignment="Center" />
+                    <Slider x:Name="DockSaturation" Grid.Row="1" Grid.Column="1" Style="{StaticResource ColorSlider}" Minimum="0" Maximum="1" />
+                    <TextBlock Grid.Row="2" Text="Parlaklık" Foreground="#C8FFFFFF" FontSize="12" VerticalAlignment="Center" />
+                    <Slider x:Name="DockValue" Grid.Row="2" Grid.Column="1" Style="{StaticResource ColorSlider}" Minimum="0.05" Maximum="1" />
+                </Grid>
                 <Border Height="6" />
                 <CheckBox x:Name="FastDockToggle"
                           Style="{StaticResource GlassToggle}"
@@ -481,6 +515,14 @@
                     <RadioButton x:Name="VisualizerLookOled" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="OLED ekran" />
                     <RadioButton x:Name="VisualizerLookLed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="LED ekran"
                                  ToolTip="OLED şovu renkli RGB LED noktalarda, vuruşlarda cam damlalarla" />
+                    <RadioButton x:Name="VisualizerLookCyberBars" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Pahlı çubuklar" />
+                    <RadioButton x:Name="VisualizerLookCyberPulse" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Nabız dalgası" />
+                    <RadioButton x:Name="VisualizerLookCyberGrid" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Net arazisi" />
+                    <RadioButton x:Name="VisualizerLookCyberCode" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Kod tozu" />
+                    <RadioButton x:Name="VisualizerLookCyberSignal" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Sinyal kaybı"
+                                 ToolTip="Kopan bir görüntü sinyali: vuruşta sıçrayan testere şeritler, kırmızı-mavi kıvılcımlar" />
+                    <RadioButton x:Name="VisualizerLookCyberBlackwall" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Blackwall"
+                                 ToolTip="Parmaklığın ardında yaşayan kırmızı-mavi sıvı, vuruşta dalgalanır" />
                     <RadioButton x:Name="VisualizerLookPrism" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Cam prizma" />
                     <RadioButton x:Name="VisualizerLookWheat" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Başak tarlası" />
                     <RadioButton x:Name="VisualizerLookRibbon" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Işık şeridi" />

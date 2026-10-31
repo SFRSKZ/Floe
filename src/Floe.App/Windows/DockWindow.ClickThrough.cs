@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Floe.App.Services;
 using Floe.Core.Interop;
 
 namespace Floe.App.Windows;
@@ -18,6 +19,13 @@ public partial class DockWindow
     private DispatcherTimer? _clickThroughTimer;
     private bool _clickThrough;
     private Int32Rect _clickRegion;
+    private Int32Rect _decalRegion;
+
+    // the markings BuildCyberShape puts beside the bar, about 140 x 58, with room for the cross's corners as it turns: a
+    // region cuts off whatever lies outside it
+    private const double CyberDecalWidth = 140;
+    private const double CyberDecalHeight = 58;
+    private const double CyberDecalPad = 6;
 
     private void StartClickThrough()
     {
@@ -80,6 +88,7 @@ public partial class DockWindow
             if (!_clickThrough) return;
             _clickThrough = false;
             _clickRegion = default;
+            _decalRegion = default;
             WindowRegion.Clear(_hwnd);
             return;
         }
@@ -89,13 +98,43 @@ public partial class DockWindow
         var bar = _glass.TransformToAncestor(this).TransformBounds(shape.Bounds);
         var region = new Int32Rect(
             (int)Math.Floor((bar.Left - 16) * _dpi),
-            (int)Math.Floor((bar.Top - 4) * _dpi),
+            (int)Math.Max(0, Math.Floor((bar.Top - 4 - FxRoomAbove) * _dpi)),
             0, 0);
         region.Width = (int)Math.Ceiling((bar.Right + 16) * _dpi) - region.X;
         region.Height = (int)Math.Ceiling(ActualHeight * _dpi) - region.Y;
-        if (_clickThrough && region == _clickRegion) return;
+        // the cyber markings join the region as their own rectangle, not as room right of the bar: the empty band
+        // between the two keeps passing clicks on to whatever is under it
+        var decal = GlassSettings.Cyber ? CyberDecalRegion() : default;
+        if (_clickThrough && region == _clickRegion && decal == _decalRegion) return;
         _clickThrough = true;
         _clickRegion = region;
+        _decalRegion = decal;
+        if (decal.Width > 0 && decal.Height > 0)
+        {
+            WindowRegion.SetRects(_hwnd, new[]
+            {
+                (region.X, region.Y, region.X + region.Width, region.Y + region.Height),
+                (decal.X, decal.Y, decal.X + decal.Width, decal.Y + decal.Height),
+            });
+            return;
+        }
+
         WindowRegion.SetRect(_hwnd, region.X, region.Y, region.X + region.Width, region.Y + region.Height);
+    }
+
+    // where the cyber decal is drawn, in the pixels the region works in, padded so no stroke on its edge is cut
+    private Int32Rect CyberDecalRegion()
+    {
+        if (PresentationSource.FromVisual(_cyberDecal) is null) return default;
+        var decal = _cyberDecal.TransformToAncestor(this).TransformBounds(new Rect(
+            -CyberDecalPad,
+            -CyberDecalPad,
+            CyberDecalWidth + (2 * CyberDecalPad),
+            CyberDecalHeight + (2 * CyberDecalPad)));
+        return new Int32Rect(
+            (int)Math.Floor(decal.Left * _dpi),
+            (int)Math.Max(0, Math.Floor(decal.Top * _dpi)),
+            (int)Math.Ceiling(decal.Width * _dpi),
+            (int)Math.Ceiling(decal.Height * _dpi));
     }
 }

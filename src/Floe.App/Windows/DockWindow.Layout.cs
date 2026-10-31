@@ -25,8 +25,11 @@ namespace Floe.App.Windows;
 public partial class DockWindow
 {
 
+    private bool _roomForDecals;
+
     private void RebuildIcons()
     {
+        _roomForDecals = GlassSettings.Cyber;
         _slots.Clear();
         IconLayer.Children.Clear();
         IconLayer.Children.Add(_separator);
@@ -50,7 +53,7 @@ public partial class DockWindow
         _capsuleWidth = LeadX + restContent + TrailWidth(_mediaReveal);
 
         var maxContent = count == 0 ? 0 : (count * IconBox * HoverMaxScale) + ((count - 1) * Spacing) + extra;
-        _windowWidth = LeadX + maxContent + TrailWidth(1) + (2 * EdgeMargin);
+        _windowWidth = LeadX + maxContent + TrailWidth(1) + (2 * EdgeMargin) + (GlassSettings.Cyber ? 2 * DecalRoom : 0);
         _restCapsuleLeft = (_windowWidth - _capsuleWidth) / 2;
         _restCapsuleWidth = _capsuleWidth;
         _capsuleLeft = _restCapsuleLeft;
@@ -91,6 +94,8 @@ public partial class DockWindow
 
             var grid = new Grid { Width = IconBox, Height = IconBox };
             grid.Children.Add(image);
+            // the cyber themes' line icon, in the app artwork's place
+            grid.Children.Add(new Image { Margin = new Thickness(7), Stretch = Stretch.Uniform, Visibility = Visibility.Collapsed });
             grid.Children.Add(dot);
 
             var scale = new ScaleTransform(1, 1);
@@ -116,6 +121,7 @@ public partial class DockWindow
             var slot = new IconSlot(button, dot, item, centerLocal, scale, translate);
             _slots.Add(slot);
             IconLayer.Children.Add(button);
+            ApplyCyberIcon(slot);
 
             if (item.IsPinned)
             {
@@ -249,6 +255,7 @@ public partial class DockWindow
 
         PositionStartButton();
         PositionSections(startX + total);
+        UpdateCyberPlate(scales);
 
         if (_activeIndex >= 0 && _activeIndex < count && _auraGrid.Visibility == Visibility.Visible)
         {

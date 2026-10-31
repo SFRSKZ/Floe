@@ -20,6 +20,12 @@ public static class WindowRegion
     [DllImport("gdi32.dll")]
     private static extern IntPtr CreatePolygonRgn(Point32[] points, int count, int fillMode);
 
+    [DllImport("gdi32.dll")]
+    private static extern int CombineRgn(IntPtr dest, IntPtr source1, IntPtr source2, int mode);
+
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteObject(IntPtr handle);
+
     [DllImport("user32.dll")]
     private static extern int SetWindowRgn(IntPtr hwnd, IntPtr hRgn, bool redraw);
 
@@ -69,6 +75,39 @@ public static class WindowRegion
         {
             SetWindowRgn(hwnd, hRgn, true);
         }
+    }
+
+    /// <summary>
+    /// The window's region is every rect put together: a bar can keep a decoration drawn beside it without taking
+    /// the clicks that land on the empty band between the two.
+    /// </summary>
+    public static void SetRects(IntPtr hwnd, IReadOnlyList<(int Left, int Top, int Right, int Bottom)> rects)
+    {
+        if (hwnd == IntPtr.Zero || rects.Count == 0)
+        {
+            return;
+        }
+
+        var hRgn = CreateRectRgn(0, 0, 0, 0);
+        if (hRgn == IntPtr.Zero)
+        {
+            return;
+        }
+
+        const int RgnOr = 2;
+        foreach (var (left, top, right, bottom) in rects)
+        {
+            var part = CreateRectRgn(left, top, right, bottom);
+            if (part == IntPtr.Zero)
+            {
+                continue;
+            }
+
+            CombineRgn(hRgn, hRgn, part, RgnOr);
+            DeleteObject(part);
+        }
+
+        SetWindowRgn(hwnd, hRgn, true);
     }
 
     public static void Clear(IntPtr hwnd)

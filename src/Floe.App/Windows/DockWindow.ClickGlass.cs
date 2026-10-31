@@ -12,6 +12,12 @@ public partial class DockWindow
 {
     private void PlayClickGlass(DockItemViewModel item)
     {
+        if (GlassSettings.Cyber)
+        {
+            if (AuraSettings.ClickEffect && !NoFx.Contains("click", StringComparison.OrdinalIgnoreCase)) PlayCyberClick(item);
+            return;
+        }
+
         if (!Performance.RichClick || !AuraSettings.ClickEffect || NoFx.Contains("click", StringComparison.OrdinalIgnoreCase)
             || !ClickGlassEffect.IsAvailable
             || _slots.FirstOrDefault(s => ReferenceEquals(s.Item, item)) is not { } slot

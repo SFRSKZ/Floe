@@ -183,6 +183,8 @@ public partial class DockWindow
             }
         }
 
+        NoteCyberAttention(_auraAttention ? _attentionItem : null);
+
         if (_activeIndex < 0 || _slots[_activeIndex].Item.Icon is not { } icon)
         {
             SetIconEffect(null, null);

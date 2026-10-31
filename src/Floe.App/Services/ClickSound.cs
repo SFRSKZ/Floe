@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -33,6 +34,7 @@ public static class ClickSound
 
     private static float[][] _dark = Array.Empty<float[]>();
     private static float[][] _light = Array.Empty<float[]>();
+    private static float[][] _cyber = Array.Empty<float[]>();
     private static float[] _mix = Array.Empty<float>();
     private static short[] _pcm = Array.Empty<short>();
     private static WaveHeader[] _headers = Array.Empty<WaveHeader>();
@@ -98,7 +100,7 @@ public static class ClickSound
             return;
         }
 
-        var bank = tone == ClickTone.Light ? _light : _dark;
+        var bank = GlassSettings.Cyber ? _cyber : tone == ClickTone.Light ? _light : _dark;
         if (bank.Length == 0)
         {
             return;
@@ -181,6 +183,7 @@ public static class ClickSound
 
         _dark = Bank(860, .095);
         _light = Bank(1040, .08);
+        _cyber = Drift.Select(RenderCyber).ToArray();
         _mix = new float[Frames * Channels];
     }
 
@@ -281,6 +284,29 @@ public static class ClickSound
         }
 
         Normalise(data, .8f);
+        return data;
+    }
+
+    // the cyber themes' click: a data blip, two square tones a fifth apart with a tick of noise on the attack
+    private static float[] RenderCyber(double pitch)
+    {
+        const double step = .026, gap = .003, tail = .03;
+        var data = new float[(int)(.085 * Rate)];
+        var noise = new Random(7);
+        double phase = 0;
+        for (var i = 0; i < data.Length; i++)
+        {
+            double t = (double)i / Rate;
+            if (t >= step && t < step + gap) continue;
+            phase += (t < step ? 1760 : 2640) * pitch / Rate;
+            double wave = Math.Sin(phase * Math.Tau);
+            double tone = (.55 * Math.Sign(wave)) + (.45 * wave);
+            double tick = t < .003 ? (noise.NextDouble() - .5) * 1.2 : 0;
+            double attack = Math.Min(1, t / .001);
+            data[i] = (float)(attack * Math.Exp(-t / tail) * (tone + tick));
+        }
+
+        Normalise(data, .7f);
         return data;
     }
 

@@ -96,6 +96,15 @@ public partial class App : Application
         if (Services.DotMatrixIconsPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.GpuOffscreen.TryRenderTest(e.Args)) { Shutdown(); return; }
 
+        var vizArg = e.Args.FirstOrDefault(a => a.StartsWith("--renderviz=", StringComparison.OrdinalIgnoreCase))?["--renderviz=".Length..].Split(':', 2);
+        if (vizArg is { Length: 2 } && Enum.TryParse<Floe.App.Effects.Visualizer.CyberVisualLook>(vizArg[0], true, out var vizLook))
+        {
+            Floe.App.Services.GlassSettings.Load();
+            Floe.App.Effects.Visualizer.CyberVisualizer.RenderStill(vizLook, vizArg[1]);
+            Shutdown();
+            return;
+        }
+
         if (TryRenderSettings(e.Args))
         {
             Shutdown();
@@ -241,6 +250,9 @@ public partial class App : Application
                     dock.PreviewAura(auraArg);
                 }
 
+                var fxArg = e.Args.FirstOrDefault(a => a.StartsWith("--fx=", StringComparison.OrdinalIgnoreCase))?["--fx=".Length..].Split(':');
+                if (fxArg is { Length: 2 }) dock.PreviewCyberFx(fxArg[0], double.Parse(fxArg[1], System.Globalization.CultureInfo.InvariantCulture));
+
                 var backgroundArg = e.Args
                     .FirstOrDefault(a => a.StartsWith("--renderbg=", StringComparison.OrdinalIgnoreCase))?["--renderbg=".Length..];
                 RenderDock(dock, renderPath, backgroundArg);
@@ -260,6 +272,7 @@ public partial class App : Application
 
         try
         {
+            Floe.App.Services.GlassSettings.Load();
             var window = new SettingsWindow();
             window.Show();
             window.UpdateLayout();
@@ -414,7 +427,7 @@ public partial class App : Application
                 context.DrawRectangle(background, null, new Rect(0, 0, width, height));
             }
 
-            var brush = new VisualBrush(dock.Root)
+            var brush = new VisualBrush(dock.Stage)
             {
                 Stretch = Stretch.None,
                 AlignmentX = AlignmentX.Left,

@@ -213,6 +213,8 @@ public partial class DockWindow
             return;
         }
 
+        if (GlassSettings.Cyber) return; // the scan card names it
+
         _tooltipText.Text = slot.Item.Name;
         _tooltip.PlacementTarget = slot.Button;
         _tooltip.IsOpen = true;

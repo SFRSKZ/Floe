@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -22,6 +22,7 @@
     <EmbeddedResource Include="Effects\Glass\DozeGhost.hlsl" LogicalName="Floe.DozeGhost.hlsl" />
     <EmbeddedResource Include="Effects\Glass\LiquidGlass.hlsl" LogicalName="Floe.LiquidGlass.hlsl" />
     <EmbeddedResource Include="Effects\Visualizer\LedScreen.hlsl" LogicalName="Floe.LedScreen.hlsl" />
+    <Resource Include="Assets\Fonts\*.ttf" />
   </ItemGroup>
 
   <ItemGroup>

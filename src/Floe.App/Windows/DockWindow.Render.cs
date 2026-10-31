@@ -292,8 +292,18 @@ public partial class DockWindow
         _shapeScale = _dockScale;
         _shapeCount = _slots.Count;
 
-        var points = BuildShape();
-        if (points.Count >= 2)
+        if (GlassSettings.Cyber)
+        {
+            BuildCyberShape();
+        }
+        else if (_shapeGeometry.Figures.Count != 1 || _shapeGeometry.Figures[0] != _shapeFigure)
+        {
+            _shapeGeometry.Figures.Clear();
+            _shapeGeometry.Figures.Add(_shapeFigure);
+        }
+
+        var points = GlassSettings.Cyber ? _shapePoints : BuildShape();
+        if (!GlassSettings.Cyber && points.Count >= 2)
         {
             _shapeFigure.StartPoint = points[0];
             var segmentPoints = _shapeSegment.Points;
@@ -317,7 +327,7 @@ public partial class DockWindow
 
     private void UpdateGlow()
     {
-        if (_slots.Count == 0 || _currentBulge <= 0.5)
+        if (_slots.Count == 0 || _currentBulge <= 0.5 || GlassSettings.Cyber)
         {
             _glow.Visibility = Visibility.Collapsed;
             return;

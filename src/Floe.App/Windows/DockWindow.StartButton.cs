@@ -37,7 +37,7 @@ public partial class DockWindow
         _startGlyph.Opacity = 0.82;
         RenderOptions.SetBitmapScalingMode(_startGlyph, BitmapScalingMode.HighQuality);
 
-        _startDivider.Fill = _clockDivider.Fill;
+        _startDivider.Fill = _lineBrush;
         _clockLayer.Children.Add(_start);
         _clockLayer.Children.Add(_startDivider);
 
@@ -52,7 +52,17 @@ public partial class DockWindow
     private void UpdateStartGlyph()
     {
         var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
-        _startGlyph.Source = DotMatrixIcons.Render("desktop", StartGlyph, DesktopButtonSettings.Color, dpi);
+        if (GlassSettings.Cyber)
+        {
+            var ink = new SolidColorBrush(StartGlyphColor);
+            ink.Freeze();
+            _startGlyph.Source = CyberIcons.Draw("hexagon", ink);
+            _startGlyph.Opacity = 1;
+            return;
+        }
+
+        _startGlyph.Source = DotMatrixIcons.Render("desktop", StartGlyph, StartGlyphColor, dpi);
+        _startGlyph.Opacity = 0.82;
     }
 
     private void AnimateStart(double scale, double opacity)

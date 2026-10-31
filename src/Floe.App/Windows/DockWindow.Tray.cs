@@ -21,6 +21,7 @@ public partial class DockWindow
     private void InitializeTray()
     {
         var glyph = Glyph("chevron", TrayGlyph);
+        _inkGlyphs.Add((glyph, "chevron", TrayGlyph));
         glyph.Opacity = 0.82;
         _tray.ToolTip = "Arka planda çalışanlar";
         _tray.RenderTransformOrigin = new Point(0.5, 0.5);

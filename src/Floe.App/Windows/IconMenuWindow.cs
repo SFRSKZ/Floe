@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
+using Floe.App.Services;
 using Floe.Core.Interop;
 
 namespace Floe.App.Windows;
@@ -153,7 +154,7 @@ internal sealed class IconMenuWindow : Window
                 Text = action.Label,
                 Foreground = danger ? DangerText : Text,
                 FontSize = 13,
-                FontFamily = new FontFamily("Segoe UI"),
+                FontFamily = CyberLook.UiFont,
             },
         };
         row.MouseEnter += (_, _) => row.Background = RowHover;
@@ -180,7 +181,7 @@ internal sealed class IconMenuWindow : Window
             Foreground = DimText,
             FontSize = 12,
             FontWeight = FontWeights.SemiBold,
-            FontFamily = new FontFamily("Segoe UI"),
+            FontFamily = CyberLook.UiFont,
             VerticalAlignment = VerticalAlignment.Center,
             MaxWidth = 220,
             TextTrimming = TextTrimming.CharacterEllipsis,

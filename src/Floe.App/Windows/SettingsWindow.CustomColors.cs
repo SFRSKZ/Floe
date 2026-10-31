@@ -53,6 +53,65 @@ public partial class SettingsWindow
         SelectSwatch(0);
     }
 
+    private bool _syncingDockColor;
+    private System.Windows.Threading.DispatcherTimer? _dockColorTimer;
+
+    private void InitializeDockColor()
+    {
+        var hues = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
+        for (int k = 0; k <= 6; k++) hues.GradientStops.Add(new GradientStop(FromHsv(k * 60, 1, 1), k / 6.0));
+        hues.Freeze();
+        DockHue.Background = hues;
+
+        ToHsv(GlassSettings.DockColor ?? Color.FromRgb(0xFC, 0xEE, 0x0A), out double h, out double s, out double v);
+        _syncingDockColor = true;
+        DockHue.Value = h;
+        DockSaturation.Value = s;
+        DockValue.Value = Math.Max(DockValue.Minimum, v);
+        DockColorToggle.IsChecked = GlassSettings.DockColor is not null;
+        _syncingDockColor = false;
+        DockColorPicker.Visibility = GlassSettings.DockColor is null ? Visibility.Collapsed : Visibility.Visible;
+        RefreshDockColorTracks();
+
+        DockHue.ValueChanged += (_, _) => DockColorChanged();
+        DockSaturation.ValueChanged += (_, _) => DockColorChanged();
+        DockValue.ValueChanged += (_, _) => DockColorChanged();
+        DockColorToggle.Checked += (_, _) =>
+        {
+            DockColorPicker.Visibility = Visibility.Visible;
+            DockColorChanged();
+        };
+        DockColorToggle.Unchecked += (_, _) =>
+        {
+            DockColorPicker.Visibility = Visibility.Collapsed;
+            GlassSettings.SetDockColor(null);
+        };
+    }
+
+    private void DockColorChanged()
+    {
+        RefreshDockColorTracks();
+        if (_syncingDockColor || DockColorToggle.IsChecked != true) return;
+        // a colour change rebuilds the whole dock, so a dragged slider only gets to do it a few times a second
+        if (_dockColorTimer is null)
+        {
+            _dockColorTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(60) };
+            _dockColorTimer.Tick += (_, _) =>
+            {
+                _dockColorTimer.Stop();
+                if (DockColorToggle.IsChecked == true) GlassSettings.SetDockColor(FromHsv(DockHue.Value, DockSaturation.Value, DockValue.Value));
+            };
+        }
+        _dockColorTimer.Start();
+    }
+
+    private void RefreshDockColorTracks()
+    {
+        double h = DockHue.Value, s = DockSaturation.Value, v = DockValue.Value;
+        DockSaturation.Background = new LinearGradientBrush(FromHsv(h, 0, v), FromHsv(h, 1, v), 0);
+        DockValue.Background = new LinearGradientBrush(FromHsv(h, s, DockValue.Minimum), FromHsv(h, s, 1), 0);
+    }
+
     private static Color SwatchColor(int i) => i == 0 ? GlassSettings.CustomTint : GlassSettings.CustomPalette[i - 1];
 
     private void SelectSwatch(int i)

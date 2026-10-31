@@ -67,6 +67,7 @@ public partial class DockWindow
         _dragGap = position.Y > IconBottom + (IconBox * 0.5) || current < 0 ? -1 : target > current ? target - 1 : target;
         Canvas.SetZIndex(_dragSlot.Button, 1000);
         _dragSlot.Button.Opacity = _dragGap < 0 ? 0.45 : 0.9;
+        SetFxGhost(_dragSlot, e.GetPosition(Root));
         EnsureAnimation();
     }
 
@@ -79,6 +80,7 @@ public partial class DockWindow
 
         var slot = _dragSlot;
         _dragSlot = null;
+        SetFxGhost(null, default);
         slot.Button.ReleaseMouseCapture();
         Canvas.SetZIndex(slot.Button, 0);
         slot.Button.Opacity = 1;

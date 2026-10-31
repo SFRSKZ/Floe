@@ -284,6 +284,7 @@ public static class AuraSettings
     public static Color[] GetColors(DockItemViewModel item)
     {
         if (GlassSettings.Tron) return ThemePalette.Glows;
+        if (GlassSettings.Cyber) return new[] { CyberLook.Current.Accent, CyberLook.Current.Strip, CyberLook.Current.Accent };
 
         if (Mode == AuraColorMode.Icon && item.Icon is not null)
         {

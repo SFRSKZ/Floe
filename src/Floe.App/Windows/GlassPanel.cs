@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -8,6 +9,7 @@ using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using Floe.App.Effects.Cyber;
 using Floe.App.Effects.Glass;
 using Floe.App.Effects.MetalRim;
 using Floe.App.Services;
@@ -38,6 +40,7 @@ public sealed class GlassPanel : Grid
     private readonly Rectangle _hairline = new() { Stroke = DockWindow.BuildRimBrush(), StrokeThickness = 1, IsHitTestVisible = false };
     private readonly Border _metalSurface = new() { Background = Brushes.Transparent, IsHitTestVisible = false };
     private readonly RectangleGeometry _clip = new();
+    private readonly Path _cyberEdge = new() { StrokeThickness = 1.5, IsHitTestVisible = false };
     private MetalRimEffect? _metal;
 
     public GlassPanel()
@@ -65,13 +68,15 @@ public sealed class GlassPanel : Grid
             Children.Insert(4, _grain);
             Children.Add(_hairline);
             Children.Add(_metalSurface);
+            Children.Add(_cyberEdge);
             ApplyRim();
+            ApplySurface();
             GlassSettings.Changed += OnGlassSettingsChanged;
         };
         Unloaded += (_, _) =>
         {
             GlassSettings.Changed -= OnGlassSettingsChanged;
-            foreach (var layer in new UIElement[] { _backdrop, _tint, _shade, _sheen, _grain, _hairline, _metalSurface })
+            foreach (var layer in new UIElement[] { _backdrop, _tint, _shade, _sheen, _grain, _hairline, _metalSurface, _cyberEdge })
             {
                 Children.Remove(layer);
             }
@@ -109,6 +114,7 @@ public sealed class GlassPanel : Grid
         _clip.RadiusX = _clip.RadiusY = radius;
         _hairline.RadiusX = _hairline.RadiusY = radius;
         _metalSurface.CornerRadius = new System.Windows.CornerRadius(radius);
+        ShapeCyberPlate(size);
         if (_metal is not null && size.Width > 0 && size.Height > 0)
         {
             _metal.Size = size;
@@ -129,6 +135,40 @@ public sealed class GlassPanel : Grid
         _tint.Fill = DockWindow.BuildGlassBrush();
         _hairline.Stroke = DockWindow.BuildRimBrush();
         ApplyRim();
+        ApplySurface();
+    }
+
+    // a cyber theme has no glass: a dark plate with a cut corner, edged in the theme's yellow
+    private void ApplySurface()
+    {
+        bool cyber = GlassSettings.Cyber;
+        var glass = cyber ? Visibility.Collapsed : Visibility.Visible;
+        _backdrop.Visibility = _shade.Visibility = _sheen.Visibility = _grain.Visibility = _hairline.Visibility = glass;
+        _cyberEdge.Visibility = cyber ? Visibility.Visible : Visibility.Collapsed;
+        TextElement.SetFontFamily(this, CyberLook.UiFont);
+        if (cyber)
+        {
+            _tint.Fill = CyberFxLayer.Solid(CyberLook.PanelInk);
+            _cyberEdge.Stroke = CyberFxLayer.Solid(CyberLook.Current.Strip);
+        }
+
+        ShapeCyberPlate(RenderSize);
+    }
+
+    private void ShapeCyberPlate(Size size)
+    {
+        if (!GlassSettings.Cyber || size.Width <= 0 || size.Height <= 0)
+        {
+            _tint.Clip = _clip;
+            return;
+        }
+
+        var plate = CyberFxLayer.Plate(new Rect(size), 12);
+        _tint.Clip = plate;
+        // inset by half the stroke, or the panel's own bounds cut the edge away along every straight side
+        var inner = new Rect(size);
+        inner.Inflate(-_cyberEdge.StrokeThickness / 2, -_cyberEdge.StrokeThickness / 2);
+        _cyberEdge.Data = CyberFxLayer.Plate(inner, 12);
     }
 
     private void ApplyRim()
@@ -136,6 +176,7 @@ public sealed class GlassPanel : Grid
         _metal = GlassSettings.Rim switch
         {
             _ when GlassSettings.Tron => MetalRimEffect.ApplyPreset("tron", true),
+            _ when GlassSettings.Cyber => null,
             RimStyle.MetalSilver => MetalRimEffect.ApplyPreset("silver", true),
             RimStyle.MetalGold => MetalRimEffect.ApplyPreset("gold", true),
             RimStyle.MetalChromatic => MetalRimEffect.ApplyPreset("chromatic", true),

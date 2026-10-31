@@ -3,6 +3,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
+using Floe.App.Effects.Cyber;
+using Floe.Core.Models;
 using Floe.App.Services;
 
 namespace Floe.App.Windows;
@@ -17,12 +19,13 @@ internal sealed class TrayWindow : Window
     private const int Columns = 5;
     private const double Cell = 44;
     private const double IconSize = 26;
+    private const double CyberChamfer = 14;
 
     private readonly WrapPanel _icons = new() { Width = Columns * Cell };
     private readonly TextBlock _empty = new()
     {
         Text = "Arka planda çalışan uygulama yok",
-        Foreground = new SolidColorBrush(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)),
+        Foreground = Tone(0x99),
         FontSize = 12,
         Margin = new Thickness(4, 6, 4, 6),
         Visibility = Visibility.Collapsed,
@@ -45,24 +48,33 @@ internal sealed class TrayWindow : Window
         stack.Children.Add(new TextBlock
         {
             Text = "Arka planda çalışanlar",
-            Foreground = new SolidColorBrush(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF)),
-            FontSize = 12,
+            Foreground = Tone(GlassSettings.Cyber ? (byte)0xFF : (byte)0xCC),
+            FontSize = GlassSettings.Cyber ? 15 : 12,
             FontWeight = FontWeights.SemiBold,
             Margin = new Thickness(4, 0, 4, 8),
         });
         stack.Children.Add(_icons);
         stack.Children.Add(_empty);
 
-        Content = new Border
+        bool cyber = GlassSettings.Cyber;
+        FontFamily = CyberLook.UiFont;
+        var panel = new Border
+        {
+            Padding = new Thickness(cyber ? 14 : 10, 10, cyber ? 14 : 10, cyber ? 12 : 8),
+            CornerRadius = new CornerRadius(cyber ? 0 : 16),
+            Background = new SolidColorBrush(cyber ? CyberLook.Current.Body : Color.FromArgb(0xEB, 0x16, 0x19, 0x21)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
+            BorderThickness = new Thickness(cyber ? 0 : 1),
+            Child = stack,
+        };
+
+        // the plate clips, its parent casts the shadow, so the shadow follows the cut corners
+        if (cyber) panel.SizeChanged += (_, e) => panel.Clip = CyberFxLayer.Plate(new Rect(e.NewSize), CyberChamfer);
+        Content = new Decorator
         {
             Margin = new Thickness(14),
-            Padding = new Thickness(10, 10, 10, 8),
-            CornerRadius = new CornerRadius(16),
-            Background = new SolidColorBrush(Color.FromArgb(0xEB, 0x16, 0x19, 0x21)),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
-            BorderThickness = new Thickness(1),
             Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 3, Opacity = .45, Color = Colors.Black },
-            Child = stack,
+            Child = panel,
         };
 
         Deactivated += (_, _) => CloseOnce();
@@ -83,21 +95,24 @@ internal sealed class TrayWindow : Window
 
     private FrameworkElement Item(TrayApp app)
     {
-        var hover = new SolidColorBrush(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF));
+        var hover = Tone(0x26);
         var cell = new Border
         {
             Width = Cell - 4,
             Height = Cell - 4,
             Margin = new Thickness(2),
-            CornerRadius = new CornerRadius(10),
+            CornerRadius = new CornerRadius(GlassSettings.Cyber ? 0 : 10),
             Background = Brushes.Transparent,
             Cursor = Cursors.Hand,
             ToolTip = app.Name,
         };
 
-        if (app.Icon is not null)
+        // on the dock's colour a known app is the dock's own line icon; the rest show their full size icon
+        var icon = (GlassSettings.Cyber ? CyberIcons.Known($"{app.Name} {System.IO.Path.GetFileNameWithoutExtension(app.Path)}", Tone(0xFF)) : null)
+            ?? IconService.GetIcon(new DockApp { Target = app.Path }, 52) ?? app.Icon;
+        if (icon is not null)
         {
-            var image = new Image { Source = app.Icon, Width = IconSize, Height = IconSize };
+            var image = new Image { Source = icon, Width = IconSize, Height = IconSize };
             RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
             cell.Child = image;
         }
@@ -106,7 +121,7 @@ internal sealed class TrayWindow : Window
             cell.Child = new TextBlock
             {
                 Text = app.Name.Length > 0 ? app.Name[..1].ToUpperInvariant() : "?",
-                Foreground = Brushes.White,
+                Foreground = Tone(0xFF),
                 FontSize = 16,
                 FontWeight = FontWeights.SemiBold,
                 HorizontalAlignment = HorizontalAlignment.Center,
@@ -134,6 +149,13 @@ internal sealed class TrayWindow : Window
         });
         cell.ContextMenu = menu;
         return cell;
+    }
+
+    // text and marks on the panel: white on the dark glass, the ink on a cyber plate
+    private static Brush Tone(byte alpha)
+    {
+        var ink = GlassSettings.Cyber ? CyberLook.Current.Ink : Colors.White;
+        return new SolidColorBrush(Color.FromArgb(alpha, ink.R, ink.G, ink.B));
     }
 
     private static MenuItem MenuItem(string header, Action action)

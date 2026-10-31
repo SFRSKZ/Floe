@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+using Floe.App.Services;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -27,6 +29,26 @@ public partial class PreviewWindow : Window
     public PreviewWindow()
     {
         InitializeComponent();
+        ApplyTheme();
+    }
+
+    // the popup is kept for the life of the dock, so its frame is read again every time it is shown
+    private void ApplyTheme()
+    {
+        if (GlassSettings.Cyber)
+        {
+            Frame.CornerRadius = new CornerRadius(0);
+            Frame.BorderThickness = new Thickness(1.5);
+            Frame.BorderBrush = new SolidColorBrush(CyberLook.Current.Strip);
+            Hint.FontFamily = CyberLook.Font;
+            return;
+        }
+
+        // the glass card the markup draws: rounded, a white hairline and the inherited font
+        Frame.CornerRadius = new CornerRadius(12);
+        Frame.BorderThickness = new Thickness(1);
+        Frame.BorderBrush = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF));
+        Hint.ClearValue(TextBlock.FontFamilyProperty);
     }
 
     public bool IsCursorOver
@@ -55,6 +77,7 @@ public partial class PreviewWindow : Window
 
     public void ShowFor(IReadOnlyList<IntPtr> sources)
     {
+        ApplyTheme();
         ClearThumbnails();
 
         var hwnd = new WindowInteropHelper(this).Handle;

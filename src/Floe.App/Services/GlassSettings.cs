@@ -52,6 +52,13 @@ public enum VisualizerStyle
     GlassRain,
     Murmuration,
     StereoField,
+    // the cyber themes' own hard edged strips (see Effects/Visualizer/CyberVisualizer)
+    CyberBars,
+    CyberPulse,
+    CyberGrid,
+    CyberCode,
+    CyberSignal,
+    CyberBlackwall,
 }
 
 /// <summary>A theme dresses the whole dock (glass, rim, glows) and its visualizer in one look.</summary>
@@ -60,6 +67,9 @@ public enum DockTheme
     None,
     TronLegacy,
     TronAres,
+    CyberHud,
+    CyberModules,
+    CyberCorporate,
 }
 
 public enum HologramColor
@@ -139,6 +149,12 @@ public static class GlassSettings
     /// <summary>Either Tron theme: black glass edged in neon light lines, with the OLED panel lit in the same colour.</summary>
     public static bool Tron => Theme is DockTheme.TronLegacy or DockTheme.TronAres;
 
+    /// <summary>The flat themes: hard-edged plates in solid colours instead of the glass capsule.</summary>
+    public static bool Cyber => Theme is DockTheme.CyberHud or DockTheme.CyberModules or DockTheme.CyberCorporate;
+
+    /// <summary>The dock's own colour, or null for what the surface and theme give it. Tron keeps its black glass.</summary>
+    public static Color? DockColor { get; private set; }
+
     public static VisualizerStyle VisualizerLook { get; private set; } = VisualizerStyle.Stardust;
 
     // still in the code but no longer offered: glow, cubes, silk contour, prism, wheat field, light ribbon
@@ -208,6 +224,7 @@ public static class GlassSettings
             OledEffect = Math.Clamp(model.OledEffect, -1, 10);
             DustColors = Enum.TryParse<DustPalette>(model.DustColors, true, out var dust) ? dust : DustPalette.Tint;
             if (TryParseColor(model.CustomTint, out var custom)) CustomTint = custom;
+            if (TryParseColor(model.DockColor, out var dockColor)) DockColor = dockColor;
             for (int i = 0; i < CustomPalette.Length && i < (model.CustomPalette?.Length ?? 0); i++)
             {
                 if (TryParseColor(model.CustomPalette![i], out var stop)) CustomPalette[i] = stop;
@@ -224,6 +241,8 @@ public static class GlassSettings
             var args = Environment.GetCommandLineArgs();
             var themeArg = args.FirstOrDefault(a => a.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase));
             if (themeArg is not null && Enum.TryParse<DockTheme>(themeArg[8..], true, out var previewTheme)) Theme = previewTheme;
+            var dockColorArg = args.FirstOrDefault(a => a.StartsWith("--dockcolor=", StringComparison.OrdinalIgnoreCase));
+            if (dockColorArg is not null && TryParseColor(dockColorArg[12..], out var previewColor)) DockColor = previewColor;
             var surfaceArg = args.FirstOrDefault(a => a.StartsWith("--surface=", StringComparison.OrdinalIgnoreCase));
             if (surfaceArg is not null && Enum.TryParse<DockSurface>(surfaceArg[10..], true, out var previewSurface)) Surface = previewSurface;
             var rimArg = args.FirstOrDefault(a => a.StartsWith("--rim=", StringComparison.OrdinalIgnoreCase));
@@ -306,13 +325,21 @@ public static class GlassSettings
         }
 
         Theme = theme;
-        if (theme != DockTheme.None)
+        if (Tron)
         {
             Visualizer = true;
             VisualizerLook = VisualizerStyle.Oled;
         }
 
         Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetDockColor(Color? color)
+    {
+        if (DockColor == color) return;
+        DockColor = color;
+        SaveSoon();
         Changed?.Invoke();
     }
 
@@ -511,6 +538,7 @@ public static class GlassSettings
                 CubeSize = CubeSize,
                 DustColors = DustColors.ToString(),
                 CustomTint = Hex(CustomTint),
+                DockColor = DockColor is { } dockColor ? Hex(dockColor) : null,
                 CustomPalette = CustomPalette.Select(Hex).ToArray(),
             }));
         }
@@ -556,6 +584,8 @@ public static class GlassSettings
         public string DustColors { get; set; } = nameof(DustPalette.Tint);
 
         public string? CustomTint { get; set; }
+
+        public string? DockColor { get; set; }
 
         public string[]? CustomPalette { get; set; }
     }

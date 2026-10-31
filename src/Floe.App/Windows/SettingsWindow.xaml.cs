@@ -23,6 +23,9 @@ public partial class SettingsWindow : Window
     public SettingsWindow()
     {
         InitializeComponent();
+        ApplyChrome();
+        GlassSettings.Changed += ApplyChromeOnUi;
+        Closed += (_, _) => GlassSettings.Changed -= ApplyChromeOnUi;
 
         // the caller positions the window right after Show()/UpdateLayout(); keep it transparent
         // until the first dispatcher pass so it never flashes at the default position
@@ -102,6 +105,7 @@ public partial class SettingsWindow : Window
         BuildTabs();
         RefreshRows();
         AttachChromatic();
+        _chromaticCyber = GlassSettings.Cyber; // the faces above are built for the theme this window opens in
         Loaded += (_, _) => _chromatic?.Start();
         Closed += (_, _) => _chromatic?.Dispose();
 
@@ -129,9 +133,56 @@ public partial class SettingsWindow : Window
 
     private ChromaticAnimator? _chromatic;
     private readonly List<(Border Rim, Func<bool> Strong)> _metalRims = new();
+    private readonly List<Border> _chromaticFaces = new();
+    // the theme the faces were last built for; the constructor builds them for the theme it opens in
+    private bool _chromaticCyber;
 
     private static readonly bool NoMetal =
         (Environment.GetEnvironmentVariable("FLOE_NOFX") ?? "").Contains("metal");
+
+    private void ApplyChromeOnUi() => Dispatcher.BeginInvoke(ApplyChrome);
+
+    // the toggles' colour and corners follow the theme, the cyber themes' hard yellow included
+    private void ApplyChrome()
+    {
+        bool cyber = GlassSettings.Cyber;
+        var accent = cyber ? CyberLook.Current.Strip : Color.FromRgb(0x5B, 0xC8, 0xFF);
+        Resources["FloeAccent"] = new SolidColorBrush(accent);
+        Resources["FloeAccentDim"] = new SolidColorBrush(Color.FromArgb(0x3D, accent.R, accent.G, accent.B));
+        Resources["FloeAccentEdge"] = new SolidColorBrush(Color.FromArgb(0x8A, accent.R, accent.G, accent.B));
+        Resources["FloeCorner"] = new CornerRadius(cyber ? 0 : 9);
+        Resources["FloeOnAccent"] = new SolidColorBrush(cyber ? CyberLook.PanelInk : Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF));
+        CloseButton.Foreground = (Brush)Resources["FloeOnAccent"];
+        RefreshChromatic();
+    }
+
+    /// <summary>
+    /// The shader faces belong to the glass themes; the cyber themes draw flat plates instead. A theme change while
+    /// the window is open takes the faces off and stops their clock, or builds them again in the glass themes.
+    /// </summary>
+    private void RefreshChromatic()
+    {
+        bool cyber = GlassSettings.Cyber;
+        if (cyber == _chromaticCyber) return;
+        _chromaticCyber = cyber;
+        if (cyber)
+        {
+            DetachChromatic();
+            return;
+        }
+
+        AttachChromatic();
+    }
+
+    private void DetachChromatic()
+    {
+        foreach (var face in _chromaticFaces) face.Effect = null;
+        _chromaticFaces.Clear();
+        foreach (var (rim, _) in _metalRims) rim.Effect = null;
+        _metalRims.Clear();
+        _chromatic?.Dispose();
+        _chromatic = null;
+    }
 
     /// <summary>
     /// Puts the chromatic material on the selected toggles and the close button only:
@@ -140,6 +191,8 @@ public partial class SettingsWindow : Window
     /// </summary>
     private void AttachChromatic()
     {
+        if (GlassSettings.Cyber) return; // flat plates, no shader faces
+
         if (Content is not DependencyObject root)
         {
             return;
@@ -159,7 +212,8 @@ public partial class SettingsWindow : Window
             used |= faces && AttachChromaticFace(toggle, () => toggle.IsChecked == true);
             used |= rims && AttachMetalRim(toggle, () => toggle.IsChecked == true);
             // a new selection still settles while idle motion is off
-            toggle.Checked += (_, _) => _chromatic?.Wake();
+            toggle.Checked -= OnToggleChecked;
+            toggle.Checked += OnToggleChecked;
         }
         used |= faces && AttachChromaticFace(CloseButton, () => true);
         used |= rims && AttachMetalRim(CloseButton, () => true);
@@ -181,8 +235,14 @@ public partial class SettingsWindow : Window
         {
             _chromatic.Dispose();
             _chromatic = null;
+            return;
         }
+
+        // a theme change while the window is open builds a fresh clock; the constructor's Loaded hook is past
+        if (IsLoaded) _chromatic.Start();
     }
+
+    private void OnToggleChecked(object sender, RoutedEventArgs e) => _chromatic?.Wake();
 
     private bool AttachChromaticFace(Control control, Func<bool> active)
     {
@@ -190,6 +250,7 @@ public partial class SettingsWindow : Window
         if (control.Template?.FindName("Chroma", control) is Border face)
         {
             _chromatic?.Add(face, control, active);
+            _chromaticFaces.Add(face);
             return true;
         }
 
@@ -338,17 +399,20 @@ public partial class SettingsWindow : Window
         foreach (var (button, theme) in new[]
         {
             (ThemeNone, DockTheme.None), (ThemeTronLegacy, DockTheme.TronLegacy), (ThemeTronAres, DockTheme.TronAres),
+            (ThemeCyberHud, DockTheme.CyberHud), (ThemeCyberModules, DockTheme.CyberModules), (ThemeCyberCorporate, DockTheme.CyberCorporate),
         })
         {
             button.IsChecked = GlassSettings.Theme == theme;
             button.Checked += (_, _) =>
             {
                 GlassSettings.SetTheme(theme);
-                if (theme == DockTheme.None) return;
+                if (!GlassSettings.Tron) return;
                 VisualizerToggle.IsChecked = true;
                 VisualizerLookOled.IsChecked = true;
             };
         }
+
+        InitializeDockColor();
 
         OledColourToggle.IsChecked = GlassSettings.OledColour;
         OledColourToggle.Checked += (_, _) => GlassSettings.SetOledColour(true);
@@ -430,6 +494,12 @@ public partial class SettingsWindow : Window
         VisualizerLookWheat.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Wheat);
         VisualizerLookRibbon.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Ribbon;
         VisualizerLookRibbon.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Ribbon);
+        foreach (var (toggle, look) in new[] { (VisualizerLookCyberBars, VisualizerStyle.CyberBars), (VisualizerLookCyberPulse, VisualizerStyle.CyberPulse), (VisualizerLookCyberGrid, VisualizerStyle.CyberGrid), (VisualizerLookCyberCode, VisualizerStyle.CyberCode), (VisualizerLookCyberSignal, VisualizerStyle.CyberSignal), (VisualizerLookCyberBlackwall, VisualizerStyle.CyberBlackwall) })
+        {
+            toggle.IsChecked = GlassSettings.VisualizerLook == look;
+            toggle.Checked += (_, _) => GlassSettings.SetVisualizerLook(look);
+        }
+
         VisualizerLookLed.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Led;
         VisualizerLookLed.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Led);
 
@@ -549,7 +619,7 @@ public partial class SettingsWindow : Window
             var shell = new Grid { Margin = new Thickness(0, 0, 6, 6) };
             var row = new Border
             {
-                CornerRadius = new CornerRadius(9),
+                CornerRadius = new CornerRadius(GlassSettings.Cyber ? 0 : 9),
                 Padding = new Thickness(10, 7, 10, 7),
                 BorderThickness = new Thickness(1),
                 Cursor = Cursors.Hand,
@@ -557,7 +627,7 @@ public partial class SettingsWindow : Window
             // the ring overlays the card so its halo can bleed past the card's bounds
             var rim = new Border
             {
-                CornerRadius = new CornerRadius(9),
+                CornerRadius = new CornerRadius(GlassSettings.Cyber ? 0 : 9),
                 IsHitTestVisible = false,
             };
             shell.Children.Add(row);
@@ -612,7 +682,7 @@ public partial class SettingsWindow : Window
                 ? Color.FromArgb(0x24, 0xFF, 0xFF, 0xFF)
                 : Color.FromArgb(0x00, 0xFF, 0xFF, 0xFF));
             row.BorderBrush = new SolidColorBrush(selected
-                ? Color.FromArgb(0x80, 0x5B, 0xC8, 0xFF)
+                ? (GlassSettings.Cyber ? CyberLook.Current.Strip : Color.FromArgb(0x80, 0x5B, 0xC8, 0xFF))
                 : Color.FromArgb(0x1E, 0xFF, 0xFF, 0xFF));
             // every card wears the ring; the selected one is brighter and sits above its neighbours
             Panel.SetZIndex(shell, selected ? 1 : 0);

@@ -38,8 +38,9 @@ public partial class DockWindow
             try
             {
                 var playing = await VisualizerGlow.ShouldRunAsync();
-                // the OLED panel stays on without music: its robot comes out when nothing plays
-                bool panel = GlassSettings.VisualizerLook is VisualizerStyle.Oled or VisualizerStyle.Led;
+                // the OLED panel stays on without music: its robot comes out when nothing plays;
+                // a cyber theme has its own strips, so a Tron look left behind must not keep them lit
+                bool panel = !GlassSettings.Cyber && GlassSettings.VisualizerLook is (VisualizerStyle.Oled or VisualizerStyle.Led);
                 _visualizerRunning = GlassSettings.Visualizer && IsVisible && _shown && !_fullscreenHidden && (playing || panel);
                 ApplyVisualizerState();
                 // the catalog's looks read the cover and where the player sits in the dock
@@ -90,10 +91,18 @@ public partial class DockWindow
         // the strip covers the space the dock reserves at the bottom of the monitor
         var scale = DockScale;
         var area = _monitorInfo.Monitor;
+        var dockRect = new Rect(new Point(ToScreenX(_capsuleLeft), ToScreenY(RestTop)), new Point(ToScreenX(_capsuleLeft + _capsuleWidth), ToScreenY(RestTop + RestBarHeight)));
         var height = RestBarHeight + BottomMargin;
-        _visualizerWindow.Place(new Rect(area.Left / scale, (area.Bottom / scale) - height, (area.Right - area.Left) / scale, height), scale, _hwnd,
-            new Rect(new Point(ToScreenX(_capsuleLeft), ToScreenY(RestTop)), new Point(ToScreenX(_capsuleLeft + _capsuleWidth), ToScreenY(RestTop + RestBarHeight))));
+        _visualizerWindow.Place(new Rect(area.Left / scale, (area.Bottom / scale) - height, (area.Right - area.Left) / scale, height), scale, _hwnd, dockRect);
         _visualizerWindow.SetRunning(_visualizerRunning);
+        // the feedback looks fill their whole strip, so they stand above the dock instead of hiding behind it;
+        // the strip takes the extra height only when the GPU layer actually carries the look
+        if (_visualizerWindow.CyberGpuPlaying)
+        {
+            height += RestBarHeight * .12;
+            _visualizerWindow.Place(new Rect(area.Left / scale, (area.Bottom / scale) - height, (area.Right - area.Left) / scale, height), scale, _hwnd, dockRect);
+        }
+
         SinkBelowVisualizer();
     }
 

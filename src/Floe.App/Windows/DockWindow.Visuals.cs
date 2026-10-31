@@ -66,6 +66,22 @@ public partial class DockWindow
             return brush;
         }
 
+        if (GlassSettings.Cyber)
+        {
+            var body = new SolidColorBrush(CyberLook.Current.Body);
+            body.Freeze();
+            return body;
+        }
+
+        if (GlassSettings.DockColor is { } tint)
+        {
+            // the chosen colour over the surface: enough of it to read as the dock's colour, the desktop still behind
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xB4, tint.R, tint.G, tint.B), 0.0));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xC4, tint.R, tint.G, tint.B), 1.0));
+            brush.Freeze();
+            return brush;
+        }
+
         switch (GlassSettings.Surface)
         {
             case DockSurface.Mica:
@@ -125,6 +141,8 @@ public partial class DockWindow
             brush.Freeze();
             return brush;
         }
+
+        if (GlassSettings.Cyber) return Brushes.Transparent;
 
         // the calmer surfaces keep only a faint inner line; their edge is the metal outline
         var (top, middle, bottom) = GlassSettings.Surface switch
@@ -249,11 +267,19 @@ public partial class DockWindow
 
     private void ApplyGlassSettings()
     {
-        if (_appliedTheme != GlassSettings.Theme || _appliedSurface != GlassSettings.Surface)
+        if (_appliedTheme != GlassSettings.Theme || _appliedSurface != GlassSettings.Surface || _appliedDockColor != GlassSettings.DockColor)
         {
             _appliedTheme = GlassSettings.Theme;
             _appliedSurface = GlassSettings.Surface;
+            _appliedDockColor = GlassSettings.DockColor;
+            // the Cyber themes need room for the decals, and only a rebuild sizes the window
+            if (_roomForDecals != GlassSettings.Cyber)
+            {
+                _roomForDecals = GlassSettings.Cyber;
+                RebuildIcons();
+            }
             ApplySurface();
+            ApplyCyberInk();
             _glass.Fill = BuildGlassBrush();
             _rim.Stroke = BuildRimBrush();
             // in Tron the sheen catches the neon line instead of white
@@ -277,7 +303,7 @@ public partial class DockWindow
         _metalEffect = _appliedRim switch
         {
             // the metal shader cannot follow cube steps: Tron keeps the plain neon hairline
-            _ when GlassSettings.Tron => null,
+            _ when GlassSettings.Tron || GlassSettings.Cyber => null,
             RimStyle.MetalSilver => MetalRimEffect.ApplyPreset("silver", true),
             RimStyle.MetalGold => MetalRimEffect.ApplyPreset("gold", true),
             RimStyle.MetalChromatic => MetalRimEffect.ApplyPreset("chromatic", true),
@@ -519,7 +545,8 @@ public partial class DockWindow
     // sheen catches light, and how far the shadow reaches. The brushes themselves come from Build*Brush.
     private void ApplySurface()
     {
-        var surface = GlassSettings.Tron ? DockSurface.Classic : GlassSettings.Surface;
+        // a cyber plate is opaque: graphite's settings leave the desktop out from under it
+        var surface = GlassSettings.Cyber ? DockSurface.Graphite : GlassSettings.Tron ? DockSurface.Classic : GlassSettings.Surface;
         // the vibrancy pass saturates the desktop; the calm surfaces let less of it through
         _backdrop.Opacity = surface switch
         {
@@ -539,7 +566,7 @@ public partial class DockWindow
             DockSurface.Frost => .6,
             _ => 0,
         };
-        _outerRim.Opacity = surface is DockSurface.Floating ? 0 : 1;
+        _outerRim.Opacity = surface is DockSurface.Floating || GlassSettings.Cyber ? 0 : 1;
         if (_shadowEffect is not null)
         {
             (_shadowEffect.BlurRadius, _shadowEffect.ShadowDepth, _shadowEffect.Opacity) = surface switch

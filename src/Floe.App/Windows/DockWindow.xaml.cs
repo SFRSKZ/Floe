@@ -192,6 +192,7 @@ public partial class DockWindow : Window
     private readonly TextBlock _clockTime = new();
     private readonly TextBlock _clockDate = new();
     private readonly Rectangle _clockDivider = new();
+    private readonly SolidColorBrush _lineBrush = new(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF));
     private PreviewWindow? _preview;
     private HwndSource? _source;
     private IntPtr _trayIcon;
@@ -216,6 +217,7 @@ public partial class DockWindow : Window
         FontFamily = new FontFamily("Segoe UI"),
     };
 
+    private FontFamily _clockFont = new("Segoe UI");
     private double _windowWidth = 200;
     private double _capsuleWidth = 160;
     private double _capsuleLeft = 20;
@@ -273,7 +275,7 @@ public partial class DockWindow : Window
         Root.AllowDrop = true;
         IconLayer.AllowDrop = true;
 
-        var clockFont = FontService.LoadFromFile(
+        _clockFont = FontService.LoadFromFile(
             @"C:\Users\dev\Documents\Codex\2026-09-09\referenced-chatgpt-conversation-this-is-an\outputs\NothingRoundUI\fonts\Doto-Variable.ttf")
             ?? FontService.LoadFromFile(
             @"C:\Users\dev\Documents\Codex\2026-09-09\referenced-chatgpt-conversation-this-is-an\outputs\NothingRoundUI\fonts\Doto.ttf")
@@ -281,14 +283,14 @@ public partial class DockWindow : Window
 
         var clockGlow = new DropShadowEffect { Color = Colors.White, ShadowDepth = 0, BlurRadius = 10, Opacity = 0.6 };
 
-        _clockTime.FontFamily = clockFont;
+        _clockTime.FontFamily = _clockFont;
         _clockTime.FontSize = 26;
         _clockTime.FontWeight = FontWeights.Bold;
         _clockTime.Foreground = Brushes.White;
         _clockTime.TextAlignment = TextAlignment.Center;
         _clockTime.Effect = clockGlow;
 
-        _clockDate.FontFamily = clockFont;
+        _clockDate.FontFamily = _clockFont;
         _clockDate.FontSize = 14;
         _clockDate.FontWeight = FontWeights.SemiBold;
         _clockDate.Foreground = Brushes.White;
@@ -305,7 +307,7 @@ public partial class DockWindow : Window
 
         _clockDivider.Width = 1;
         _clockDivider.Height = 34;
-        _clockDivider.Fill = new SolidColorBrush(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF));
+        _clockDivider.Fill = _lineBrush;
         _clockDivider.RadiusX = 0.5;
         _clockDivider.RadiusY = 0.5;
 
@@ -400,6 +402,7 @@ public partial class DockWindow : Window
         _grain.Opacity = Floe.App.Services.BlurSettings.GrainOpacity;
         _grain.Clip = _shapeGeometry;
         ShapeLayer.Children.Add(_grain);
+        InitializeCyber();
         ShapeLayer.Children.Add(_metalHost);
         ShapeLayer.Children.Add(_tronCubes);
 
@@ -553,6 +556,7 @@ public partial class DockWindow : Window
             }
 
             InitializeSections();
+            ApplyCyberInk(); // the section glyphs exist only now
 
             _fullscreenTimer.Tick += (_, _) => UpdateFullscreenState();
             _fullscreenTimer.Start();
@@ -576,6 +580,8 @@ public partial class DockWindow : Window
         }
 
         public Button Button { get; }
+
+        public SolidColorBrush LineBrush { get; } = new(Colors.Black);
 
         public Ellipse Dot { get; }
 
