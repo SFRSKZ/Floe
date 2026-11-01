@@ -24,6 +24,7 @@ public static partial class Loc
         ["Kayıt {0}"] = "Saved {0}",
         ["Sağ tık: sil"] = "Right-click: delete",
         ["Gren miktarı"] = "Grain amount",
+        ["İkonlar"] = "Icons",
         ["Kontur"] = "Outline",
         ["Gerçek"] = "Real",
         ["Tek renk çizgi ikonlar, temanın rengini alır"] = "One colour line icons in the theme's colour",
