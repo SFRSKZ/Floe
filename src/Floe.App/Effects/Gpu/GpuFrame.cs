@@ -47,6 +47,10 @@ public sealed class GpuFrame
     /// <summary>Where the playing app's dock icon sits along the strip, 0 (left) .. 1 (right).</summary>
     public float SourceX { get; set; } = 0.5f;
 
+    /// <summary>The dock's capsule along the strip, 0 (left) .. 1 (right).</summary>
+    public float DockLeft { get; set; } = 0.37f;
+    public float DockRight { get; set; } = 0.63f;
+
     /// <summary>Stereo balance of the music, -1 (all left) .. 1 (all right).</summary>
     public float Balance { get; set; }
 }

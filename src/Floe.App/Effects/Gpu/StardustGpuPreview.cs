@@ -34,6 +34,7 @@ public static class StardustGpuPreview
     public static bool TryRender(string[] args)
     {
         const string option = "--render-gpu-stardust=";
+        if (Array.Exists(args, a => a.StartsWith(option, StringComparison.OrdinalIgnoreCase))) Services.GlassSettings.Load();
         var argument = args.FirstOrDefault(a => a.StartsWith(option, StringComparison.OrdinalIgnoreCase));
         if (argument is null) return false;
         try
@@ -65,6 +66,7 @@ public static class StardustGpuPreview
                 using IGpuScene scene = sceneArgument is not null && Enum.TryParse<VisualizerStyle>(sceneArgument, true, out var look) && GpuSceneCatalog.Has(look)
                     ? GpuSceneCatalog.Create(look)
                     : new StardustGpuScene { Milk = milk };
+                var calm = new AudioCalm();
                 scene.Initialize(device);
                 scene.Resize(Width, Height);
 
@@ -93,6 +95,7 @@ public static class StardustGpuPreview
                     else
                     {
                         Fake(frame.Audio, t);
+                        calm.Apply(frame.Audio, frame.Dt);
                     }
 
                     frame.Time = (f + 1) / 30f;

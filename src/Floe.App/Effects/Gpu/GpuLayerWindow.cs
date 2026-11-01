@@ -54,6 +54,7 @@ internal sealed class GpuLayerWindow : IDisposable
     private volatile int _coverSize;
     private int _coverVersion;
     private float _sourceX = 0.5f;
+    private float _dockLeft = 0.37f, _dockRight = 0.63f;
     private volatile bool _led;
     private volatile bool _disposed;
 
@@ -70,6 +71,7 @@ internal sealed class GpuLayerWindow : IDisposable
     private LedScreenPass? _ledPass;
     private bool _ledUnavailable;
     private AudioSpectrum? _audio;
+    private readonly AudioCalm _calm = new();
     private bool _active;
     private bool _shown;
     private double _fade;
@@ -146,6 +148,13 @@ internal sealed class GpuLayerWindow : IDisposable
         _coverSize = size;
         _cover = bgra;
         Interlocked.Increment(ref _coverVersion);
+    }
+
+    /// <summary>Where the dock's capsule stands along the strip, 0..1.</summary>
+    public void SetDock(float left, float right)
+    {
+        Volatile.Write(ref _dockLeft, left);
+        Volatile.Write(ref _dockRight, right);
     }
 
     /// <summary>Where the playing app's icon sits along the strip, 0..1.</summary>
@@ -483,6 +492,7 @@ internal sealed class GpuLayerWindow : IDisposable
     private void ResizeTarget()
     {
         if (_swapChain is null || _device is null) return;
+        try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "floe.log"), $"{DateTime.Now:HH:mm:ss} gpu resize {_width}x{_height}{Environment.NewLine}"); } catch (System.IO.IOException) { }
         _renderTarget?.Dispose();
         _renderTarget = null;
         _swapChain.Resize(_width, _height);
@@ -505,11 +515,14 @@ internal sealed class GpuLayerWindow : IDisposable
         _frame.Performance = Performance.Level;
         _frame.Wave = _waveRequested;
         _audio?.Read(_frame.Audio, dt);
+        _calm.Apply(_frame.Audio, (float)dt);
         _frame.Balance = _frame.Audio.Balance;
         _frame.Cover = _cover;
         _frame.CoverSize = _coverSize;
         _frame.CoverVersion = Volatile.Read(ref _coverVersion);
         _frame.SourceX = SourceX;
+        _frame.DockLeft = Volatile.Read(ref _dockLeft);
+        _frame.DockRight = Volatile.Read(ref _dockRight);
 
         VisualizerPalette.Fill(_paletteR, _paletteG, _paletteB, _time, BasePrimary);
         for (int i = 0; i < GpuFrame.PaletteSize; i++)

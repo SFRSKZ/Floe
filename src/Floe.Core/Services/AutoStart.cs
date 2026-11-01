@@ -5,7 +5,7 @@ namespace Floe.Core.Services;
 public static class AutoStart
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "Floe";
+    private static string ValueName => Product.Folder;
     private const string PrefsKey = @"Software\Floe";
     private const string OptOutValue = "AutoStartDisabled";
 
@@ -70,6 +70,8 @@ public static class AutoStart
         {
             using var key = Registry.CurrentUser.CreateSubKey(RunKey, true);
             key?.SetValue(ValueName, $"\"{exePath}\"");
+            // both docks want the same screen edge: only the last one run starts at login
+            key?.DeleteValue(Product.Sibling, false);
         }
         catch
         {

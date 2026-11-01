@@ -1,0 +1,8 @@
+<Project>
+
+  <PropertyGroup>
+    <!-- Two products from one codebase: -p:FloeProduct=CP77 builds the Cyberpunk dock. -->
+    <DefineConstants Condition="'$(FloeProduct)' == 'CP77'">$(DefineConstants);CP77</DefineConstants>
+  </PropertyGroup>
+
+</Project>

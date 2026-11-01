@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows.Media;
 using Floe.App.ViewModels;
+using Floe.Core.Services;
 
 namespace Floe.App.Services;
 
@@ -62,19 +63,19 @@ public static class AuraSettings
     public static IReadOnlyList<AuraPalette> Palettes { get; } = new[]
     {
         new AuraPalette("Aurora", Rgb(0x5B, 0xC8, 0xFF), Rgb(0xA8, 0x55, 0xF7), Rgb(0x34, 0xE0, 0x7A)),
-        new AuraPalette("Gün Batımı", Rgb(0xFF, 0x8A, 0x3D), Rgb(0xFF, 0x4D, 0x8D), Rgb(0xB1, 0x4D, 0xFF)),
-        new AuraPalette("Okyanus", Rgb(0x22, 0xD3, 0xEE), Rgb(0x3B, 0x82, 0xF6), Rgb(0x63, 0x66, 0xF1)),
-        new AuraPalette("Neon", Rgb(0xFF, 0x2D, 0x95), Rgb(0x00, 0xE5, 0xFF), Rgb(0xC6, 0xFF, 0x00)),
-        new AuraPalette("Ateş", Rgb(0xFF, 0xD1, 0x66), Rgb(0xFF, 0x6B, 0x35), Rgb(0xEF, 0x2D, 0x56)),
-        new AuraPalette("Buz", Rgb(0xE0, 0xF2, 0xFE), Rgb(0xA5, 0xB4, 0xFC), Rgb(0x7D, 0xD3, 0xFC)),
-        new AuraPalette("Orman", Rgb(0x9A, 0xE6, 0x6A), Rgb(0x2E, 0xC4, 0x8B), Rgb(0x0E, 0x9F, 0x8C)),
+        new AuraPalette(Loc.T("Gün Batımı"), Rgb(0xFF, 0x8A, 0x3D), Rgb(0xFF, 0x4D, 0x8D), Rgb(0xB1, 0x4D, 0xFF)),
+        new AuraPalette(Loc.T("Okyanus"), Rgb(0x22, 0xD3, 0xEE), Rgb(0x3B, 0x82, 0xF6), Rgb(0x63, 0x66, 0xF1)),
+        new AuraPalette(Loc.T("Neon"), Rgb(0xFF, 0x2D, 0x95), Rgb(0x00, 0xE5, 0xFF), Rgb(0xC6, 0xFF, 0x00)),
+        new AuraPalette(Loc.T("Ateş"), Rgb(0xFF, 0xD1, 0x66), Rgb(0xFF, 0x6B, 0x35), Rgb(0xEF, 0x2D, 0x56)),
+        new AuraPalette(Loc.T("Buz"), Rgb(0xE0, 0xF2, 0xFE), Rgb(0xA5, 0xB4, 0xFC), Rgb(0x7D, 0xD3, 0xFC)),
+        new AuraPalette(Loc.T("Orman"), Rgb(0x9A, 0xE6, 0x6A), Rgb(0x2E, 0xC4, 0x8B), Rgb(0x0E, 0x9F, 0x8C)),
         new AuraPalette("Mono", Rgb(0xFF, 0xFF, 0xFF), Rgb(0xC7, 0xC9, 0xD3), Rgb(0x8A, 0x8F, 0x9C)),
     };
 
     private static readonly Dictionary<string, Color[]> IconCache = new();
     private static readonly string ConfigPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Floe",
+        Product.Folder,
         "aura.json");
 
     public static AuraColorMode Mode { get; private set; } = AuraColorMode.Palette;
@@ -139,6 +140,10 @@ public static class AuraSettings
             DerezzCell = model.DerezzCell <= 0 ? 6 : Math.Clamp(Math.Round(model.DerezzCell), 4, 24);
             Mode = Enum.TryParse<AuraColorMode>(model.Mode, true, out var mode) ? mode : AuraColorMode.Palette;
             Effect = Enum.TryParse<AuraEffect>(model.Effect, true, out var effect) ? effect : AuraEffect.Glow;
+#if CP77
+            Effect = AuraEffect.Neon; // the only one with the theme's hard edges
+            Derezz = true; // the cubes are gone here, this only keeps the sleep itself on
+#endif
             SpectralIntensity = model.SpectralIntensity <= 0 ? 1.5 : Math.Clamp(model.SpectralIntensity, 0.5, 2.5);
             PaletteIndex = Math.Clamp(model.PaletteIndex, 0, Palettes.Count - 1);
         }

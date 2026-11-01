@@ -306,8 +306,8 @@
             <ScrollViewer x:Name="PageScroller" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" Focusable="False">
             <StackPanel>
             <StackPanel x:Name="EffectPage">
-                <TextBlock Text="Aktif ikonun efekti" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
-                <WrapPanel>
+                <TextBlock x:Name="EffectTitle" Text="Aktif ikonun efekti" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
+                <WrapPanel x:Name="EffectRow">
                     <RadioButton x:Name="EffectGlow" GroupName="Effect" Style="{StaticResource ModeToggle}" Content="Işıltı" />
                     <RadioButton x:Name="EffectBurst" GroupName="Effect" Style="{StaticResource ModeToggle}" Content="Hayalet" />
                     <RadioButton x:Name="EffectNeon" GroupName="Effect" Style="{StaticResource ModeToggle}" Content="Neon" />
@@ -339,8 +339,8 @@
                     </Grid>
                 </StackPanel>
 
-                <TextBlock Text="Renkler" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,10,0,6" />
-                <WrapPanel>
+                <TextBlock x:Name="ColorModeTitle" Text="Renkler" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,10,0,6" />
+                <WrapPanel x:Name="ColorModeRow">
                     <RadioButton x:Name="ModePalette" GroupName="ColorMode" Style="{StaticResource ModeToggle}" Content="Palet" />
                     <RadioButton x:Name="ModeIcon" GroupName="ColorMode" Style="{StaticResource ModeToggle}" Content="İkon renkleri" />
                 </WrapPanel>
@@ -353,11 +353,11 @@
                 <CheckBox x:Name="ClickPaintToggle" Style="{StaticResource GlassToggle}" Content="Yağlı boya (Van Gogh)" Margin="0,6,0,0"
                           ToolTip="Cam yerine ikon, kendi renkleriyle kalın, dönen fırça darbelerine dönüşür" />
                 <CheckBox x:Name="ClickSoundToggle" Style="{StaticResource GlassToggle}" Content="Cam sesi" Margin="0,6,0,0" />
-                <WrapPanel Margin="0,6,0,0">
+                <WrapPanel x:Name="ClickToneRow" Margin="0,6,0,0">
                     <RadioButton x:Name="ClickDark" GroupName="ClickTone" Style="{StaticResource ModeToggle}" Content="Koyu" />
                     <RadioButton x:Name="ClickLight" GroupName="ClickTone" Style="{StaticResource ModeToggle}" Content="Açık" />
                 </WrapPanel>
-                <WrapPanel>
+                <WrapPanel x:Name="ClickPaletteRow">
                     <RadioButton x:Name="ClickRainbow" GroupName="ClickPalette" Style="{StaticResource ModeToggle}" Content="Gökkuşağı" />
                     <RadioButton x:Name="ClickClear" GroupName="ClickPalette" Style="{StaticResource ModeToggle}" Content="Renksiz" />
                     <RadioButton x:Name="ClickIcon" GroupName="ClickPalette" Style="{StaticResource ModeToggle}" Content="İkon renkleri" />
@@ -384,26 +384,40 @@
                            Margin="2,0,0,0"
                            Text="Şu an: Tam" />
                 <TextBlock Text="Otomatik: dock takılırsa süs efektlerini kendisi azaltır."
-                           Foreground="#66FFFFFF"
+                           Foreground="#8AFFFFFF"
                            FontSize="11"
                            Margin="2,2,0,0"
                            TextWrapping="Wrap" />
+
+                <TextBlock Text="Dil" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
+                <WrapPanel>
+                    <RadioButton x:Name="LanguageAuto" GroupName="Language" Style="{StaticResource ModeToggle}" Content="Otomatik" />
+                    <RadioButton x:Name="LanguageTurkish" GroupName="Language" Style="{StaticResource ModeToggle}" Content="Türkçe" />
+                    <RadioButton x:Name="LanguageEnglish" GroupName="Language" Style="{StaticResource ModeToggle}" Content="English" />
+                </WrapPanel>
+                <TextBlock Text="Bazı metinler Floe yeniden açılınca değişir." Foreground="#8AFFFFFF" FontSize="11" Margin="2,4,0,0" />
+
+                <TextBlock Text="Hava durumu" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="WeatherCityBox" Background="#22FFFFFF" Foreground="#F2FFFFFF" CaretBrush="#F2FFFFFF" BorderBrush="#33FFFFFF" Padding="6,4" FontSize="12" />
+                    <Button x:Name="WeatherCityFind" Grid.Column="1" Style="{StaticResource GlassButton}" Content="Bul" Margin="6,0,0,0" Padding="12,0" />
+                </Grid>
+                <TextBlock x:Name="WeatherCityStatus" Foreground="#8AFFFFFF" FontSize="11" Margin="2,4,0,0" TextWrapping="Wrap" />
             </StackPanel>
 
             <StackPanel x:Name="GlassPage">
-                <TextBlock Text="Tema" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
-                <WrapPanel>
+                <StackPanel x:Name="StudioHost" />
+                <TextBlock x:Name="ThemeTitle" Text="Tema" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
+                <WrapPanel x:Name="ThemeRow">
                     <RadioButton x:Name="ThemeNone" GroupName="Theme" Style="{StaticResource ModeToggle}" Content="Yok" />
                     <RadioButton x:Name="ThemeTronLegacy" GroupName="Theme" Style="{StaticResource ModeToggle}" Content="Tron: Legacy"
                                  ToolTip="Siyah cam, buz mavisi ışık çizgileri, mavi OLED" />
                     <RadioButton x:Name="ThemeTronAres" GroupName="Theme" Style="{StaticResource ModeToggle}" Content="Tron: Ares"
                                  ToolTip="Siyah cam, kırmızı ışık çizgileri, kırmızı OLED" />
-                    <RadioButton x:Name="ThemeCyberHud" GroupName="Theme" Style="{StaticResource ModeToggle}" Content="Sarı HUD"
-                                 ToolTip="Köşeleri kesik düz sarı bar, siyah yazı" />
-                    <RadioButton x:Name="ThemeCyberModules" GroupName="Theme" Style="{StaticResource ModeToggle}" Content="Ayrık modüller"
-                                 ToolTip="Başlat, ikonlar, bölümler ve saat ayrı sarı bloklar" />
-                    <RadioButton x:Name="ThemeCyberCorporate" GroupName="Theme" Style="{StaticResource ModeToggle}" Content="Beyaz kurumsal"
-                                 ToolTip="Köşeli beyaz modüller, kırmızı vurgu, sarı şerit" />
                 </WrapPanel>
                 <Border Height="6" />
                 <CheckBox x:Name="DockColorToggle"
@@ -436,9 +450,14 @@
                 <CheckBox x:Name="ShrinkToggle"
                           Style="{StaticResource GlassToggle}"
                           Content="İmleç uzaktayken küçül" />
+                <Border x:Name="FilmGrainGap" Height="6" />
+                <CheckBox x:Name="FilmGrainToggle"
+                          Style="{StaticResource GlassToggle}"
+                          Content="Film greni"
+                          ToolTip="Dock yüzeyinde hafif, kıpırdayan film tanesi" />
                 <Border Height="6" />
-                <TextBlock Text="Yüzey" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
-                <WrapPanel>
+                <TextBlock x:Name="SurfaceTitle" Text="Yüzey" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
+                <WrapPanel x:Name="SurfaceRow">
                     <RadioButton x:Name="SurfaceClassic" GroupName="Surface" Style="{StaticResource ModeToggle}" Content="Klasik cam"
                                  ToolTip="İlk hali: parlak cam" />
                     <RadioButton x:Name="SurfaceMica" GroupName="Surface" Style="{StaticResource ModeToggle}" Content="Mat cam"
@@ -451,16 +470,16 @@
                                  ToolTip="Plaka yok, ikonlar havada; sadece ince metal çizgi" />
                 </WrapPanel>
                 <Border Height="6" />
-                <TextBlock Text="Kenar stili" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
-                <WrapPanel>
+                <TextBlock x:Name="RimTitle" Text="Kenar stili" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
+                <WrapPanel x:Name="RimRow">
                     <RadioButton x:Name="RimPlain" GroupName="Rim" Style="{StaticResource ModeToggle}" Content="Sade" />
                     <RadioButton x:Name="RimSilver" GroupName="Rim" Style="{StaticResource ModeToggle}" Content="Gümüş" />
                     <RadioButton x:Name="RimGold" GroupName="Rim" Style="{StaticResource ModeToggle}" Content="Altın" />
                     <RadioButton x:Name="RimChromatic" GroupName="Rim" Style="{StaticResource ModeToggle}" Content="Renkli" />
                 </WrapPanel>
 
-                <TextBlock Text="İkon çıkıntısı" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,6,0,6" />
-                <WrapPanel>
+                <TextBlock x:Name="BulgeTitle" Text="İkon çıkıntısı" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,6,0,6" />
+                <WrapPanel x:Name="BulgeRow">
                     <RadioButton x:Name="BulgeSoft" GroupName="Bulge" Style="{StaticResource ModeToggle}" Content="Yumuşak" />
                     <RadioButton x:Name="BulgePedestal" GroupName="Bulge" Style="{StaticResource ModeToggle}" Content="Kaide" />
                     <RadioButton x:Name="BulgeFlat" GroupName="Bulge" Style="{StaticResource ModeToggle}" Content="Düz" />
@@ -479,8 +498,8 @@
                     <Slider x:Name="DerezzSpeedSlider" Style="{StaticResource GlassSlider}" Minimum="0.5" Maximum="2" SmallChange="0.1" LargeChange="0.25" Value="1" />
                     <TextBlock x:Name="DerezzSpeedValue" Grid.Column="1" Width="36" TextAlignment="Right" VerticalAlignment="Center" Foreground="#F2FFFFFF" FontSize="12" />
                 </Grid>
-                <TextBlock Text="Küp boyutu" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,8,0,6" />
-                <Grid>
+                <TextBlock x:Name="DerezzCellTitle" Text="Küp boyutu" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,8,0,6" />
+                <Grid x:Name="DerezzCellRow">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -515,18 +534,36 @@
                     <RadioButton x:Name="VisualizerLookOled" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="OLED ekran" />
                     <RadioButton x:Name="VisualizerLookLed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="LED ekran"
                                  ToolTip="OLED şovu renkli RGB LED noktalarda, vuruşlarda cam damlalarla" />
-                    <RadioButton x:Name="VisualizerLookCyberBars" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Pahlı çubuklar" />
-                    <RadioButton x:Name="VisualizerLookCyberPulse" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Nabız dalgası" />
-                    <RadioButton x:Name="VisualizerLookCyberGrid" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Net arazisi" />
-                    <RadioButton x:Name="VisualizerLookCyberCode" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Kod tozu" />
                     <RadioButton x:Name="VisualizerLookCyberSignal" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Sinyal kaybı"
                                  ToolTip="Kopan bir görüntü sinyali: vuruşta sıçrayan testere şeritler, kırmızı-mavi kıvılcımlar" />
+                    <RadioButton x:Name="VisualizerLookCyberGlyph" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Harf taraması"
+                                 ToolTip="Müzikle gelen nokta dalgaları ekranın altına inince harflere dönüşür" />
+                    <RadioButton x:Name="VisualizerLookCyberRain" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Veri yağmuru"
+                                 ToolTip="Düşen ince noktalar spektrumun sırtında toplanır, aşağı doğru seyrelir" />
+                    <RadioButton x:Name="VisualizerLookCyberSamurai" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Samurai"
+                                 ToolTip="Nokta dumanının solunda, basla toplanan, alevleri müzikle oynayan Samurai maskesi" />
                     <RadioButton x:Name="VisualizerLookCyberBlackwall" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Blackwall"
                                  ToolTip="Parmaklığın ardında yaşayan kırmızı-mavi sıvı, vuruşta dalgalanır" />
+                    <RadioButton x:Name="VisualizerLookCyberCircuit" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Devre" ToolTip="Müzik devreden akım olarak geçer: ısınır, yanar, yeniden bağlanır" />
+                    <RadioButton x:Name="VisualizerLookCyberBraindance" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Braindance"
+                                 ToolTip="BD editörü: büyük kırık kayıt dalgası, termal katmanlar ve kare kare atan zaman kodu" />
+                    <RadioButton x:Name="VisualizerLookCyberSandevistan" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Sandevistan"
+                                 ToolTip="Zaman bükülmesi: dışa akan ışık izleri, vuruşta donan hayalet kareler ve asılı kıvılcımlar" />
+                    <RadioButton x:Name="VisualizerLookCyberBreach" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Breach"
+                                 ToolTip="ICE kırma: hex kod matrisi, satır-sütun seçim yolu, kilitlenen hücreler ve buffer" />
+                    <RadioButton x:Name="VisualizerLookCyberCollar" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Samurai yaka"
+                                 ToolTip="Ceketin neon yakası: yumuşak COB tüplerde ışık iki uçtan yukarı, dock'un arkasına tırmanır" />
                     <RadioButton x:Name="VisualizerLookPrism" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Cam prizma" />
                     <RadioButton x:Name="VisualizerLookWheat" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Başak tarlası" />
                     <RadioButton x:Name="VisualizerLookRibbon" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Işık şeridi" />
                 </WrapPanel>
+
+                <CheckBox x:Name="VisualizerThemeToggle" Style="{StaticResource GlassToggle}" Content="Tema rengini kullan" Margin="0,8,0,0"
+                          ToolTip="Görünüm kendi renkleri yerine Stüdyo'daki renklerle oynar" />
+                <CheckBox x:Name="SignalEqualizerToggle" Style="{StaticResource GlassToggle}" Content="Yatay ekolayzer" Margin="0,8,0,0"
+                          ToolTip="Şeritler yerine ortadan yanlara uzanan ince çizgiler" />
+                <CheckBox x:Name="GlyphNegativeToggle" Style="{StaticResource GlassToggle}" Content="Negatif renk" Margin="0,8,0,0"
+                          ToolTip="Harfler dolu hücrelerin içinden oyulur, dalgalar sarıya döner" />
 
                 <StackPanel x:Name="OledOptions">
                     <CheckBox x:Name="OledColourToggle" Style="{StaticResource GlassToggle}" Content="Renkli noktalar ve cam damla" Margin="0,8,0,0"
@@ -613,8 +650,8 @@
                     </Grid>
                 </StackPanel>
 
-                <TextBlock Text="Şarkı girişi" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
-                <WrapPanel>
+                <TextBlock x:Name="IntroTitle" Text="Şarkı girişi" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
+                <WrapPanel x:Name="IntroRow">
                     <RadioButton x:Name="IntroDrop" GroupName="NowPlayingIntro" Style="{StaticResource ModeToggle}" Content="Damla" />
                     <RadioButton x:Name="IntroCubes" GroupName="NowPlayingIntro" Style="{StaticResource ModeToggle}" Content="Küpler" />
                     <RadioButton x:Name="IntroDust" GroupName="NowPlayingIntro" Style="{StaticResource ModeToggle}" Content="Toz" />

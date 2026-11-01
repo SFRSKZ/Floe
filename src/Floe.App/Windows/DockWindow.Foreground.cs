@@ -116,7 +116,7 @@ public partial class DockWindow
             return true;
         }
 
-        return name.Equals("Floe", StringComparison.OrdinalIgnoreCase)
+        return name.Equals(Product.Exe, StringComparison.OrdinalIgnoreCase)
             || name.Equals("explorer", StringComparison.OrdinalIgnoreCase)
             || name.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase)
             || name.Equals("SearchHost", StringComparison.OrdinalIgnoreCase)

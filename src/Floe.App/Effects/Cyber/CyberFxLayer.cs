@@ -163,7 +163,7 @@ public sealed class CyberFxLayer : FrameworkElement
 
     public void Text(DrawingContext dc, string text, double x, double y, double size, Brush brush, TextAlignment align = TextAlignment.Left)
     {
-        var format = new FormattedText(text, CultureInfo.GetCultureInfo("tr-TR"), FlowDirection.LeftToRight,
+        var format = new FormattedText(text, Loc.Culture, FlowDirection.LeftToRight,
             new Typeface(CyberLook.Font, FontStyles.Normal, FontWeights.Bold, FontStretches.Normal), size, brush,
             VisualTreeHelper.GetDpi(this).PixelsPerDip) { TextAlignment = align };
         dc.DrawText(format, new Point(x, y));

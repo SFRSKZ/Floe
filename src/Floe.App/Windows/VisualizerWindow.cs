@@ -28,7 +28,6 @@ internal sealed class VisualizerWindow : Window
     private readonly StardustVisualizer _dustWave = new() { Wave = true };
     private readonly SilkContourVisualizer _silkContour = new();
     private readonly SculptedVisualizer _sculpted = new();
-    private readonly CyberVisualizer _cyber = new();
     private readonly Grid _root;
     private GpuLayerWindow? _gpu;
     private StardustGpuScene? _dust;
@@ -37,7 +36,7 @@ internal sealed class VisualizerWindow : Window
     // the catalog's looks share one layer, rebuilt when the look changes
     private GpuLayerWindow? _novelLayer;
     private VisualizerStyle _novelLook;
-    private SignalGpuScene? _signal;
+    private FeedbackGpuScene? _themed;
     private GpuLayerWindow? _oled;
     private OledGpuScene? _panel;
     private CubeGpuScene? _cubeScene;
@@ -74,7 +73,6 @@ internal sealed class VisualizerWindow : Window
         root.Children.Add(_dustWave);
         root.Children.Add(_silkContour);
         root.Children.Add(_sculpted);
-        root.Children.Add(_cyber);
         // the LED screen over the WPF looks needs the strip's size in pixels
         root.SizeChanged += (_, _) => ApplyLedScreen();
         _root = root;
@@ -83,7 +81,7 @@ internal sealed class VisualizerWindow : Window
         GlassSettings.Changed += OnGlassSettingsChanged;
     }
 
-    public bool IsRunning => _cyber.IsActive || _glow.IsActive || _hologram.IsActive || _cubes.IsActive || _stardust.IsActive || _dustWave.IsActive || _silkContour.IsActive || _sculpted.IsActive;
+    public bool IsRunning => _glow.IsActive || _hologram.IsActive || _cubes.IsActive || _stardust.IsActive || _dustWave.IsActive || _silkContour.IsActive || _sculpted.IsActive;
 
     public IntPtr Handle => _hwnd;
 
@@ -97,7 +95,7 @@ internal sealed class VisualizerWindow : Window
     public bool Showing => IsVisible || _gpu is { IsRunning: true } || _holo is { IsRunning: true } || _oled is { IsRunning: true } || _cubeLayer is { IsRunning: true } || _novelLayer is { IsRunning: true };
 
     /// <summary>Whether the cyber feedback look is on the GPU layer now; the dock reserves the extra strip height only then.</summary>
-    public bool CyberGpuPlaying => _novelLayer is { IsRunning: true } && _novelLook is VisualizerStyle.CyberSignal or VisualizerStyle.CyberBlackwall;
+    public bool CyberGpuPlaying => _novelLayer is { IsRunning: true } && GlassSettings.IsCyberLook(_novelLook);
 
     /// <summary>The GPU cube scene while it exists; the benchmark holds its level.</summary>
     internal CubeGpuScene? CubeScene => _cubeScene;
@@ -118,7 +116,7 @@ internal sealed class VisualizerWindow : Window
         _cubeLayer = null;
         _novelLayer?.Dispose();
         _novelLayer = null;
-        _signal = null;
+        _themed = null;
         _oled?.Dispose();
         _oled = null;
         base.OnClosed(e);
@@ -176,9 +174,7 @@ internal sealed class VisualizerWindow : Window
     {
         var look = GlassSettings.VisualizerLook;
         // a cyber theme plays its own strips, whatever the glass themes were left on
-        if (GlassSettings.Cyber && look is not (VisualizerStyle.CyberBars or VisualizerStyle.CyberPulse or VisualizerStyle.CyberGrid or VisualizerStyle.CyberCode or VisualizerStyle.CyberSignal or VisualizerStyle.CyberBlackwall)) look = VisualizerStyle.CyberBars;
-        // these two are GPU feedback; without the GPU the theme falls back on its plain strip
-        if (look is VisualizerStyle.CyberSignal or VisualizerStyle.CyberBlackwall && !GlassSettings.GpuVisualizer) look = VisualizerStyle.CyberBars;
+        if (GlassSettings.Cyber && !GlassSettings.IsCyberLook(look)) look = VisualizerStyle.CyberBlackwall;
         // the OLED panel only exists on the GPU; the dust looks move there when the setting asks for it
         // the LED look is the OLED panel's show on a colour LED wall: the same layer, other flags
         if (look == VisualizerStyle.Led) look = VisualizerStyle.Oled;
@@ -212,7 +208,7 @@ internal sealed class VisualizerWindow : Window
         {
             _novelLayer.Dispose();
             _novelLayer = null;
-            _signal = null;
+            _themed = null;
         }
         if (novel)
         {
@@ -220,29 +216,20 @@ internal sealed class VisualizerWindow : Window
             novel = Layer(ref _novelLayer, () =>
             {
                 var scene = GpuSceneCatalog.Create(look);
-                _signal = scene as SignalGpuScene;
+                _themed = scene as FeedbackGpuScene;
                 return scene;
             });
-            if (!novel) _signal = null;
+            if (!novel) _themed = null;
         }
         _novelLayer?.SetRunning(novel);
-        ApplySignalColours();
-        // without the GPU these looks play as stardust; a cyber look keeps its theme's strip
-        if (GpuSceneCatalog.Has(look) && !novel) look = GlassSettings.Cyber ? VisualizerStyle.CyberBars : VisualizerStyle.Stardust;
+        ApplySceneColours();
+        // without the GPU these looks play as stardust; the cyber looks have nothing to fall back on
+        if (GpuSceneCatalog.Has(look) && !novel && !GlassSettings.Cyber) look = VisualizerStyle.Stardust;
 
         _oled?.SetRunning(oled);
 
         // without a GPU the OLED panel falls back to stardust
         if (look == VisualizerStyle.Oled && !oled) look = VisualizerStyle.Stardust;
-
-        _cyber.Look = look switch
-        {
-            VisualizerStyle.CyberPulse => CyberVisualLook.Pulse,
-            VisualizerStyle.CyberGrid => CyberVisualLook.Grid,
-            VisualizerStyle.CyberCode => CyberVisualLook.Code,
-            _ => CyberVisualLook.Bars,
-        };
-        _cyber.IsActive = running && look is VisualizerStyle.CyberBars or VisualizerStyle.CyberPulse or VisualizerStyle.CyberGrid or VisualizerStyle.CyberCode;
 
         // a GPU layer carries its look by itself; this window only fades out what it drew before
         running &= !(dust || oled || holo || cubes || novel);
@@ -338,6 +325,11 @@ internal sealed class VisualizerWindow : Window
 
     private void PlacePanel(Rect bounds)
     {
+        if (bounds.Width > 0 && !_dockRect.IsEmpty)
+        {
+            _novelLayer?.SetDock((float)((_dockRect.Left - bounds.Left) / bounds.Width), (float)((_dockRect.Right - bounds.Left) / bounds.Width));
+        }
+
         if (_panel is not null && bounds.Width > 0 && !_dockRect.IsEmpty)
         {
             _panel.SetDock((float)((_dockRect.Left - bounds.Left) / bounds.Width), (float)((_dockRect.Right - bounds.Left) / bounds.Width));
@@ -354,17 +346,14 @@ internal sealed class VisualizerWindow : Window
         }
 
         ApplyPanelSettings();
-        ApplySignalColours();
+        ApplySceneColours();
         ApplyLedScreen();
     }
 
-    // The Signal scene reads the dock's colours on the render thread; this hands it the current ones from the UI thread.
-    private void ApplySignalColours()
+    // A feedback scene reads its colours on the render thread; this hands it the current ones from the UI thread.
+    private void ApplySceneColours()
     {
-        if (_signal is null) return;
-        var look = CyberLook.Current;
-        _signal.Body = look.Body;
-        _signal.Accent = look.Accent;
+        if (_themed is not null) _themed.Theme = GlassSettings.VisualizerThemeColours ? CyberLook.Current : null;
     }
 
     private void ApplyPanelSettings()

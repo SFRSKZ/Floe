@@ -35,12 +35,13 @@ public partial class DockWindow
     {
         var menu = new ContextMenu();
         ApplyMenuStyle(menu);
-        menu.Items.Add(MenuAction("Masaüstünü göster", DesktopController.ShowDesktop));
-        menu.Items.Add(MenuAction("Perde modu (Ctrl+Alt+V)", ToggleVeil));
-        menu.Items.Add(MenuAction("Görev Yöneticisi", () => StartSafe("taskmgr.exe")));
-        menu.Items.Add(MenuAction(AutoStart.IsEnabled() ? "Açılışta başlatmayı kapat" : "Açılışta başlat", AutoStart.Toggle));
+        menu.Items.Add(MenuAction(Loc.T("Masaüstünü göster"), DesktopController.ShowDesktop));
+        menu.Items.Add(MenuAction(Loc.T("Perde modu (Ctrl+Alt+V)"), ToggleVeil));
+        menu.Items.Add(MenuAction(Loc.T("Görev Yöneticisi"), () => StartSafe("taskmgr.exe")));
+        menu.Items.Add(MenuAction(Loc.T(AutoStart.IsEnabled() ? "Açılışta başlatmayı kapat" : "Açılışta başlat"), AutoStart.Toggle));
         menu.Items.Add(new Separator());
-        menu.Items.Add(MenuAction("Floe'yu kapat", () => Application.Current.Shutdown()));
+        if (Product.Cp77) menu.Items.Add(MenuAction(Loc.T("Stüdyo"), () => OpenSettings(studio: true)));
+        menu.Items.Add(MenuAction(Loc.T(Product.QuitLabel), () => Application.Current.Shutdown()));
         return menu;
     }
 
@@ -49,8 +50,8 @@ public partial class DockWindow
         var item = slot.Item;
         var actions = new List<(string Label, Action Run)>
         {
-            ("Aç", () => AppLauncher.LaunchOrActivate(item.App)),
-            (item.IsPinned ? "Kaldır" : "Sabitle", () =>
+            (Loc.T("Aç"), () => AppLauncher.LaunchOrActivate(item.App)),
+            (Loc.T(item.IsPinned ? "Kaldır" : "Sabitle"), () =>
             {
                 if (item.IsPinned)
                 {
@@ -61,8 +62,8 @@ public partial class DockWindow
                     Pin(item);
                 }
             }),
-            ("Konum", () => OpenLocation(item.App)),
-            ("Kapat", () => CloseApp(item)),
+            (Loc.T("Konum"), () => OpenLocation(item.App)),
+            (Loc.T("Kapat"), () => CloseApp(item)),
         };
 
         HidePreview();
@@ -217,7 +218,7 @@ public partial class DockWindow
     // the right click on the clock that closed the settings must not open them again on release
     private bool _settingsClosedByClick;
 
-    private void OpenSettings()
+    private void OpenSettings(bool studio = false)
     {
         if (_settings is { IsLoaded: true })
         {
@@ -226,6 +227,7 @@ public partial class DockWindow
         }
 
         var window = new SettingsWindow();
+        if (studio) window.ShowStudio();
         _settings = window;
         _settingsOpen = true;
 

@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows.Interop;
 using System.Windows.Media;
+using Floe.Core.Services;
 
 namespace Floe.App.Services;
 
@@ -32,7 +33,7 @@ public static class Performance
 {
     private static readonly string ConfigPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Floe",
+        Product.Folder,
         "perf.json");
 
     // A frame counts as late past 1.7 frames; gaps over a quarter second are pauses, not load.

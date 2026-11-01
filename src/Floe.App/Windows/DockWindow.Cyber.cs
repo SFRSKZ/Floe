@@ -17,9 +17,8 @@ public partial class DockWindow
     // start button, the icons, the sections and the clock. The plates share the glass's geometry, so the shadow and
     // the click-through follow them. Nothing bulges; the hovered icon stands on a plate of its own instead.
 
-    private const double CyberChamfer = 14;
-    private const double PlateChamfer = 9;
-    private const double CorporateStrip = 10;
+    private static double CyberChamfer => 14 * GlassSettings.CyberCut;
+    private static double PlateChamfer => 9 * GlassSettings.CyberCut;
     private const double DecalRoom = 160;
     private const int SecondBars = 6;
     private const double ClockLight = 11;
@@ -31,9 +30,13 @@ public partial class DockWindow
     private double _sectionsX;
     private double _clockX;
     private Color? _appliedDockColor;
+    private CyberLook? _appliedCyberLook;
+    private double _appliedCut = 1;
 
     // the markings beside the bar; the six slanted bars count the minute, one more every ten seconds
     private readonly Canvas _cyberDecal = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+    private static readonly Color DecalBacking = Color.FromRgb(0x0A, 0x0A, 0x10);
+    private readonly Path _decalPlate = new() { IsHitTestVisible = false };
     private readonly Path[] _secondBars = new Path[SecondBars];
     private readonly Path _decalBox = new() { StrokeThickness = 1.5 };
     private readonly Path _decalCross = new() { StrokeThickness = 1.5, Data = Geometry.Parse("M0,0 L16,16 M16,0 L0,16") };
@@ -48,8 +51,13 @@ public partial class DockWindow
     {
         ShapeLayer.Children.Add(_cyberAccent);
         ShapeLayer.Children.Add(_cyberPlate);
+        InitializeCyberGrain();
         ShapeLayer.Children.Add(_cyberDecal);
 
+        // the markings hang on the wallpaper, so they stand on a small dark plate of their own and read on any desktop
+        _decalPlate.Data = CyberFxLayer.Plate(new Rect(-6, -6, 152, 70), 6);
+        _decalPlate.Fill = CyberFxLayer.Solid(DecalBacking);
+        _cyberDecal.Children.Add(_decalPlate);
         _cyberDecal.Children.Add(_decalText);
         for (var i = 0; i < SecondBars; i++)
         {
@@ -76,10 +84,13 @@ public partial class DockWindow
     {
         if (!GlassSettings.Cyber) return;
         var second = DateTime.Now.Second;
-        if (GlassSettings.Theme == DockTheme.CyberHud) _clockDivider.Opacity = second % 2;
+        _clockDivider.Opacity = second % 2;
         var lit = (second + 1) / 10;
-        var off = CyberFxLayer.Solid(CyberLook.Current.Body);
-        var on = CyberFxLayer.Solid(FxCyan);
+        var look = CyberLook.Current;
+        var unlit = CyberLook.Readable(look.Body, DecalBacking);
+        var off = CyberFxLayer.Solid(unlit);
+        // lit bars take the strip's colour when it tells them from the unlit ones
+        var on = CyberFxLayer.Solid(CyberLook.Contrast(look.Strip, unlit) >= 2 ? look.Strip : FxCyan);
         for (var i = 0; i < SecondBars; i++) _secondBars[i].Fill = i < lit ? on : off;
 
         // the cross ticks like a watch, and every ten seconds it spins round in the glitch's blue; a repaint within
@@ -132,38 +143,10 @@ public partial class DockWindow
     private void BuildCyberShape()
     {
         double left = _capsuleLeft, right = _capsuleLeft + _capsuleWidth, top = RestTop, bottom = Bottom;
-        var theme = GlassSettings.Theme;
         var accent = new PathGeometry();
         _shapeGeometry.Figures.Clear();
-
-        if (theme == DockTheme.CyberHud)
-        {
-            AddPlate(_shapeGeometry, left, top, right, bottom, CyberChamfer);
-            AddPlate(accent, left + 20, bottom + 4, left + 110, bottom + 8, 0);
-        }
-        else
-        {
-            double gap = theme == DockTheme.CyberCorporate ? 3 : 10;
-            double chamfer = theme == DockTheme.CyberCorporate ? 0 : 11;
-            double end = theme == DockTheme.CyberCorporate ? right - CorporateStrip - gap : right;
-            double startEnd = left + LeadX - (StartGap / 2);
-            double[] edges = { left, startEnd, _sectionsX, _clockX, end };
-            for (int i = 0; i + 1 < edges.Length; i++)
-            {
-                double from = edges[i] + (i > 0 ? gap / 2 : 0);
-                double to = edges[i + 1] - (i + 2 < edges.Length ? gap / 2 : 0);
-                if (to > from) AddPlate(_shapeGeometry, from, top, to, bottom, chamfer);
-                if (i > 0 && theme == DockTheme.CyberModules)
-                    AddPlate(accent, edges[i] - (gap / 2), ((top + bottom) / 2) - 1, edges[i] + (gap / 2), ((top + bottom) / 2) + 1, 0);
-            }
-
-            if (theme == DockTheme.CyberCorporate)
-            {
-                AddPlate(accent, left, top, startEnd - (gap / 2), bottom, 0);
-                AddPlate(accent, right - CorporateStrip, top, right, bottom, 0);
-            }
-        }
-
+        AddPlate(_shapeGeometry, left, top, right, bottom, CyberChamfer);
+        AddPlate(accent, left + 20, bottom + 4, left + 110, bottom + 8, 0);
         _cyberAccent.Data = accent;
         Canvas.SetLeft(_cyberDecal, right + 12);
         Canvas.SetTop(_cyberDecal, top + 6);
@@ -179,6 +162,15 @@ public partial class DockWindow
             return;
         }
 
+        // a held icon leaves its plate behind, and in the plate's colour it would vanish into the bar
+        if (_isDragging)
+        {
+            SetFxHover(null);
+            _cyberPlate.Visibility = Visibility.Collapsed;
+            foreach (var held in _slots) held.LineBrush.Color = CyberLook.Current.Ink;
+            return;
+        }
+
         var index = 0;
         for (var i = 1; i < scales.Count; i++)
         {
@@ -189,10 +181,9 @@ public partial class DockWindow
         lift = Math.Round(lift * 6) / 6; // it climbs in steps, it does not swell
         SetFxHover(lift > .3 ? _slots[index] : null);
         var look = CyberLook.Current;
-        var onPlate = GlassSettings.Theme == DockTheme.CyberCorporate ? Colors.White : look.Body;
         for (var i = 0; i < _slots.Count; i++)
         {
-            var color = i == index && lift > 0.35 ? onPlate : look.Ink;
+            var color = i == index && lift > 0.35 ? CyberLook.Readable(look.Accent, look.Ink) : look.Ink;
             if (_slots[i].LineBrush.Color != color) _slots[i].LineBrush.Color = color;
         }
 
@@ -205,8 +196,7 @@ public partial class DockWindow
         var slot = _slots[index];
         var half = ((IconBox * scales[index]) / 2) + 5;
         var plate = new PathGeometry();
-        double chamfer = GlassSettings.Theme == DockTheme.CyberCorporate ? 0 : PlateChamfer;
-        AddPlate(plate, slot.Center - half, IconBottom - (IconBox * scales[index]) - 6, slot.Center + half, Bottom, chamfer);
+        AddPlate(plate, slot.Center - half, IconBottom - (IconBox * scales[index]) - 6, slot.Center + half, Bottom, PlateChamfer);
         _cyberPlate.Data = plate;
         _cyberPlate.Opacity = Math.Min(1, lift * 2);
         _cyberPlate.Visibility = Visibility.Visible;
@@ -216,6 +206,7 @@ public partial class DockWindow
     private void ApplyCyberInk()
     {
         bool cyber = GlassSettings.Cyber;
+        UpdateCyberGrain();
         var look = CyberLook.Current;
         var ink = cyber ? look.Ink : Colors.White;
         var brush = new SolidColorBrush(ink);
@@ -231,9 +222,9 @@ public partial class DockWindow
         _clockDate.FontSize = cyber ? 15 : 14;
         _clockDate.Opacity = cyber ? 1 : 0.9;
         _weatherTemp.FontSize = cyber ? 20 : 17;
-        _weatherPlace.FontSize = cyber ? 14 : 10;
+        _weatherPlace.FontSize = cyber ? 13 : 10;
         _weatherPlace.Foreground = cyber ? brush : soft;
-        _weatherPlace.Width = cyber ? 52 : 46;
+        _weatherPlace.Width = cyber ? 56 : 46;
         _weatherIcon.Width = _weatherIcon.Height = cyber ? 26 : 30;
         _weatherIcon.Margin = new Thickness(0, 0, cyber ? 4 : 6, 0);
         _weatherTemp.FontFamily = _weatherPlace.FontFamily = _mediaTitle.FontFamily = _mediaArtist.FontFamily = _tooltipText.FontFamily = cyber ? CyberLook.Font : new FontFamily("Segoe UI");
@@ -243,26 +234,25 @@ public partial class DockWindow
             if (text.Effect is DropShadowEffect halo && cyber) halo.Opacity = 0;
         }
 
-        // the gaps between the modules already divide them
-        byte line = !cyber ? (byte)0x2E : GlassSettings.Theme == DockTheme.CyberHud ? (byte)0x66 : (byte)0;
+        byte line = !cyber ? (byte)0x2E : (byte)0x66;
         _lineBrush.Color = Color.FromArgb(line, ink.R, ink.G, ink.B);
         ((SolidColorBrush)_separator.Fill).Color = cyber ? Color.FromArgb(0x66, ink.R, ink.G, ink.B) : Color.FromArgb(0x6E, 0xFF, 0xFF, 0xFF);
-        _runningDotBrush.Color = cyber ? look.Accent : Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF);
+        _runningDotBrush.Color = cyber ? CyberLook.Readable(look.Accent, look.Body) : Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF);
 
-        var accent = new SolidColorBrush(GlassSettings.Theme == DockTheme.CyberModules ? look.Body : look.Accent);
+        var accent = new SolidColorBrush(look.Accent);
         accent.Freeze();
         _cyberAccent.Fill = accent;
         _cyberAccent.Visibility = cyber ? Visibility.Visible : Visibility.Collapsed;
         _cyberDecal.Visibility = _cyberAccent.Visibility;
         if (cyber)
         {
-            _decalBox.Stroke = CyberFxLayer.Solid(look.Body);
+            _decalBox.Stroke = CyberFxLayer.Solid(CyberLook.Readable(look.Body, DecalBacking));
             _decalText.Foreground = CyberFxLayer.Solid(Color.FromRgb(0xF3, 0xEF, 0xDC));
             _decalText.FontFamily = CyberLook.Font;
             ShowSeconds();
         }
 
-        bool barcode = GlassSettings.Theme == DockTheme.CyberHud;
+        bool barcode = cyber;
         _settingsDivider.Width = barcode ? 10 : 1;
         _settingsDivider.Fill = barcode ? Barcode(ink) : _lineBrush;
 
@@ -272,7 +262,7 @@ public partial class DockWindow
         _clockDivider.RadiusX = _clockDivider.RadiusY = barcode ? 0 : .5;
         _clockDivider.Fill = barcode ? CyberFxLayer.Solid(look.Accent) : _lineBrush;
         _clockDivider.Opacity = 1;
-        var plate = new SolidColorBrush(GlassSettings.Theme == DockTheme.CyberCorporate ? look.Accent : look.Ink);
+        var plate = new SolidColorBrush(look.Ink);
         plate.Freeze();
         _cyberPlate.Fill = plate;
         _grain.Visibility = cyber ? Visibility.Collapsed : Visibility.Visible;
@@ -349,7 +339,5 @@ public partial class DockWindow
 
     private Color InkGlyphColor => GlassSettings.Cyber ? CyberLook.Current.Ink : GlyphColor;
 
-    private Color StartGlyphColor => !GlassSettings.Cyber
-        ? DesktopButtonSettings.Color
-        : GlassSettings.Theme == DockTheme.CyberCorporate ? Colors.White : CyberLook.Current.Ink;
+    private Color StartGlyphColor => GlassSettings.Cyber ? CyberLook.Current.Ink : DesktopButtonSettings.Color;
 }

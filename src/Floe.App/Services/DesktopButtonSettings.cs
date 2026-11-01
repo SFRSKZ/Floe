@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Windows.Media;
+using Floe.Core.Services;
 
 namespace Floe.App.Services;
 
@@ -30,7 +31,7 @@ public static class DesktopButtonSettings
 
     private static readonly string ConfigPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Floe",
+        Product.Folder,
         "desktop-button.json");
 
     public static double Size { get; private set; } = 0.72;

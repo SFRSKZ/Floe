@@ -4,6 +4,7 @@ using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 using Vortice.Mathematics;
+using Floe.App.Services;
 using Color = System.Windows.Media.Color;
 
 namespace Floe.App.Effects.Gpu;
@@ -19,7 +20,7 @@ public abstract class FeedbackGpuScene : IGpuScene
     private ID3D11Device? _device;
     private ID3D11VertexShader? _fullscreenVs;
     private ID3D11PixelShader? _feedbackPs, _showPs;
-    private ID3D11Buffer? _constants;
+    private ID3D11Buffer? _constants, _motionConstants;
     private ID3D11BlendState? _opaque;
     private ID3D11RasterizerState? _raster;
     private ID3D11DepthStencilState? _noDepth;
@@ -28,12 +29,14 @@ public abstract class FeedbackGpuScene : IGpuScene
     private ID3D11RenderTargetView? _view0, _view1;
     private ID3D11ShaderResourceView? _read0, _read1;
 
-    private readonly ID3D11Buffer[] _cb = new ID3D11Buffer[1];
+    private readonly ID3D11Buffer[] _cb = new ID3D11Buffer[2];
     private readonly ID3D11SamplerState[] _sampler = new ID3D11SamplerState[1];
     private readonly ID3D11ShaderResourceView[] _oneSrv = new ID3D11ShaderResourceView[1];
     private Viewport[] _viewports = Array.Empty<Viewport>();
 
     private readonly BeatTracker _beat = new();
+    private readonly MilkMotion _motion = new();
+    private readonly float[] _motionData = new float[MilkMotion.Floats];
     private int _width, _height;
     private bool _flip;
     private bool _clear = true;
@@ -44,6 +47,9 @@ public abstract class FeedbackGpuScene : IGpuScene
         _feedbackSource = feedbackSource;
         _showSource = showSource;
     }
+
+    /// <summary>The theme's colours when the look should play in them, null for its own; set from the UI, read on the render thread.</summary>
+    public CyberLook? Theme { get; set; } = GlassSettings.VisualizerThemeColours ? CyberLook.Current : null;
 
     /// <summary>The constants uploaded every frame; the scene fills them in <see cref="Fill"/>.</summary>
     protected float[] Data { get; }
@@ -64,6 +70,8 @@ public abstract class FeedbackGpuScene : IGpuScene
         _showPs = device.CreatePixelShader(Compile("ps_5_0", _showSource).Span, null);
         _constants = device.CreateBuffer(new BufferDescription((uint)Data.Length * 4, BindFlags.ConstantBuffer, ResourceUsage.Default, CpuAccessFlags.None, ResourceOptionFlags.None, 0));
         _cb[0] = _constants;
+        _motionConstants = device.CreateBuffer(new BufferDescription(MilkMotion.Floats * 4, BindFlags.ConstantBuffer, ResourceUsage.Default));
+        _cb[1] = _motionConstants;
         _opaque = device.CreateBlendState(BlendDescription.Opaque);
         _raster = device.CreateRasterizerState(RasterizerDescription.CullNone);
         _noDepth = device.CreateDepthStencilState(DepthStencilDescription.None);
@@ -98,9 +106,11 @@ public abstract class FeedbackGpuScene : IGpuScene
         if (_view0 is null || _view1 is null) return;
 
         _beat.Update(frame.Audio, frame.Dt);
+        _motion.Update(frame.Dt, frame.Audio.Level, frame.Audio.Bass, _beat.Pulse, _beat.Swell, _beat.Hit, _motionData);
         Advance(frame);
         Fill(frame);
         context.UpdateSubresource(Data, _constants!);
+        context.UpdateSubresource(_motionData, _motionConstants!);
 
         var last = _flip ? _read1! : _read0!;
         var next = _flip ? _view0 : _view1;
@@ -142,6 +152,26 @@ public abstract class FeedbackGpuScene : IGpuScene
         context.PSSetShaderResources(0, _oneSrv);
     }
 
+    /// <summary>The theme's main colour that shows on the dark field, or the look's own.</summary>
+    protected Color Lead(Color own) => Theme is { } theme ? Shown(own, theme.Body, theme.Strip, theme.Accent) : own;
+
+    /// <summary>The theme's second colour that shows on the dark field, or the look's own.</summary>
+    protected Color Second(Color own) => Theme is { } theme ? Shown(own, theme.Accent, theme.Strip, theme.Body) : own;
+
+    private static Color Shown(Color own, params Color[] colours)
+    {
+        var field = Color.FromRgb(0x0A, 0x0A, 0x10);
+        foreach (var colour in colours)
+        {
+            if (CyberLook.Contrast(colour, field) >= 3) return colour;
+        }
+
+        return own;
+    }
+
+    protected static Color Mix(Color a, Color b, float t) => Color.FromRgb(
+        (byte)(a.R + ((b.R - a.R) * t)), (byte)(a.G + ((b.G - a.G) * t)), (byte)(a.B + ((b.B - a.B) * t)));
+
     protected void Put(int at, Color color)
     {
         Data[at] = color.R / 255f;
@@ -163,7 +193,9 @@ public abstract class FeedbackGpuScene : IGpuScene
         _feedbackPs?.Dispose(); _feedbackPs = null;
         _showPs?.Dispose(); _showPs = null;
         _constants?.Dispose(); _constants = null;
+        _motionConstants?.Dispose(); _motionConstants = null;
         _cb[0] = null!;
+        _cb[1] = null!;
         _opaque?.Dispose(); _opaque = null;
         _raster?.Dispose(); _raster = null;
         _noDepth?.Dispose(); _noDepth = null;
@@ -203,7 +235,7 @@ public abstract class FeedbackGpuScene : IGpuScene
         /// <summary>True when that beat was a snare rather than the low end.</summary>
         public bool Snare { get; private set; }
 
-        /// <summary>1 on a beat, falling away over a quarter second.</summary>
+        /// <summary>.6 on a beat, falling away over a third of a second.</summary>
         public float Pulse { get; private set; }
 
         /// <summary>0..1: how far the low end stands above its recent average, right now.</summary>
@@ -219,20 +251,20 @@ public abstract class FeedbackGpuScene : IGpuScene
             _slow += (energy - _slow) * settle;
             _slowTreble += (audio.Treble - _slowTreble) * settle;
             float rise = energy - _slow;
-            Swell = Math.Clamp(rise * 3.5f, 0, 1);
-            Sizzle = Math.Clamp((audio.Treble - _slowTreble) * 5, 0, 1);
+            Swell = Math.Clamp(rise * 2.2f, 0, 1);
+            Sizzle = Math.Clamp((audio.Treble - _slowTreble) * 3, 0, 1);
 
             bool kick = audio.Kick > .1f && _lastKick <= .1f;
             Snare = audio.Snare > .1f && _lastSnare <= .1f;
-            bool climb = rise > .1f && energy - _last > .03f;
+            bool climb = rise > .2f && energy - _last > .04f;
             _lastKick = audio.Kick;
             _lastSnare = audio.Snare;
             _last = energy;
 
             _gap += dt;
-            Hit = (kick || Snare || climb) && _gap > .15f;
+            Hit = (kick || Snare || climb) && _gap > .2f;
             if (Hit) _gap = 0;
-            Pulse = Hit ? 1 : Pulse * MathF.Exp(-dt * 9);
+            Pulse = Hit ? .6f : Pulse * MathF.Exp(-dt * 6);
         }
     }
 
@@ -244,8 +276,8 @@ public abstract class FeedbackGpuScene : IGpuScene
         }
         """;
 
-    /// <summary>The noise and the band lookup both looks use; Bands is the scene's own constant.</summary>
-    protected const string ShaderHelpers = """
+    /// <summary>The noise, the band lookup and the shared motion; Bands and Size are the scene's own constants.</summary>
+    protected const string ShaderHelpers = MilkMotion.Hlsl + """
         Texture2D Last : register(t0);
         SamplerState Linear : register(s0);
 

@@ -119,6 +119,7 @@ public partial class DockWindow
 
         _ = RefreshMediaAsync();
         _ = RefreshWeatherAsync();
+        GlassSettings.WeatherCityChanged += () => _ = RefreshWeatherAsync();
     }
 
     private void BuildMedia()
@@ -224,7 +225,7 @@ public partial class DockWindow
         var glyph = Glyph("settings", StartGlyph);
         _inkGlyphs.Add((glyph, "settings", StartGlyph));
         glyph.Opacity = 0.82;
-        _quickSettings.ToolTip = "Hızlı ayarlar";
+        _quickSettings.ToolTip = Loc.T("Hızlı ayarlar");
         _quickSettings.RenderTransformOrigin = new Point(0.5, 0.5);
         var scale = new ScaleTransform(1, 1);
         _quickSettings.RenderTransform = scale;
@@ -378,6 +379,7 @@ public partial class DockWindow
     {
         try
         {
+            _weatherPlace.Text = WeatherService.Place;
             var weather = await WeatherService.GetAsync();
             if (weather is null)
             {

@@ -1,4 +1,5 @@
 using Color = System.Windows.Media.Color;
+using Colors = System.Windows.Media.Colors;
 
 namespace Floe.App.Effects.Gpu;
 
@@ -11,10 +12,11 @@ namespace Floe.App.Effects.Gpu;
 /// </summary>
 public sealed class BlackwallGpuScene : FeedbackGpuScene
 {
-    private const int ConstantFloats = 48;
-    // its own red, whatever the theme: an accent that leans to pink turned the wall pink
+    private const int ConstantFloats = 52;
+    // its own red unless the theme is asked for: an accent that leans to pink turned the wall pink
     private static readonly Color Red = Color.FromRgb(0xF0, 0x0C, 0x10);
     private static readonly Color Blood = Color.FromRgb(0x6A, 0x02, 0x08);
+    private static readonly Color Ember = Color.FromRgb(0xFF, 0x6B, 0x38);
 
     private readonly Random _random = new(11);
     private float _time;
@@ -69,8 +71,10 @@ public sealed class BlackwallGpuScene : FeedbackGpuScene
         d[14] = _ringRadius;
         d[15] = _ringPower;
         PutBands(16, frame);
-        Put(40, Red);
-        Put(44, Blood);
+        var hot = Lead(Red);
+        Put(40, hot);
+        Put(44, Theme is null ? Blood : Mix(Colors.Black, hot, .45f));
+        Put(48, Theme is null ? Ember : Mix(hot, Colors.White, .4f));
     }
 
     private const string Shared = """
@@ -93,6 +97,7 @@ public sealed class BlackwallGpuScene : FeedbackGpuScene
             float4 Bands[6];
             float4 Hot;
             float4 Cold;
+            float4 EmberColor;
         };
 
         """ + ShaderHelpers;
@@ -115,8 +120,8 @@ public sealed class BlackwallGpuScene : FeedbackGpuScene
             float2 flow = float2(Stream(q + float2(0, e)) - Stream(q - float2(0, e)),
                                  Stream(q - float2(e, 0)) - Stream(q + float2(e, 0))) / (2 * e);
             float2 away = (flow * (.009 + (.016 * Bass))) + float2(sign(uv.x - .5) * .0016, 0);
-            float2 back = position.xy - (away * Size.y * Step);
-            float2 last = Last.SampleLevel(Linear, back / Size, 0).rg * pow(.92, Step);
+            float2 back = position.xy - (away * Size.y * Step) - MilkFlow(position.xy);
+            float2 last = Last.SampleLevel(Linear, back / Size, 0).rg * pow(.95, Step);
 
             float clump = Noise((q * 4) + float2(Time * .4, -Time * .3));
             float energy = saturate(Band(mid * .9) * 1.25);
@@ -142,7 +147,7 @@ public sealed class BlackwallGpuScene : FeedbackGpuScene
         float3 Ramp(float v)
         {
             float3 deep = Hot.rgb * .32;
-            float3 ember = float3(1, .42, .22);
+            float3 ember = EmberColor.rgb;
             if (v < .4) return lerp(deep, Hot.rgb, v / .4);
             if (v < .8) return lerp(Hot.rgb, ember, (v - .4) / .4);
             return lerp(ember, float3(1, .93, .86), saturate((v - .8) / .35));
@@ -178,7 +183,7 @@ public sealed class BlackwallGpuScene : FeedbackGpuScene
             float3 color = Ramp(v);
             float cold = saturate(blue * 1.5);
             color = lerp(color, Cold.rgb * (.5 + (.7 * cold)), saturate(blue / max(red + blue, 1e-3)));
-            color += float3(.45, .04, 0) * saturate(min(red, blue) * 2);
+            color += (Hot.rgb * .45) * saturate(min(red, blue) * 2);
 
             float alpha = bar * saturate(total * 6);
             float baseline = hair * .2 * saturate(.35 + Level);

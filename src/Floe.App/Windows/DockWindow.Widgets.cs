@@ -30,11 +30,13 @@ public partial class DockWindow
         var time = now.ToString("HH:mm");
         if (_clockTime.Text != time)
         {
+            // at startup the clock has no text yet; that first fill is not a minute turning
+            var shown = _clockTime.Text.Length > 0;
             _clockTime.Text = time;
-            if (GlassSettings.Cyber && !_dozeHidden && _sleepRun is null && Root.OpacityMask is null) PlayClockSplit();
+            if (shown && GlassSettings.Cyber && !_dozeHidden && _sleepRun is null && Root.OpacityMask is null) PlayClockSplit();
         }
 
-        var date = now.ToString("ddd d MMM");
+        var date = now.ToString("ddd d MMM", Loc.Culture);
         if (_clockDate.Text != date)
         {
             // the date only changes once a day

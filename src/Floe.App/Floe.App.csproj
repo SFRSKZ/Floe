@@ -9,6 +9,9 @@
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Floe</AssemblyName>
+    <AssemblyName Condition="'$(FloeProduct)' == 'CP77'">FloeCP77</AssemblyName>
+    <!-- the Cyberpunk dock wears its own icon; the plain build stays icon-less like before -->
+    <ApplicationIcon Condition="'$(FloeProduct)' == 'CP77'">Assets\cp77.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

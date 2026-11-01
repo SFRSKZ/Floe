@@ -1,5 +1,6 @@
 using Floe.App.Services;
 using Color = System.Windows.Media.Color;
+using Colors = System.Windows.Media.Colors;
 
 namespace Floe.App.Effects.Gpu;
 
@@ -18,7 +19,9 @@ namespace Floe.App.Effects.Gpu;
 /// </summary>
 public sealed class SignalGpuScene : FeedbackGpuScene
 {
-    private const int ConstantFloats = 56;
+    private const int ConstantFloats = 60;
+    private static readonly Color Yellow = Color.FromRgb(0xFC, 0xEE, 0x0A);
+    private static readonly Color Red = Color.FromRgb(0xFF, 0x00, 0x3C);
     private static readonly Color Cold = Color.FromRgb(0x02, 0xD7, 0xF2);
 
     private int _frame;
@@ -29,17 +32,8 @@ public sealed class SignalGpuScene : FeedbackGpuScene
     private float _tear, _roll;
     private readonly Random _random = new(7);
 
-    /// <summary>The dock's own colour, as the strip's body; set from the UI, read again on the render thread every frame.</summary>
-    public Color Body { get; set; }
-
-    /// <summary>The theme's accent, as the strip's hot colour; set from the UI, read again on the render thread every frame.</summary>
-    public Color Accent { get; set; }
-
     public SignalGpuScene() : base(ConstantFloats, Shared + FeedbackPs, Shared + ShowPs)
     {
-        var look = CyberLook.Current;
-        Body = look.Body;
-        Accent = look.Accent;
     }
 
     // The field keeps one seed until something knocks it over; a quiet song holds longer than a loud one.
@@ -91,14 +85,13 @@ public sealed class SignalGpuScene : FeedbackGpuScene
         d[14] = MathF.Pow(.9f, step);
         d[15] = frame.Time;
         PutBands(16, frame);
-        Put(40, Mix(System.Windows.Media.Colors.White, Body, .18f));
-        Put(44, Body);
-        Put(48, Accent);
-        Put(52, Cold);
+        var body = Lead(Yellow);
+        Put(40, Mix(Colors.White, body, .18f));
+        Put(44, body);
+        Put(48, Second(Red));
+        Put(52, Theme is null ? Cold : body);
+        d[56] = GlassSettings.SignalEqualizer ? 1 : 0;
     }
-
-    private static Color Mix(Color a, Color b, float t) => Color.FromRgb(
-        (byte)(a.R + ((b.R - a.R) * t)), (byte)(a.G + ((b.G - a.G) * t)), (byte)(a.B + ((b.B - a.B) * t)));
 
     private const string Shared = """
         cbuffer Signal : register(b0)
@@ -123,6 +116,7 @@ public sealed class SignalGpuScene : FeedbackGpuScene
             float4 Body;
             float4 Hot;
             float4 Cold;
+            float4 Form;
         };
 
         """ + ShaderHelpers;
@@ -160,22 +154,32 @@ public sealed class SignalGpuScene : FeedbackGpuScene
             return max(field, blob * .5 * present);
         }
 
+        // The other shape: thin rows reaching out from the middle, each row as long as its own band.
+        float Rows(int2 p)
+        {
+            float row = floor(p.y / (5 * Dip));
+            float mid = abs((p.x / Size.x) - .5) * 2;
+            float reach = saturate(Band(Hash(float2(row, 3))) * 1.3) * 1.1;
+            return step(fmod(p.y, 5 * Dip), 3.2 * Dip) * step(mid, reach) - .5;
+        }
+
         float4 main(float4 position : SV_Position) : SV_Target
         {
             int2 p = (int2)position.xy;
-            float fresh = Field(p) > 0 ? 1 : 0;
+            float fresh = (Form.x > .5 ? Rows(p) : Field(p)) > 0 ? 1 : 0;
 
             // the burn stays where it was, shivers by the row, and is eaten in small cells
             float row = floor(p.y / (2 * Dip));
             int shiver = (int)round((Hash(float2(row, Tick)) - .5) * Dip * (2 + (10 * Tear)));
-            float burn = Last.Load(int3(p + int2(shiver, 0), 0)).r;
             float cell = Hash(floor(p / (2 * Dip)) + float2(Seed * 3, 0));
+            int2 moved = p - MilkStep(position.xy, 1, Hash(floor(p / (2 * Dip)) + float2(Tick * .37, 1)));
+            float burn = Last.Load(int3(moved + int2(shiver, 0), 0)).r;
             burn -= Erode * (.3 + (2.2 * cell));
 
             // the ghost slides along the rows, each band of them its own way
             float band = floor(p.y / (5 * Dip));
             int slide = (int)round(sin((band * 1.3) + (Time * 3)) * Dip * 1.5);
-            float ghost = Last.Load(int3(p + int2(slide, (int)Dip), 0)).g * Decay;
+            float ghost = Last.Load(int3(moved + int2(slide, (int)Dip), 0)).g * Decay;
 
             return float4(max(burn, fresh), max(ghost, fresh * .55), 0, 1);
         }

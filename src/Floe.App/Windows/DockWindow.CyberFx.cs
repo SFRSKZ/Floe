@@ -1,5 +1,5 @@
-using System.Globalization;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Floe.App.Effects.Cyber;
@@ -19,7 +19,6 @@ public partial class DockWindow
 
     private static readonly Color FxCyan = Color.FromRgb(0x02, 0xD7, 0xF2);
     private static readonly Color FxInk = Color.FromRgb(0x0A, 0x0A, 0x10);
-    private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
 
     private readonly CyberFxLayer _fx = new();
     private CyberFxLayer.Run? _sleepRun;
@@ -36,6 +35,7 @@ public partial class DockWindow
     private const double CoverSlide = .24;
     private CyberFxLayer.Run? _coverRun;
     private bool _coverGone;
+    private bool _coverPending;
 
     private readonly DispatcherTimer _textGlitch = new();
 
@@ -52,6 +52,7 @@ public partial class DockWindow
         _textGlitch.Tick += (_, _) => GlitchSomeText();
         NextTextGlitch();
         _textGlitch.Start();
+        _media.LayoutUpdated += (_, _) => ResumeCoverIn();
     }
 
     private void NextTextGlitch() => _textGlitch.Interval = TimeSpan.FromSeconds(3 + (Random.Shared.NextDouble() * 4));
@@ -76,7 +77,7 @@ public partial class DockWindow
     private void PlayGlitch(IconSlot slot)
     {
         var look = CyberLook.Current;
-        var first = CyberIcons.ForApp(slot.Item.Name, CyberFxLayer.Solid(GlassSettings.Theme == DockTheme.CyberCorporate ? Colors.White : look.Accent));
+        var first = CyberIcons.ForApp(slot.Item.Name, CyberFxLayer.Solid(look.Accent));
         var second = CyberIcons.ForApp(slot.Item.Name, CyberFxLayer.Solid(FxCyan));
         var seed = Environment.TickCount % 90;
         _fx.Play(.42, (dc, p) =>
@@ -179,20 +180,20 @@ public partial class DockWindow
         var card = new Rect(left, Math.Max(2, box.Top - height - 8), width, height);
         dc.DrawLine(new Pen(accent, 1.5), new Point(flip ? box.Left : box.Right, box.Top), new Point(flip ? card.Right : card.Left, card.Bottom - 9));
         dc.DrawGeometry(CyberFxLayer.Solid(FxInk), pen, CyberFxLayer.Plate(card, 7));
-        string name = slot.Item.Name.ToUpper(Turkish);
+        string name = slot.Item.Name.ToUpper(Loc.Culture);
         if (name.Length > 20) name = name[..20];
         _fx.Text(dc, CyberFxLayer.Decode(name, CyberFxLayer.Segment(age, .08, .42), Math.Floor(age * 22)), card.X + 9, card.Y + 3, 16, CyberFxLayer.Solid(look.Strip));
-        _fx.Text(dc, slot.Item.IsPinned ? "SABİT // HAZIR" : "HAZIR", card.X + 9, card.Y + 22, 12, CyberFxLayer.Solid(FxCyan));
+        _fx.Text(dc, Loc.T(slot.Item.IsPinned ? "SABİT // HAZIR" : "HAZIR"), card.X + 9, card.Y + 22, 12, CyberFxLayer.Solid(FxCyan));
     }
 
-    // the data strip along the bottom edge of the bar
+    // the data strip in the free room under the bar
     private void DrawTicker(DrawingContext dc, IconSlot slot, double age)
     {
-        const double height = 11, glyph = 5.6;
-        var band = new Rect(_capsuleLeft + 14, Bottom - height, Math.Max(1, _capsuleWidth - 28), height);
+        const double height = 11, glyph = 5.6, gap = 4;
+        var band = new Rect(_capsuleLeft + 14, Bottom + gap, Math.Max(1, _capsuleWidth - 28), height);
         var count = slot.Item.Windows.Count;
-        var state = count > 0 ? $"ÇALIŞIYOR // {count} PENCERE" : "KAPALI";
-        var text = $"// {slot.Item.Name.ToUpper(Turkish)} // {state} //   ";
+        var state = count > 0 ? string.Format(Loc.T("ÇALIŞIYOR // {0} PENCERE"), count) : Loc.T("KAPALI");
+        var text = $"// {slot.Item.Name.ToUpper(Loc.Culture)} // {state} //   ";
         var yellow = CyberFxLayer.Solid(CyberLook.Current.Strip);
         double offset = (age * 46) % (text.Length * glyph);
         dc.PushClip(new RectangleGeometry(band));
@@ -233,7 +234,7 @@ public partial class DockWindow
         var yellow = CyberFxLayer.Solid(CyberLook.Current.Strip);
         var cyan = CyberFxLayer.Solid(FxCyan);
         var edge = new Pen(yellow, 1.5);
-        var name = item.Name.ToUpper(Turkish);
+        var name = item.Name.ToUpper(Loc.Culture);
         _fx.Play(4, (dc, p) =>
         {
             const double width = 210, height = 40;
@@ -243,7 +244,7 @@ public partial class DockWindow
             dc.PushClip(new RectangleGeometry(new Rect(_capsuleLeft, 0, width + 24, RestTop)));
             dc.DrawGeometry(ink, edge, CyberFxLayer.Plate(box, 7));
             dc.DrawRectangle(yellow, null, new Rect(box.X + 7, box.Y + 7, 4, height - 14));
-            _fx.Text(dc, "YENİ BİLDİRİM", box.X + 18, box.Y + 3, 16, yellow);
+            _fx.Text(dc, Loc.T("YENİ BİLDİRİM"), box.X + 18, box.Y + 3, 16, yellow);
             _fx.Text(dc, CyberFxLayer.Decode(name, CyberFxLayer.Segment(p, .05, .14), Math.Floor(p * 90)), box.X + 18, box.Y + 21, 12, cyan);
             dc.Pop();
         });
@@ -271,9 +272,13 @@ public partial class DockWindow
         _titleRun = _fx.Play(.6, null, p => _mediaTitle.Text = CyberFxLayer.Decode(title, p, Math.Floor(p * 24)), () => _mediaTitle.Text = title, true);
     }
 
+    // the section has no real position until the layout has placed it; before that the transform reports the window
+    // origin, so anything drawn from it would land as a loose square at the dock's upper-left
+    private bool MediaPlaced() => !double.IsNaN(Canvas.GetLeft(_media)) && !double.IsNaN(Canvas.GetTop(_media));
+
     private Rect? CoverRect()
     {
-        if (_media.Visibility != Visibility.Visible || !Root.IsAncestorOf(_media)) return null;
+        if (_media.Visibility != Visibility.Visible || !Root.IsAncestorOf(_media) || !MediaPlaced()) return null;
         var corner = _media.TransformToAncestor(Root).Transform(new Point(0, -8));
         return new Rect(corner.X, corner.Y, CoverSquare, CoverSquare);
     }
@@ -305,6 +310,33 @@ public partial class DockWindow
     private void PlayCoverIn()
     {
         _coverGone = false;
+        // the wipe waits for the first layout instead of drawing where the unplaced section sits
+        if (!MediaPlaced())
+        {
+            _coverPending = true;
+            return;
+        }
+
+        PlayCoverNow();
+    }
+
+    // the section has been placed: a wipe held back at startup plays now
+    private void ResumeCoverIn()
+    {
+        if (!_coverPending) return;
+        if (_coverGone || _mediaTarget == 0)
+        {
+            _coverPending = false;
+            return;
+        }
+
+        if (!MediaPlaced()) return;
+        _coverPending = false;
+        PlayCoverNow();
+    }
+
+    private void PlayCoverNow()
+    {
         var body = CyberFxLayer.Solid(CyberLook.Current.Body);
         _fx.Play(.62, (dc, p) => DrawCoverBlocks(dc, p, body));
         if (_mediaTrackTitle.Length > 0) DecodeTitle(_mediaTrackTitle);
@@ -321,6 +353,7 @@ public partial class DockWindow
     private void PlayCoverOut()
     {
         if (_coverRun is not null) return;
+        _coverPending = false;
         var body = CyberFxLayer.Solid(CyberLook.Current.Body);
         _coverRun = _fx.Play(.4, (dc, p) => DrawCoverBlocks(dc, 1 - p, body, CyberFxLayer.Solid(FxInk)), null, () =>
         {
@@ -341,7 +374,7 @@ public partial class DockWindow
     // sleep is a relic malfunction: the bar tears, strobes black and red, blocks eat it, and it rains away in red code
     private void CyberSleep()
     {
-        const string text = "KRİTİK SİSTEM HATASI";
+        string text = Loc.T("KRİTİK SİSTEM HATASI");
         var look = CyberLook.Current;
         var rect = CapsuleRect();
         var red = CyberFxLayer.Solid(look.Accent);
@@ -375,7 +408,7 @@ public partial class DockWindow
 
                 var standby = new Rect(rect.Right - 176, rect.Top + 14, 150, rect.Height - 28);
                 dc.DrawRectangle(ink, edge, standby);
-                _fx.Text(dc, "BEKLEMEDE", standby.X + (standby.Width / 2), standby.Y + ((standby.Height - 26) / 2), 20, red, TextAlignment.Center);
+                _fx.Text(dc, Loc.T("BEKLEMEDE"), standby.X + (standby.Width / 2), standby.Y + ((standby.Height - 26) / 2), 20, red, TextAlignment.Center);
             }
 
             if (p < .72)
@@ -424,7 +457,7 @@ public partial class DockWindow
                 dc.DrawRectangle(red, null, bar);
                 string typed = CyberFxLayer.Decode(text, CyberFxLayer.Segment(p, .04, .3), tick);
                 _fx.Text(dc, typed, bar.X + (bar.Width / 2), bar.Y - 2, 21, ink, TextAlignment.Center);
-                _fx.Text(dc, "RELIC ARIZASI // BAĞLANTI KESİLDİ", bar.X + (bar.Width / 2), bar.Bottom + 1, 12, red, TextAlignment.Center);
+                _fx.Text(dc, Loc.T("RELIC ARIZASI // BAĞLANTI KESİLDİ"), bar.X + (bar.Width / 2), bar.Bottom + 1, 12, red, TextAlignment.Center);
             }
 
             double step = rect.Width / SleepColumns;
@@ -475,7 +508,7 @@ public partial class DockWindow
         var edge = new Pen(body, 2);
         var cells = HexCells.Replace(" ", string.Empty);
         const double wakeSeconds = 1.7;
-        const string text = "SİSTEM YENİDEN BAŞLATILIYOR";
+        string text = Loc.T("SİSTEM YENİDEN BAŞLATILIYOR");
         double middle = rect.Left + (rect.Width / 2);
         double Open(double p) => CyberFxLayer.Segment(p, .52, .9);
 
@@ -650,6 +683,7 @@ public partial class DockWindow
             case "clock": PlayClockSplit(); break;
             case "sleep": CyberSleep(); break;
             case "wake": _dozeHidden = true; CyberWake(); break;
+            case "relic": PlayRelic(); break;
             case "ghost": SetFxGhost(slot, new Point(slot.Center + 90, RestTop - 26)); break;
             case "coverin": PreviewMedia(); PlayCoverIn(); break;
             case "coverswap": PreviewMedia(); PlayCoverSwap(); break;

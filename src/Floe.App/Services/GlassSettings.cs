@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Windows.Media;
+using Floe.Core.Services;
 
 namespace Floe.App.Services;
 
@@ -25,6 +26,16 @@ public enum DockSurface
     Frost,
     Graphite,
     Floating,
+}
+
+/// <summary>A set of studio colours saved under a name; a null colour keeps Yellow HUD's own.</summary>
+public sealed record CyberPreset(string Name, Color? Body, Color? Accent, Color? Strip, Color? Ink);
+
+public enum AppLanguage
+{
+    Auto,
+    Turkish,
+    English,
 }
 
 public enum VisualizerStyle
@@ -53,12 +64,17 @@ public enum VisualizerStyle
     Murmuration,
     StereoField,
     // the cyber themes' own hard edged strips (see Effects/Visualizer/CyberVisualizer)
-    CyberBars,
-    CyberPulse,
-    CyberGrid,
-    CyberCode,
     CyberSignal,
     CyberBlackwall,
+    CyberCircuit,
+    CyberGlyph,
+    CyberRain,
+    CyberSamurai,
+    // the second wave of cyber looks, each a GPU feedback scene of its own
+    CyberBraindance,
+    CyberSandevistan,
+    CyberBreach,
+    CyberCollar,
 }
 
 /// <summary>A theme dresses the whole dock (glass, rim, glows) and its visualizer in one look.</summary>
@@ -68,8 +84,6 @@ public enum DockTheme
     TronLegacy,
     TronAres,
     CyberHud,
-    CyberModules,
-    CyberCorporate,
 }
 
 public enum HologramColor
@@ -116,7 +130,7 @@ public static class GlassSettings
 {
     private static readonly string ConfigPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Floe",
+        Product.Folder,
         "glass.json");
 
     public static event Action? Changed;
@@ -127,6 +141,15 @@ public static class GlassSettings
 
     /// <summary>Stardust and the dust wave drawn by Direct3D in their own layer instead of WPF (experimental).</summary>
     public static bool GpuVisualizer { get; private set; }
+
+    /// <summary>The city the weather comes from; null until one is picked in the settings.</summary>
+    public static string? WeatherCity { get; private set; }
+
+    public static double WeatherLatitude { get; private set; }
+
+    public static double WeatherLongitude { get; private set; }
+
+    public static event Action? WeatherCityChanged;
 
     /// <summary>The OLED panel lights in the user's colours, and glass drops swell on it with the beat.</summary>
     public static bool OledColour { get; private set; }
@@ -144,16 +167,40 @@ public static class GlassSettings
     /// <summary>The dock shrinks while the cursor is away and grows back under it; off, it stays full size.</summary>
     public static bool Shrink { get; private set; } = true;
 
+    public static bool FilmGrain { get; private set; }
+
+    public static AppLanguage Language { get; private set; }
+
+    public static bool GlyphNegative { get; private set; }
+
+    public static bool VisualizerThemeColours { get; private set; }
+
+    public static bool SignalEqualizer { get; private set; }
+
     public static DockTheme Theme { get; private set; }
 
     /// <summary>Either Tron theme: black glass edged in neon light lines, with the OLED panel lit in the same colour.</summary>
     public static bool Tron => Theme is DockTheme.TronLegacy or DockTheme.TronAres;
 
     /// <summary>The flat themes: hard-edged plates in solid colours instead of the glass capsule.</summary>
-    public static bool Cyber => Theme is DockTheme.CyberHud or DockTheme.CyberModules or DockTheme.CyberCorporate;
+    public static bool Cyber => Theme == DockTheme.CyberHud;
 
     /// <summary>The dock's own colour, or null for what the surface and theme give it. Tron keeps its black glass.</summary>
     public static Color? DockColor { get; private set; }
+
+    /// <summary>The studio's colours beside <see cref="DockColor"/>; null keeps Yellow HUD's own.</summary>
+    public static Color? CyberAccent { get; private set; }
+
+    public static Color? CyberStrip { get; private set; }
+
+    public static Color? CyberInk { get; private set; }
+
+    /// <summary>How deep the plates' corners are cut: 1 is the design, 0 square.</summary>
+    public static double CyberCut { get; private set; } = 1;
+
+    public static double GrainAmount { get; private set; } = 1;
+
+    public static IReadOnlyList<CyberPreset> CyberPresets { get; private set; } = Array.Empty<CyberPreset>();
 
     public static VisualizerStyle VisualizerLook { get; private set; } = VisualizerStyle.Stardust;
 
@@ -207,6 +254,9 @@ public static class GlassSettings
             Rim = Enum.TryParse<RimStyle>(model.Rim, true, out var rim) ? rim : RimStyle.Plain;
             Visualizer = model.Visualizer;
             GpuVisualizer = model.GpuVisualizer;
+            WeatherCity = model.WeatherCity;
+            WeatherLatitude = model.WeatherLatitude;
+            WeatherLongitude = model.WeatherLongitude;
             OledColour = model.OledColour;
             LedOverlay = model.LedOverlay;
             FastDock = model.FastDock;
@@ -215,6 +265,11 @@ public static class GlassSettings
             Bulge = Enum.TryParse<BulgeStyle>(model.Bulge, true, out var bulge) ? bulge : BulgeStyle.Soft;
             Surface = Enum.TryParse<DockSurface>(model.Surface, true, out var surface) ? surface : DockSurface.Classic;
             Shrink = model.Shrink;
+            FilmGrain = model.FilmGrain;
+            Language = Enum.TryParse<AppLanguage>(model.Language, true, out var language) ? language : AppLanguage.Auto;
+            GlyphNegative = model.GlyphNegative;
+            VisualizerThemeColours = model.VisualizerThemeColours;
+            SignalEqualizer = model.SignalEqualizer;
             // looks taken off the picker (and "Lamella", the old metal wave) fall back to the stardust
             VisualizerLook = Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) && !IsRetired(look)
                 ? look
@@ -225,6 +280,14 @@ public static class GlassSettings
             DustColors = Enum.TryParse<DustPalette>(model.DustColors, true, out var dust) ? dust : DustPalette.Tint;
             if (TryParseColor(model.CustomTint, out var custom)) CustomTint = custom;
             if (TryParseColor(model.DockColor, out var dockColor)) DockColor = dockColor;
+            if (TryParseColor(model.CyberAccent, out var cyberAccent)) CyberAccent = cyberAccent;
+            if (TryParseColor(model.CyberStrip, out var cyberStrip)) CyberStrip = cyberStrip;
+            if (TryParseColor(model.CyberInk, out var cyberInk)) CyberInk = cyberInk;
+            CyberCut = Math.Clamp(model.CyberCut, 0, 2);
+            GrainAmount = Math.Clamp(model.GrainAmount, 0.3, 2);
+            CyberPresets = (model.CyberPresets ?? new List<PresetModel>())
+                .Select(saved => new CyberPreset(saved.Name, Parsed(saved.Body), Parsed(saved.Accent), Parsed(saved.Strip), Parsed(saved.Ink)))
+                .ToList();
             for (int i = 0; i < CustomPalette.Length && i < (model.CustomPalette?.Length ?? 0); i++)
             {
                 if (TryParseColor(model.CustomPalette![i], out var stop)) CustomPalette[i] = stop;
@@ -237,6 +300,9 @@ public static class GlassSettings
         }
         finally
         {
+            // each product only keeps its own themes, including the defaults a missing file leaves behind;
+            // this runs before the arguments below so a preview can still try any theme on
+            NormalizeTheme();
             // previews can try the theme on without touching the saved settings
             var args = Environment.GetCommandLineArgs();
             var themeArg = args.FirstOrDefault(a => a.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase));
@@ -249,10 +315,32 @@ public static class GlassSettings
             if (rimArg is not null && Enum.TryParse<RimStyle>(rimArg[6..], true, out var previewRim)) Rim = previewRim;
             var lookArg = args.FirstOrDefault(a => a.StartsWith("--look=", StringComparison.OrdinalIgnoreCase));
             if (lookArg is not null && Enum.TryParse<VisualizerStyle>(lookArg[7..], true, out var previewLook)) VisualizerLook = previewLook;
+            if (args.Contains("--filmgrain", StringComparer.OrdinalIgnoreCase)) FilmGrain = true;
+            if (args.Contains("--english", StringComparer.OrdinalIgnoreCase)) Language = AppLanguage.English;
+            if (args.Contains("--negative", StringComparer.OrdinalIgnoreCase)) GlyphNegative = true;
+            if (args.Contains("--no-negative", StringComparer.OrdinalIgnoreCase)) GlyphNegative = false;
+            if (args.Contains("--themed", StringComparer.OrdinalIgnoreCase)) VisualizerThemeColours = true;
+            if (args.Contains("--equalizer", StringComparer.OrdinalIgnoreCase)) SignalEqualizer = true;
             var gpuArg = args.FirstOrDefault(a => a.StartsWith("--gpu-viz=", StringComparison.OrdinalIgnoreCase));
             if (gpuArg is not null) GpuVisualizer = gpuArg[10..] is "1" or "on" or "true";
         }
     }
+
+    // The Cyber code stays compiled in both builds; this keeps each product on its own half of it.
+    private static void NormalizeTheme()
+    {
+#if CP77
+        Theme = DockTheme.CyberHud; // the only theme it has; a removed one lands here too
+        if (!IsCyberLook(VisualizerLook)) VisualizerLook = VisualizerStyle.CyberBlackwall;
+        GpuVisualizer = true; // its looks only exist on the GPU
+#else
+        if (Theme == DockTheme.CyberHud) Theme = DockTheme.None;
+        if (IsCyberLook(VisualizerLook)) VisualizerLook = VisualizerStyle.Stardust;
+#endif
+    }
+
+    public static bool IsCyberLook(VisualizerStyle look) => look is VisualizerStyle.CyberSignal or VisualizerStyle.CyberBlackwall or VisualizerStyle.CyberCircuit or VisualizerStyle.CyberGlyph or VisualizerStyle.CyberRain or VisualizerStyle.CyberSamurai
+        or VisualizerStyle.CyberBraindance or VisualizerStyle.CyberSandevistan or VisualizerStyle.CyberBreach or VisualizerStyle.CyberCollar;
 
     internal static void PreviewTheme(DockTheme theme)
     {
@@ -285,6 +373,66 @@ public static class GlassSettings
         }
 
         Surface = surface;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetGlyphNegative(bool enabled)
+    {
+        if (GlyphNegative == enabled)
+        {
+            return;
+        }
+
+        GlyphNegative = enabled;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetVisualizerThemeColours(bool enabled)
+    {
+        if (VisualizerThemeColours == enabled)
+        {
+            return;
+        }
+
+        VisualizerThemeColours = enabled;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetSignalEqualizer(bool enabled)
+    {
+        if (SignalEqualizer == enabled)
+        {
+            return;
+        }
+
+        SignalEqualizer = enabled;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetLanguage(AppLanguage language)
+    {
+        if (Language == language)
+        {
+            return;
+        }
+
+        Language = language;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetFilmGrain(bool enabled)
+    {
+        if (FilmGrain == enabled)
+        {
+            return;
+        }
+
+        FilmGrain = enabled;
         Save();
         Changed?.Invoke();
     }
@@ -335,6 +483,41 @@ public static class GlassSettings
         Changed?.Invoke();
     }
 
+    public static void SetCyberColours(Color? body, Color? accent, Color? strip, Color? ink)
+    {
+        if (DockColor == body && CyberAccent == accent && CyberStrip == strip && CyberInk == ink) return;
+        DockColor = body;
+        CyberAccent = accent;
+        CyberStrip = strip;
+        CyberInk = ink;
+        SaveSoon();
+        Changed?.Invoke();
+    }
+
+    public static void SetCyberPresets(IEnumerable<CyberPreset> presets)
+    {
+        CyberPresets = presets.ToList();
+        SaveSoon();
+    }
+
+    private static Color? Parsed(string? text) => TryParseColor(text, out var color) ? color : null;
+
+    public static void SetCyberCut(double cut)
+    {
+        if (CyberCut == cut) return;
+        CyberCut = cut;
+        SaveSoon();
+        Changed?.Invoke();
+    }
+
+    public static void SetGrainAmount(double amount)
+    {
+        if (GrainAmount == amount) return;
+        GrainAmount = amount;
+        SaveSoon();
+        Changed?.Invoke();
+    }
+
     public static void SetDockColor(Color? color)
     {
         if (DockColor == color) return;
@@ -365,6 +548,15 @@ public static class GlassSettings
         LedOverlay = enabled;
         Save();
         Changed?.Invoke();
+    }
+
+    public static void SetWeatherCity(string name, double latitude, double longitude)
+    {
+        WeatherCity = name;
+        WeatherLatitude = latitude;
+        WeatherLongitude = longitude;
+        Save();
+        WeatherCityChanged?.Invoke();
     }
 
     public static void SetGpuVisualizer(bool enabled)
@@ -524,6 +716,9 @@ public static class GlassSettings
                 Rim = Rim.ToString(),
                 Visualizer = Visualizer,
                 GpuVisualizer = GpuVisualizer,
+                WeatherCity = WeatherCity,
+                WeatherLatitude = WeatherLatitude,
+                WeatherLongitude = WeatherLongitude,
                 OledColour = OledColour,
                 LedOverlay = LedOverlay,
                 FastDock = FastDock,
@@ -531,6 +726,11 @@ public static class GlassSettings
                 Bulge = Bulge.ToString(),
                 Surface = Surface.ToString(),
                 Shrink = Shrink,
+                FilmGrain = FilmGrain,
+                Language = Language.ToString(),
+                GlyphNegative = GlyphNegative,
+                VisualizerThemeColours = VisualizerThemeColours,
+                SignalEqualizer = SignalEqualizer,
                 VisualizerLook = VisualizerLook.ToString(),
                 HologramTint = HologramTint.ToString(),
                 Intro = Intro.ToString(),
@@ -539,6 +739,19 @@ public static class GlassSettings
                 DustColors = DustColors.ToString(),
                 CustomTint = Hex(CustomTint),
                 DockColor = DockColor is { } dockColor ? Hex(dockColor) : null,
+                CyberAccent = CyberAccent is { } cyberAccent ? Hex(cyberAccent) : null,
+                CyberStrip = CyberStrip is { } cyberStrip ? Hex(cyberStrip) : null,
+                CyberInk = CyberInk is { } cyberInk ? Hex(cyberInk) : null,
+                CyberCut = CyberCut,
+                GrainAmount = GrainAmount,
+                CyberPresets = CyberPresets.Select(preset => new PresetModel
+                {
+                    Name = preset.Name,
+                    Body = preset.Body is { } body ? Hex(body) : null,
+                    Accent = preset.Accent is { } accent ? Hex(accent) : null,
+                    Strip = preset.Strip is { } strip ? Hex(strip) : null,
+                    Ink = preset.Ink is { } ink ? Hex(ink) : null,
+                }).ToList(),
                 CustomPalette = CustomPalette.Select(Hex).ToArray(),
             }));
         }
@@ -548,6 +761,19 @@ public static class GlassSettings
         }
     }
 
+    private sealed class PresetModel
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public string? Body { get; set; }
+
+        public string? Accent { get; set; }
+
+        public string? Strip { get; set; }
+
+        public string? Ink { get; set; }
+    }
+
     private sealed class Model
     {
         public string Rim { get; set; } = nameof(RimStyle.Plain);
@@ -555,6 +781,12 @@ public static class GlassSettings
         public bool Visualizer { get; set; } = true;
 
         public bool GpuVisualizer { get; set; }
+
+        public string? WeatherCity { get; set; }
+
+        public double WeatherLatitude { get; set; }
+
+        public double WeatherLongitude { get; set; }
 
         public bool OledColour { get; set; }
 
@@ -571,6 +803,16 @@ public static class GlassSettings
 
         public bool Shrink { get; set; } = true;
 
+        public bool FilmGrain { get; set; }
+
+        public string Language { get; set; } = nameof(AppLanguage.Auto);
+
+        public bool GlyphNegative { get; set; }
+
+        public bool VisualizerThemeColours { get; set; }
+
+        public bool SignalEqualizer { get; set; }
+
         public string VisualizerLook { get; set; } = nameof(VisualizerStyle.Stardust);
 
         public double CubeSize { get; set; } = 17;
@@ -586,6 +828,18 @@ public static class GlassSettings
         public string? CustomTint { get; set; }
 
         public string? DockColor { get; set; }
+
+        public string? CyberAccent { get; set; }
+
+        public string? CyberStrip { get; set; }
+
+        public string? CyberInk { get; set; }
+
+        public double CyberCut { get; set; } = 1;
+
+        public double GrainAmount { get; set; } = 1;
+
+        public List<PresetModel>? CyberPresets { get; set; }
 
         public string[]? CustomPalette { get; set; }
     }

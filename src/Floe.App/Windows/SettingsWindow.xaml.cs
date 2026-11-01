@@ -11,6 +11,7 @@ using Floe.App.Effects.Chromatic;
 using Floe.App.Effects.MetalRim;
 using Floe.App.Services;
 using Floe.Core.Interop;
+using Floe.Core.Services;
 
 namespace Floe.App.Windows;
 
@@ -23,6 +24,48 @@ public partial class SettingsWindow : Window
     public SettingsWindow()
     {
         InitializeComponent();
+        Title = Product.Name + " " + Loc.T("Ayarları");
+        // each product hides the themes and looks the other one owns; the Cyber code stays in both builds
+#if CP77
+        foreach (var replaced in new UIElement[] { ThemeTitle, ThemeRow, DockColorToggle, DockColorPicker })
+        {
+            replaced.Visibility = Visibility.Collapsed;
+        }
+
+        TabGlass.Content = "Stüdyo";
+        VisualizerLookHologram.Visibility = Visibility.Collapsed;
+        VisualizerLookStardust.Visibility = Visibility.Collapsed;
+        VisualizerLookDustWave.Visibility = Visibility.Collapsed;
+        VisualizerLookDustMilk.Visibility = Visibility.Collapsed;
+        VisualizerLookChladni.Visibility = Visibility.Collapsed;
+        VisualizerLookFireflies.Visibility = Visibility.Collapsed;
+        VisualizerLookFerrofluid.Visibility = Visibility.Collapsed;
+        VisualizerLookOled.Visibility = Visibility.Collapsed;
+        VisualizerLookLed.Visibility = Visibility.Collapsed;
+        GpuVisualizerToggle.Visibility = Visibility.Collapsed;
+        // the Cyber themes bring their own colours, surface and click, so these would do nothing here
+        foreach (var unused in new UIElement[]
+        {
+            EffectTitle, EffectRow, ColorModeTitle, ColorModeRow, PaletteList, ClickScreenToggle, ClickPaintToggle, ClickToneRow, ClickPaletteRow,
+            SurfaceTitle, SurfaceRow, RimTitle, RimRow, BulgeTitle, BulgeRow, IntroTitle, IntroRow, DerezzToggle, DerezzCellTitle, DerezzCellRow,
+        })
+        {
+            unused.Visibility = Visibility.Collapsed;
+        }
+#else
+        FilmGrainGap.Visibility = Visibility.Collapsed;
+        FilmGrainToggle.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberSignal.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBlackwall.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberCircuit.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberGlyph.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberRain.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberSamurai.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBraindance.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberSandevistan.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBreach.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberCollar.Visibility = Visibility.Collapsed;
+#endif
         ApplyChrome();
         GlassSettings.Changed += ApplyChromeOnUi;
         Closed += (_, _) => GlassSettings.Changed -= ApplyChromeOnUi;
@@ -39,6 +82,20 @@ public partial class SettingsWindow : Window
         Closing += (_, _) => _closing = true;
 
         BuildPaletteRows();
+        InitializeWeatherCity();
+        LanguageAuto.IsChecked = GlassSettings.Language == AppLanguage.Auto;
+        LanguageTurkish.IsChecked = GlassSettings.Language == AppLanguage.Turkish;
+        LanguageEnglish.IsChecked = GlassSettings.Language == AppLanguage.English;
+        foreach (var (toggle, language) in new[] { (LanguageAuto, AppLanguage.Auto), (LanguageTurkish, AppLanguage.Turkish), (LanguageEnglish, AppLanguage.English) })
+        {
+            toggle.Checked += (_, _) =>
+            {
+                GlassSettings.SetLanguage(language);
+                Loc.Apply(this);
+            };
+        }
+
+        Loaded += (_, _) => Loc.Apply(this);
         ClickEffectToggle.IsChecked = AuraSettings.ClickEffect;
         ClickDark.IsChecked = AuraSettings.ClickTone == ClickTone.Dark;
         ClickLight.IsChecked = AuraSettings.ClickTone == ClickTone.Light;
@@ -151,8 +208,10 @@ public partial class SettingsWindow : Window
         Resources["FloeAccentDim"] = new SolidColorBrush(Color.FromArgb(0x3D, accent.R, accent.G, accent.B));
         Resources["FloeAccentEdge"] = new SolidColorBrush(Color.FromArgb(0x8A, accent.R, accent.G, accent.B));
         Resources["FloeCorner"] = new CornerRadius(cyber ? 0 : 9);
-        Resources["FloeOnAccent"] = new SolidColorBrush(cyber ? CyberLook.PanelInk : Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF));
+        Resources["FloeOnAccent"] = new SolidColorBrush(cyber ? CyberLook.InkOn(accent) : Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF));
         CloseButton.Foreground = (Brush)Resources["FloeOnAccent"];
+        WeatherCityFind.Foreground = CloseButton.Foreground;
+        if (_studioReset is not null) _studioReset.Foreground = CloseButton.Foreground;
         RefreshChromatic();
     }
 
@@ -367,6 +426,19 @@ public partial class SettingsWindow : Window
         FastDockToggle.IsChecked = GlassSettings.FastDock;
         FastDockToggle.Checked += (_, _) => GlassSettings.SetFastDock(true);
         FastDockToggle.Unchecked += (_, _) => GlassSettings.SetFastDock(false);
+        VisualizerThemeToggle.IsChecked = GlassSettings.VisualizerThemeColours;
+        VisualizerThemeToggle.Checked += (_, _) => GlassSettings.SetVisualizerThemeColours(true);
+        VisualizerThemeToggle.Unchecked += (_, _) => GlassSettings.SetVisualizerThemeColours(false);
+        VisualizerThemeToggle.Visibility = Floe.Core.Services.Product.Cp77 ? Visibility.Visible : Visibility.Collapsed;
+        SignalEqualizerToggle.IsChecked = GlassSettings.SignalEqualizer;
+        SignalEqualizerToggle.Checked += (_, _) => GlassSettings.SetSignalEqualizer(true);
+        SignalEqualizerToggle.Unchecked += (_, _) => GlassSettings.SetSignalEqualizer(false);
+        GlyphNegativeToggle.IsChecked = GlassSettings.GlyphNegative;
+        GlyphNegativeToggle.Checked += (_, _) => GlassSettings.SetGlyphNegative(true);
+        GlyphNegativeToggle.Unchecked += (_, _) => GlassSettings.SetGlyphNegative(false);
+        FilmGrainToggle.IsChecked = GlassSettings.FilmGrain;
+        FilmGrainToggle.Checked += (_, _) => GlassSettings.SetFilmGrain(true);
+        FilmGrainToggle.Unchecked += (_, _) => GlassSettings.SetFilmGrain(false);
         ShrinkToggle.IsChecked = GlassSettings.Shrink;
         ShrinkToggle.Checked += (_, _) => GlassSettings.SetShrink(true);
         ShrinkToggle.Unchecked += (_, _) => GlassSettings.SetShrink(false);
@@ -399,7 +471,6 @@ public partial class SettingsWindow : Window
         foreach (var (button, theme) in new[]
         {
             (ThemeNone, DockTheme.None), (ThemeTronLegacy, DockTheme.TronLegacy), (ThemeTronAres, DockTheme.TronAres),
-            (ThemeCyberHud, DockTheme.CyberHud), (ThemeCyberModules, DockTheme.CyberModules), (ThemeCyberCorporate, DockTheme.CyberCorporate),
         })
         {
             button.IsChecked = GlassSettings.Theme == theme;
@@ -412,7 +483,11 @@ public partial class SettingsWindow : Window
             };
         }
 
+#if CP77
+        InitializeStudio();
+#else
         InitializeDockColor();
+#endif
 
         OledColourToggle.IsChecked = GlassSettings.OledColour;
         OledColourToggle.Checked += (_, _) => GlassSettings.SetOledColour(true);
@@ -494,7 +569,8 @@ public partial class SettingsWindow : Window
         VisualizerLookWheat.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Wheat);
         VisualizerLookRibbon.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Ribbon;
         VisualizerLookRibbon.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Ribbon);
-        foreach (var (toggle, look) in new[] { (VisualizerLookCyberBars, VisualizerStyle.CyberBars), (VisualizerLookCyberPulse, VisualizerStyle.CyberPulse), (VisualizerLookCyberGrid, VisualizerStyle.CyberGrid), (VisualizerLookCyberCode, VisualizerStyle.CyberCode), (VisualizerLookCyberSignal, VisualizerStyle.CyberSignal), (VisualizerLookCyberBlackwall, VisualizerStyle.CyberBlackwall) })
+        foreach (var (toggle, look) in new[] { (VisualizerLookCyberSignal, VisualizerStyle.CyberSignal), (VisualizerLookCyberBlackwall, VisualizerStyle.CyberBlackwall), (VisualizerLookCyberCircuit, VisualizerStyle.CyberCircuit), (VisualizerLookCyberGlyph, VisualizerStyle.CyberGlyph), (VisualizerLookCyberRain, VisualizerStyle.CyberRain), (VisualizerLookCyberSamurai, VisualizerStyle.CyberSamurai),
+            (VisualizerLookCyberBraindance, VisualizerStyle.CyberBraindance), (VisualizerLookCyberSandevistan, VisualizerStyle.CyberSandevistan), (VisualizerLookCyberBreach, VisualizerStyle.CyberBreach), (VisualizerLookCyberCollar, VisualizerStyle.CyberCollar) })
         {
             toggle.IsChecked = GlassSettings.VisualizerLook == look;
             toggle.Checked += (_, _) => GlassSettings.SetVisualizerLook(look);
@@ -508,10 +584,12 @@ public partial class SettingsWindow : Window
         {
             var led = VisualizerLookLed.IsChecked == true;
             var oled = led || VisualizerLookOled.IsChecked == true;
-            OledOptions.Visibility = oled ? Visibility.Visible : Visibility.Collapsed;
+            OledOptions.Visibility = oled && !Floe.Core.Services.Product.Cp77 ? Visibility.Visible : Visibility.Collapsed;
             // the LED look is always in colour; the toggle is the OLED panel's
             OledColourToggle.Visibility = led ? Visibility.Collapsed : Visibility.Visible;
-            LookOptions.Visibility = oled ? Visibility.Collapsed : Visibility.Visible;
+            SignalEqualizerToggle.Visibility = VisualizerLookCyberSignal.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            GlyphNegativeToggle.Visibility = VisualizerLookCyberGlyph.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            LookOptions.Visibility = oled || Floe.Core.Services.Product.Cp77 ? Visibility.Collapsed : Visibility.Visible;
         }
 
         foreach (var look in new[] { VisualizerLookGlow, VisualizerLookHologram, VisualizerLookCubes, VisualizerLookStardust, VisualizerLookDustWave, VisualizerLookDustMilk, VisualizerLookSilkContour, VisualizerLookOled, VisualizerLookLed, VisualizerLookPrism, VisualizerLookWheat, VisualizerLookRibbon, VisualizerLookChladni, VisualizerLookFireflies, VisualizerLookFerrofluid })
@@ -605,9 +683,9 @@ public partial class SettingsWindow : Window
     {
         PerformanceStatus.Text = Performance.Level switch
         {
-            PerformanceLevel.Full => "Şu an: Tam",
-            PerformanceLevel.Balanced => "Şu an: Dengeli",
-            _ => "Şu an: Hafif",
+            PerformanceLevel.Full => Loc.T("Şu an: Tam"),
+            PerformanceLevel.Balanced => Loc.T("Şu an: Dengeli"),
+            _ => Loc.T("Şu an: Hafif"),
         };
     }
 
@@ -688,7 +766,7 @@ public partial class SettingsWindow : Window
             Panel.SetZIndex(shell, selected ? 1 : 0);
         }
 
-        PaletteList.Visibility = paletteActive ? Visibility.Visible : Visibility.Collapsed;
+        PaletteList.Visibility = paletteActive && !Floe.Core.Services.Product.Cp77 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();

@@ -95,15 +95,7 @@ public partial class App : Application
         if (Effects.Derezz.DerezzPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Services.DotMatrixIconsPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.GpuOffscreen.TryRenderTest(e.Args)) { Shutdown(); return; }
-
-        var vizArg = e.Args.FirstOrDefault(a => a.StartsWith("--renderviz=", StringComparison.OrdinalIgnoreCase))?["--renderviz=".Length..].Split(':', 2);
-        if (vizArg is { Length: 2 } && Enum.TryParse<Floe.App.Effects.Visualizer.CyberVisualLook>(vizArg[0], true, out var vizLook))
-        {
-            Floe.App.Services.GlassSettings.Load();
-            Floe.App.Effects.Visualizer.CyberVisualizer.RenderStill(vizLook, vizArg[1]);
-            Shutdown();
-            return;
-        }
+        if (Effects.Gpu.GpuOffscreen.TryRenderLook(e.Args)) { Shutdown(); return; }
 
         if (TryRenderSettings(e.Args))
         {

@@ -92,16 +92,19 @@ public partial class DockWindow
         var scale = DockScale;
         var area = _monitorInfo.Monitor;
         var dockRect = new Rect(new Point(ToScreenX(_capsuleLeft), ToScreenY(RestTop)), new Point(ToScreenX(_capsuleLeft + _capsuleWidth), ToScreenY(RestTop + RestBarHeight)));
-        var height = RestBarHeight + BottomMargin;
-        _visualizerWindow.Place(new Rect(area.Left / scale, (area.Bottom / scale) - height, (area.Right - area.Left) / scale, height), scale, _hwnd, dockRect);
-        _visualizerWindow.SetRunning(_visualizerRunning);
         // the feedback looks fill their whole strip, so they stand above the dock instead of hiding behind it;
-        // the strip takes the extra height only when the GPU layer actually carries the look
-        if (_visualizerWindow.CyberGpuPlaying)
+        // the strip takes the extra height only when the GPU layer actually carries the look. It is placed at the
+        // height it already has: a passing size would resize the layer, and a resize wipes a feedback field
+        void Place(bool tall)
         {
-            height += RestBarHeight * .12;
+            var height = RestBarHeight + BottomMargin + (tall ? RestBarHeight * .12 : 0);
             _visualizerWindow.Place(new Rect(area.Left / scale, (area.Bottom / scale) - height, (area.Right - area.Left) / scale, height), scale, _hwnd, dockRect);
         }
+
+        bool tall = _visualizerWindow.CyberGpuPlaying;
+        Place(tall);
+        _visualizerWindow.SetRunning(_visualizerRunning);
+        if (_visualizerWindow.CyberGpuPlaying != tall) Place(!tall);
 
         SinkBelowVisualizer();
     }

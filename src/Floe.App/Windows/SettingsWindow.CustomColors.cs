@@ -32,7 +32,7 @@ public partial class SettingsWindow
                 // the single tint stands apart from the palette's four
                 Margin = new Thickness(0, 0, i == 0 ? 18 : 8, 0),
                 Cursor = Cursors.Hand,
-                ToolTip = i == 0 ? "Tek renk" : $"Palet rengi {i}",
+                ToolTip = i == 0 ? Loc.T("Tek renk") : string.Format(Loc.T("Palet rengi {0}"), i),
             };
             swatch.MouseLeftButtonDown += (_, e) =>
             {
@@ -123,7 +123,7 @@ public partial class SettingsWindow
         CustomSaturation.Value = s;
         CustomValue.Value = Math.Max(CustomValue.Minimum, v);
         _syncingPicker = false;
-        CustomTarget.Text = i == 0 ? "Seçili: tek renk (hologram, küpler, tozlar ve kontur)" : $"Seçili: özel toz/kontur paletinin {i}. rengi (ortadan kenara doğru)";
+        CustomTarget.Text = i == 0 ? Loc.T("Seçili: tek renk (hologram, küpler, tozlar ve kontur)") : string.Format(Loc.T("Seçili: özel toz/kontur paletinin {0}. rengi (ortadan kenara doğru)"), i);
         RefreshCustomColors();
     }
 

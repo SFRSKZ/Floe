@@ -267,11 +267,13 @@ public partial class DockWindow
 
     private void ApplyGlassSettings()
     {
-        if (_appliedTheme != GlassSettings.Theme || _appliedSurface != GlassSettings.Surface || _appliedDockColor != GlassSettings.DockColor)
+        if (_appliedTheme != GlassSettings.Theme || _appliedSurface != GlassSettings.Surface || _appliedDockColor != GlassSettings.DockColor || _appliedCyberLook != CyberLook.Current || _appliedCut != GlassSettings.CyberCut)
         {
             _appliedTheme = GlassSettings.Theme;
             _appliedSurface = GlassSettings.Surface;
             _appliedDockColor = GlassSettings.DockColor;
+            _appliedCyberLook = CyberLook.Current;
+            _appliedCut = GlassSettings.CyberCut;
             // the Cyber themes need room for the decals, and only a rebuild sizes the window
             if (_roomForDecals != GlassSettings.Cyber)
             {

@@ -141,6 +141,151 @@ public static class GpuOffscreen
         return true;
     }
 
+    /// <summary>
+    /// Handles <c>--render-gpu-look=Look;dir;frames;start</c>: renders one catalog visualizer look
+    /// offscreen (3840×126 at 1.5 px/dip) against the synthetic 16 s mock track, so a scene can be
+    /// judged without the dock. <paramref name="dir"/> is optional, as are the frame count and the
+    /// start time in seconds (default 30 frames from t=8, the drop).
+    /// </summary>
+    public static bool TryRenderLook(string[] args)
+    {
+        const string option = "--render-gpu-look=";
+        var argument = args.FirstOrDefault(a => a.StartsWith(option, StringComparison.OrdinalIgnoreCase));
+        if (argument is null) return false;
+
+        var parts = argument[option.Length..].Split(';');
+        string lookName = parts[0].Trim();
+        string folder = parts.Length > 1 && parts[1].Length > 0
+            ? Path.GetFullPath(parts[1])
+            : Path.Combine(Path.GetTempPath(), "floe-look-" + lookName);
+        int frames = parts.Length > 2 && int.TryParse(parts[2], out var count) ? Math.Max(1, count) : 30;
+        float start = parts.Length > 3
+            && float.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var at)
+                ? at
+                : 8f;
+
+        try
+        {
+            if (!Enum.TryParse<VisualizerStyle>(lookName, true, out var look) || !GpuSceneCatalog.Has(look))
+            {
+                Directory.CreateDirectory(folder);
+                File.WriteAllText(Path.Combine(folder, "render-error.txt"), $"unknown visualizer look: {lookName}");
+                Environment.ExitCode = 2;
+                return true;
+            }
+
+            using var scene = GpuSceneCatalog.Create(look);
+            try
+            {
+                var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                foreach (var field in new[] { "_showSource", "_feedbackSource" })
+                {
+                    if (typeof(FeedbackGpuScene).GetField(field, flags)?.GetValue(scene) is string source)
+                    {
+                        Directory.CreateDirectory(folder);
+                        File.WriteAllText(Path.Combine(folder, field.TrimStart('_') + ".hlsl"), source);                    }
+                }
+            }
+            catch
+            {
+                // diagnostics only
+            }
+
+            RenderFrames(scene, 3840, 126, 1.5f, frames, (frame, index) => MockFrame(frame, start + (index / 30f)), folder);
+            File.WriteAllText(
+                Path.Combine(folder, "render-info.txt"),
+                $"{look}: 3840x126 at 1.5 px/dip, {frames} frames from t={start:0.00}s of the 16 s mock track, "
+                + "composited over #0B0E14.\n");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Floe.Gpu] look preview failed: {ex}");
+            try
+            {
+                Directory.CreateDirectory(folder);
+                File.WriteAllText(Path.Combine(folder, "render-error.txt"), ex.ToString());
+            }
+            catch
+            {
+                // nothing else to report with
+            }
+
+            Environment.ExitCode = 1;
+        }
+
+        return true;
+    }
+
+    // The design harness's mock track, in C#: a 16 s loop at 120 BPM with intro/build/drop/breakdown,
+    // 24 log bands and the three onsets, so the offscreen frames move like a song does.
+    private static void MockFrame(GpuFrame frame, float tRaw)
+    {
+        const float beat = 0.5f;
+        const float bar = 4 * beat;
+        float t = ((tRaw % 16f) + 16f) % 16f;
+        frame.Time = tRaw;
+        frame.Dt = 1f / 30f;
+        frame.Fade = 1f - SmoothStep(15.25f, 15.95f, t);
+
+        bool intro = t < 4f, build = t >= 4f && t < 8f, drop = t >= 8f && t < 12f;
+        float inBeat = (t % beat) / beat;
+        int beatInBar = (int)((t % bar) / beat);
+        float kick = drop
+            ? MathF.Exp(-inBeat * 9f)
+            : build && beatInBar % 2 == 0
+                ? 0.85f * MathF.Exp(-inBeat * 9f)
+                : intro && beatInBar == 0
+                    ? 0.55f * MathF.Exp(-inBeat * 9f)
+                    : t >= 12f && beatInBar % 2 == 0
+                        ? MathF.Exp(-inBeat * 9f) * Math.Clamp(1f - (t - 12f) / 4f, 0f, 1f)
+                        : 0f;
+
+        float posInBar = t % bar;
+        float snareAge = posInBar >= beat && posInBar < 2 * beat ? posInBar - beat
+            : posInBar >= 3 * beat ? posInBar - 3 * beat
+            : 10f;
+        float snare = build || drop ? MathF.Exp(-snareAge / beat * 11f) : 0f;
+        float eighth = (t % (beat / 2f)) / (beat / 2f);
+        float hat = build || drop ? MathF.Exp(-eighth * 20f) : 0f;
+        bool silent = t > 15.2f;
+
+        float baseLevel = intro ? 0.30f
+            : build ? 0.30f + 0.55f * SmoothStep(4f, 8f, t)
+            : drop ? 0.92f
+            : 0.92f * (1f - SmoothStep(12f, 15.2f, t)) + 0.03f;
+
+        var audio = frame.Audio;
+        audio.Level = silent ? 0f : Math.Clamp(baseLevel * (0.86f + 0.14f * kick), 0f, 1f);
+        audio.Bass = silent ? 0f : Math.Clamp(0.06f + 0.78f * kick + 0.10f * (0.5f + 0.5f * MathF.Sin(t * 1.1f)), 0f, 1f);
+        audio.Mid = silent ? 0f : Math.Clamp(0.10f + 0.34f * (0.5f + 0.5f * MathF.Sin((t * 2.3f) + 1.2f)) + 0.30f * audio.Level, 0f, 1f);
+        audio.Treble = silent ? 0f : Math.Clamp(0.06f + 0.66f * hat + 0.12f * (0.5f + 0.5f * MathF.Sin(t * 3.7f)), 0f, 1f);
+        audio.Balance = 0.40f * MathF.Sin(2f * MathF.PI * t / 16f);
+        audio.Kick = kick;
+        audio.Snare = snare;
+        audio.Hat = hat;
+
+        for (int i = 0; i < audio.Bands.Length; i++)
+        {
+            float u = i / (float)Math.Max(1, audio.Bands.Length - 1);
+            float low = MathF.Exp(-u * 6.5f);
+            float mid = MathF.Exp(-MathF.Pow((u - 0.42f) / 0.27f, 2f));
+            float high = MathF.Exp(-MathF.Pow((u - 0.86f) / 0.18f, 2f));
+            float wobble = 0.5f + 0.5f * MathF.Sin((t * (0.8f + (i * 0.13f))) + (i * 1.7f));
+            float value = 0.02f
+                + (0.58f * low * (0.30f + (0.78f * kick)))
+                + (0.46f * mid * (0.22f + (0.62f * audio.Mid)) * (0.55f + (0.45f * wobble)))
+                + (0.55f * high * (0.16f + (0.84f * hat)));
+            value *= silent ? 0f : 0.92f + (0.08f * MathF.Sin((i * 3.1f) + (t * 0.9f)));
+            audio.Bands[i] = Math.Clamp(value, 0f, 1f);
+        }
+    }
+
+    private static float SmoothStep(float a, float b, float x)
+    {
+        float t = Math.Clamp((x - a) / (b - a), 0f, 1f);
+        return t * t * (3f - (2f * t));
+    }
+
     private static byte[] ReadPixels(ID3D11DeviceContext context, ID3D11Texture2D staging, int width, int height)
     {
         int stride = width * 4;

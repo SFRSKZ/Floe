@@ -263,6 +263,7 @@ public partial class DockWindow : Window
     public DockWindow()
     {
         InitializeComponent();
+        Title = Product.Name;
         // the settings are read again further down; the window kind has to be known before it is shown
         GlassSettings.Load();
         DwmDock = WantsDwmDock();
@@ -563,7 +564,7 @@ public partial class DockWindow : Window
             _ambientTimer.Start();
 
             _trayIcon = TrayNotification.LoadAppIcon(Environment.ProcessPath ?? string.Empty);
-            TrayNotification.Add(_hwnd, "Floe", _trayIcon);
+            TrayNotification.Add(_hwnd, Product.Name, _trayIcon);
         };
     }
 

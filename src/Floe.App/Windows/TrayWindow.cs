@@ -24,7 +24,7 @@ internal sealed class TrayWindow : Window
     private readonly WrapPanel _icons = new() { Width = Columns * Cell };
     private readonly TextBlock _empty = new()
     {
-        Text = "Arka planda çalışan uygulama yok",
+        Text = Loc.T("Arka planda çalışan uygulama yok"),
         Foreground = Tone(0x99),
         FontSize = 12,
         Margin = new Thickness(4, 6, 4, 6),
@@ -47,7 +47,7 @@ internal sealed class TrayWindow : Window
         var stack = new StackPanel();
         stack.Children.Add(new TextBlock
         {
-            Text = "Arka planda çalışanlar",
+            Text = Loc.T("Arka planda çalışanlar"),
             Foreground = Tone(GlassSettings.Cyber ? (byte)0xFF : (byte)0xCC),
             FontSize = GlassSettings.Cyber ? 15 : 12,
             FontWeight = FontWeights.SemiBold,
@@ -138,10 +138,10 @@ internal sealed class TrayWindow : Window
         };
 
         var menu = new ContextMenu();
-        menu.Items.Add(MenuItem("Aç", () => { Finish(); TrayApps.Open(app); }));
-        menu.Items.Add(MenuItem("Dosya konumunu aç", () => { Finish(); TrayApps.Reveal(app); }));
+        menu.Items.Add(MenuItem(Loc.T("Aç"), () => { Finish(); TrayApps.Open(app); }));
+        menu.Items.Add(MenuItem(Loc.T("Dosya konumunu aç"), () => { Finish(); TrayApps.Reveal(app); }));
         menu.Items.Add(new Separator());
-        menu.Items.Add(MenuItem("Sonlandır", () => { Finish(); TrayApps.Quit(app); }));
+        menu.Items.Add(MenuItem(Loc.T("Sonlandır"), () => { Finish(); TrayApps.Quit(app); }));
         // a menu dismissed without a choice leaves the panel without focus, so nothing else would close it
         menu.Closed += (_, _) => Dispatcher.BeginInvoke(() =>
         {

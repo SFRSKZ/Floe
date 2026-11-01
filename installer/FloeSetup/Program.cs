@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
 
@@ -11,39 +12,62 @@ namespace FloeSetup;
 /// </summary>
 internal static class Program
 {
-    private const string Title = "Floe kurulumu";
+#if CP77
+    private const string ProductName = "Floe CP77";
+    private const string FolderName = "FloeCP77";
+    private const string ExeName = "FloeCP77.exe";
+#else
+    private const string ProductName = "Floe";
+    private const string FolderName = "Floe";
+    private const string ExeName = "Floe.exe";
+#endif
+    private static string Title => Text($"{ProductName} kurulumu", $"{ProductName} Setup");
+
+    private static string Text(string tr, string en) =>
+        CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "tr" ? tr : en;
 
     [STAThread]
     private static int Main()
     {
-        if (Ask("Floe kurulsun mu? Açıksa kapatılıp yenisi başlatılır.", MbOkCancel | MbIconQuestion) != IdOk) return 1;
+        if (Ask(Text($"{ProductName} kurulsun mu? Açıksa kapatılıp yenisi başlatılır.", $"Install {ProductName}? If it is running, it will be closed and started again."), MbOkCancel | MbIconQuestion) != IdOk) return 1;
 
         try
         {
             var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var install = Path.Combine(local, "Floe", "app");
+            var install = Path.Combine(local, FolderName, "app");
+            var settings = Path.Combine(roaming, FolderName);
 
             StopFloe();
             Extract(install);
-            int moved = BringSettings(local, Path.Combine(roaming, "Floe"));
+#if CP77
+            // a fresh CP77 dock starts with the plain dock's settings, unless it already has pins of its own
+            int moved = CopyFloeSettings(roaming, settings);
+#else
+            int moved = 0;
+#endif
+            moved += BringSettings(local, settings);
             Shortcut(install);
-            Process.Start(new ProcessStartInfo(Path.Combine(install, "Floe.exe")) { UseShellExecute = true, WorkingDirectory = install });
+            Process.Start(new ProcessStartInfo(Path.Combine(install, ExeName)) { UseShellExecute = true, WorkingDirectory = install });
 
-            Ask($"Floe kuruldu:\n{install}" + (moved > 0 ? $"\n\n{moved} ayar dosyası taşındı." : string.Empty), MbIconInformation);
+            Ask(Text($"{ProductName} kuruldu:\n{install}", $"{ProductName} installed:\n{install}")
+                + (moved > 0 ? Text($"\n\n{moved} ayar dosyası taşındı.", $"\n\n{moved} settings file(s) moved.") : string.Empty), MbIconInformation);
             return 0;
         }
         catch (Exception ex)
         {
-            Ask("Kurulum olmadı:\n" + ex.Message, MbIconError);
+            Ask(Text("Kurulum olmadı:\n", "Installation failed:\n") + ex.Message, MbIconError);
             return 2;
         }
     }
 
-    // MacDock is the name builds ran under before the rename
+    // Both docks want the same screen edge, so either one running would hold the files; MacDock is the
+    // name builds ran under before the rename.
     private static void StopFloe()
     {
-        foreach (var process in Process.GetProcessesByName("Floe").Concat(Process.GetProcessesByName("MacDock")))
+        foreach (var process in Process.GetProcessesByName("Floe")
+                     .Concat(Process.GetProcessesByName("FloeCP77"))
+                     .Concat(Process.GetProcessesByName("MacDock")))
         {
             try
             {
@@ -64,7 +88,7 @@ internal static class Program
         if (Directory.Exists(install)) Directory.Delete(install, recursive: true);
         Directory.CreateDirectory(install);
         using var payload = typeof(Program).Assembly.GetManifestResourceStream("Floe.zip")
-            ?? throw new InvalidOperationException("Kurulum dosyasının içi boş.");
+            ?? throw new InvalidOperationException(Text("Kurulum dosyasının içi boş.", "The installer payload is empty."));
         using var zip = new ZipArchive(payload, ZipArchiveMode.Read);
         zip.ExtractToDirectory(install, overwriteFiles: true);
     }
@@ -79,7 +103,7 @@ internal static class Program
         int moved = 0;
         foreach (var package in Directory.EnumerateDirectories(packages))
         {
-            var source = Path.Combine(package, "LocalCache", "Roaming", "Floe");
+            var source = Path.Combine(package, "LocalCache", "Roaming", FolderName);
             if (!Directory.Exists(source)) continue;
             foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
             {
@@ -94,12 +118,32 @@ internal static class Program
         return moved;
     }
 
+#if CP77
+    // The plain dock's settings carried over once; after CP77 has pins of its own it is a separate product.
+    private static int CopyFloeSettings(string roaming, string target)
+    {
+        var source = Path.Combine(roaming, "Floe");
+        if (File.Exists(Path.Combine(target, "pinned.json")) || !Directory.Exists(source)) return 0;
+
+        int copied = 0;
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            var destination = Path.Combine(target, Path.GetRelativePath(source, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(file, destination, overwrite: true);
+            copied++;
+        }
+
+        return copied;
+    }
+#endif
+
     // a Start menu entry; Floe adds itself to autostart when it runs. COM through dynamic does not survive
     // trimming, so Windows PowerShell writes the shortcut.
     private static void Shortcut(string install)
     {
-        var link = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "Floe.lnk");
-        var target = Path.Combine(install, "Floe.exe");
+        var link = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), ProductName + ".lnk");
+        var target = Path.Combine(install, ExeName);
         static string Quote(string s) => "'" + s.Replace("'", "''") + "'";
         var script = $"$l=(New-Object -ComObject WScript.Shell).CreateShortcut({Quote(link)});" +
             $"$l.TargetPath={Quote(target)};$l.WorkingDirectory={Quote(install)};$l.Save()";
