@@ -61,8 +61,7 @@ public partial class DockWindow
         _backdrop.Height = WindowHeight;
         UpdateBackdropUnscale();
 
-        Width = _windowWidth;
-        Height = WindowHeight;
+        ApplyDockOrientation();
         // a pinned or closed app changes the width; grow or shrink from the middle, not the left edge
         if (_hwnd != IntPtr.Zero) CenterOnMonitor();
 
@@ -94,8 +93,8 @@ public partial class DockWindow
 
             var grid = new Grid { Width = IconBox, Height = IconBox };
             grid.Children.Add(image);
-            // the cyber themes' line icon, in the app artwork's place
-            grid.Children.Add(new Image { Margin = new Thickness(7), Stretch = Stretch.Uniform, Visibility = Visibility.Collapsed });
+            // the cyber themes' outline icon, in the app artwork's place; the set leaves a wide margin around its drawings
+            grid.Children.Add(new Rectangle { Margin = new Thickness(-5), Visibility = Visibility.Collapsed });
             grid.Children.Add(dot);
 
             var scale = new ScaleTransform(1, 1);
@@ -255,7 +254,7 @@ public partial class DockWindow
 
         PositionStartButton();
         PositionSections(startX + total);
-        UpdateCyberPlate(scales);
+        UpdateCyberHover(scales);
 
         if (_activeIndex >= 0 && _activeIndex < count && _auraGrid.Visibility == Visibility.Visible)
         {

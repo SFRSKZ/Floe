@@ -12,6 +12,27 @@ namespace Floe.App.Services;
 public static class IconService
 {
     private static readonly Dictionary<string, ImageSource?> Cache = new();
+    private static ImageSource? _fallbackIcon;
+
+    public static ImageSource GetFallbackIcon()
+    {
+        if (_fallbackIcon is not null) return _fallbackIcon;
+
+        var group = new DrawingGroup();
+        group.Children.Add(new GeometryDrawing(
+            new SolidColorBrush(Color.FromRgb(0x22, 0x2A, 0x36)),
+            new Pen(new SolidColorBrush(Color.FromRgb(0x9D, 0xB4, 0xCC)), 2),
+            new RectangleGeometry(new Rect(5, 7, 48, 42), 7, 7)));
+        group.Children.Add(new GeometryDrawing(
+            null,
+            new Pen(new SolidColorBrush(Color.FromRgb(0x5B, 0xC8, 0xFF)), 2.5),
+            new LineGeometry(new Point(7, 18), new Point(51, 18))));
+
+        var icon = new DrawingImage(group);
+        icon.Freeze();
+        _fallbackIcon = icon;
+        return icon;
+    }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern uint PrivateExtractIcons(string file, int index, int cx, int cy, IntPtr[] icons, uint[] ids, uint count, uint flags);

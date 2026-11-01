@@ -40,7 +40,8 @@ public sealed class GlassPanel : Grid
     private readonly Rectangle _hairline = new() { Stroke = DockWindow.BuildRimBrush(), StrokeThickness = 1, IsHitTestVisible = false };
     private readonly Border _metalSurface = new() { Background = Brushes.Transparent, IsHitTestVisible = false };
     private readonly RectangleGeometry _clip = new();
-    private readonly Path _cyberEdge = new() { StrokeThickness = 1.5, IsHitTestVisible = false };
+    // the menu's own margin leaves room for only a thin bar
+    private readonly ItemPlate _cyberEdge = new() { Bar = 4 };
     private MetalRimEffect? _metal;
 
     public GlassPanel()
@@ -66,9 +67,9 @@ public sealed class GlassPanel : Grid
             Children.Insert(2, _shade);
             Children.Insert(3, _sheen);
             Children.Insert(4, _grain);
+            Children.Insert(5, _cyberEdge);
             Children.Add(_hairline);
             Children.Add(_metalSurface);
-            Children.Add(_cyberEdge);
             ApplyRim();
             ApplySurface();
             GlassSettings.Changed += OnGlassSettingsChanged;
@@ -114,7 +115,6 @@ public sealed class GlassPanel : Grid
         _clip.RadiusX = _clip.RadiusY = radius;
         _hairline.RadiusX = _hairline.RadiusY = radius;
         _metalSurface.CornerRadius = new System.Windows.CornerRadius(radius);
-        ShapeCyberPlate(size);
         if (_metal is not null && size.Width > 0 && size.Height > 0)
         {
             _metal.Size = size;
@@ -138,37 +138,15 @@ public sealed class GlassPanel : Grid
         ApplySurface();
     }
 
-    // a cyber theme has no glass: a dark plate with a cut corner, edged in the theme's yellow
+    // a cyber theme has no glass: the item frame stands in for all of it
     private void ApplySurface()
     {
         bool cyber = GlassSettings.Cyber;
         var glass = cyber ? Visibility.Collapsed : Visibility.Visible;
-        _backdrop.Visibility = _shade.Visibility = _sheen.Visibility = _grain.Visibility = _hairline.Visibility = glass;
+        _backdrop.Visibility = _tint.Visibility = _shade.Visibility = _sheen.Visibility = _grain.Visibility = _hairline.Visibility = glass;
         _cyberEdge.Visibility = cyber ? Visibility.Visible : Visibility.Collapsed;
         TextElement.SetFontFamily(this, CyberLook.UiFont);
-        if (cyber)
-        {
-            _tint.Fill = CyberFxLayer.Solid(CyberLook.PanelInk);
-            _cyberEdge.Stroke = CyberFxLayer.Solid(CyberLook.Current.Strip);
-        }
-
-        ShapeCyberPlate(RenderSize);
-    }
-
-    private void ShapeCyberPlate(Size size)
-    {
-        if (!GlassSettings.Cyber || size.Width <= 0 || size.Height <= 0)
-        {
-            _tint.Clip = _clip;
-            return;
-        }
-
-        var plate = CyberFxLayer.Plate(new Rect(size), 12);
-        _tint.Clip = plate;
-        // inset by half the stroke, or the panel's own bounds cut the edge away along every straight side
-        var inner = new Rect(size);
-        inner.Inflate(-_cyberEdge.StrokeThickness / 2, -_cyberEdge.StrokeThickness / 2);
-        _cyberEdge.Data = CyberFxLayer.Plate(inner, 12);
+        _cyberEdge.InvalidateVisual();
     }
 
     private void ApplyRim()

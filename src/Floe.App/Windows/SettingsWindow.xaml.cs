@@ -11,6 +11,7 @@ using Floe.App.Effects.Chromatic;
 using Floe.App.Effects.MetalRim;
 using Floe.App.Services;
 using Floe.Core.Interop;
+using Floe.Core.Models;
 using Floe.Core.Services;
 
 namespace Floe.App.Windows;
@@ -32,7 +33,10 @@ public partial class SettingsWindow : Window
             replaced.Visibility = Visibility.Collapsed;
         }
 
+        TabEffect.Content = "Genel";
         TabGlass.Content = "Stüdyo";
+        ClickEffectToggle.Content = "Hex dökümü";
+        ClickSoundToggle.Content = "Tıklama sesi";
         VisualizerLookHologram.Visibility = Visibility.Collapsed;
         VisualizerLookStardust.Visibility = Visibility.Collapsed;
         VisualizerLookDustWave.Visibility = Visibility.Collapsed;
@@ -159,6 +163,7 @@ public partial class SettingsWindow : Window
 
         BuildGlassControls();
         BuildPerformanceControls();
+        BuildDockControls();
         BuildTabs();
         RefreshRows();
         AttachChromatic();
@@ -392,8 +397,8 @@ public partial class SettingsWindow : Window
 
     private void BuildTabs()
     {
-        var tabs = new[] { TabEffect, TabGlass, TabVisualizer };
-        var pages = new FrameworkElement[] { EffectPage, GlassPage, VisualizerPage };
+        var tabs = new[] { TabEffect, TabGlass, TabVisualizer, TabDock };
+        var pages = new FrameworkElement[] { EffectPage, GlassPage, VisualizerPage, DockPage };
         for (var i = 0; i < tabs.Length; i++)
         {
             var index = i;
@@ -408,6 +413,28 @@ public partial class SettingsWindow : Window
         }
 
         tabs[_lastTab].IsChecked = true;
+    }
+
+    private void BuildDockControls()
+    {
+        DockBottom.IsChecked = DockSettings.Edge == DockEdge.Bottom;
+        DockTop.IsChecked = DockSettings.Edge == DockEdge.Top;
+        DockLeft.IsChecked = DockSettings.Edge == DockEdge.Left;
+        DockRight.IsChecked = DockSettings.Edge == DockEdge.Right;
+        foreach (var (button, edge) in new[]
+        {
+            (DockBottom, DockEdge.Bottom),
+            (DockTop, DockEdge.Top),
+            (DockLeft, DockEdge.Left),
+            (DockRight, DockEdge.Right),
+        })
+        {
+            button.Checked += (_, _) => DockSettings.SetEdge(edge);
+        }
+
+        HideWindowsTaskbarToggle.IsChecked = DockSettings.HideWindowsTaskbar;
+        HideWindowsTaskbarToggle.Checked += (_, _) => DockSettings.SetHideWindowsTaskbar(true);
+        HideWindowsTaskbarToggle.Unchecked += (_, _) => DockSettings.SetHideWindowsTaskbar(false);
     }
 
     private void BuildGlassControls()
@@ -749,7 +776,7 @@ public partial class SettingsWindow : Window
     private void RefreshRows()
     {
         var spectral = AuraSettings.Effect == AuraEffect.Burst;
-        IntensityPanel.Visibility = spectral ? Visibility.Visible : Visibility.Collapsed;
+        IntensityPanel.Visibility = spectral && !Floe.Core.Services.Product.Cp77 ? Visibility.Visible : Visibility.Collapsed;
 
         var paletteActive = AuraSettings.Mode == AuraColorMode.Palette;
 

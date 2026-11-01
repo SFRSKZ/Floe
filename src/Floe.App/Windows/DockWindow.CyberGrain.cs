@@ -1,6 +1,5 @@
 using System;
 using System.Windows;
-using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
@@ -16,7 +15,6 @@ public partial class DockWindow
     private const byte GrainStrength = 30;
 
     private readonly Path _cyberGrain = new() { IsHitTestVisible = false };
-    private readonly Path _plateGrain = new() { IsHitTestVisible = false };
     private readonly TranslateTransform _grainShift = new();
     private readonly Random _grainRandom = new();
     private readonly DispatcherTimer _grainTimer = new(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(83) };
@@ -26,10 +24,8 @@ public partial class DockWindow
     private void InitializeCyberGrain()
     {
         _cyberGrain.Data = _shapeGeometry;
-        _plateGrain.SetBinding(Path.DataProperty, new Binding(nameof(Path.Data)) { Source = _cyberPlate });
-        _plateGrain.SetBinding(VisibilityProperty, new Binding(nameof(Visibility)) { Source = _cyberPlate });
         ShapeLayer.Children.Add(_cyberGrain);
-        ShapeLayer.Children.Add(_plateGrain);
+        ShapeLayer.Children.Add(_slotFill);
         _grainTimer.Tick += (_, _) => ShiftGrain();
         GlassSettings.Changed += () => Dispatcher.BeginInvoke(UpdateCyberGrain);
     }
@@ -43,7 +39,7 @@ public partial class DockWindow
             _grainBrush = MakeGrainBrush();
         }
 
-        _cyberGrain.Fill = _plateGrain.Fill = on ? _grainBrush : null;
+        _cyberGrain.Fill = on ? _grainBrush : null;
         if (on) _grainTimer.Start();
         else _grainTimer.Stop();
     }
@@ -55,7 +51,7 @@ public partial class DockWindow
         _grainShift.Y = _grainRandom.Next(GrainTile);
     }
 
-    // half the specks dark, half light, so it reads on the yellow bar and on the black plate alike
+    // half the specks dark, half light, so it reads on a light bar and on a dark one alike
     private ImageBrush MakeGrainBrush()
     {
         var random = new Random(77);

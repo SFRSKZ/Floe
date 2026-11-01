@@ -38,19 +38,10 @@ public partial class DockWindow
         }
 
         var (cursorX, cursorY) = ScreenInput.GetCursorPosition();
-        var monitorBottom = MonitorBottomPx;
-
-        var physicalWidth = rect.Right - rect.Left;
-        var pxPerDip = _windowWidth > 0 ? physicalWidth / _windowWidth : 1;
-        var centerDip = _capsuleLeft + (_capsuleWidth / 2);
-        var halfDip = (_capsuleWidth / 2) * _dockScale;
-        var left = rect.Left + ((centerDip - halfDip) * pxPerDip);
-        var right = rect.Left + ((centerDip + halfDip) * pxPerDip);
 
         if (!_shown)
         {
-            var inTrigger = cursorY >= monitorBottom - TriggerPx && cursorX >= left - 4 && cursorX <= right + 4;
-            if (inTrigger)
+            if (CursorAtDockEdge(cursorX, cursorY, AppBarBounds))
             {
                 ShowDock();
             }
@@ -58,7 +49,9 @@ public partial class DockWindow
             return;
         }
 
-        var inside = cursorX >= left - 12 && cursorX <= right + 12 && cursorY >= rect.Top - 12 && cursorY <= rect.Bottom + 12;
+        var bar = DockHoverBounds(rect);
+        var inside = cursorX >= bar.Left - 12 && cursorX <= bar.Right + 12
+            && cursorY >= bar.Top - 12 && cursorY <= bar.Bottom + 12;
         if (inside)
         {
             _outsideTicks = 0;
@@ -84,7 +77,7 @@ public partial class DockWindow
         _visualizerWindow?.PlaceBelowDock(_hwnd);
         _tronLayer?.PlaceBelowDock(_hwnd);
         _outsideTicks = 0;
-        AnimateTop(ShownTop);
+        AnimateDockToEdge(shown: true);
     }
 
     private void HideDock()
@@ -95,22 +88,20 @@ public partial class DockWindow
         }
 
         _shown = false;
+        Log("autohide slid the dock away");
         UpdateEffectVisibility();
-        AnimateTop(HiddenTop);
+        AnimateDockToEdge(shown: false);
     }
 
-    private void AnimateTop(double target)
+    private void AnimateDockToEdge(bool shown)
     {
-        var animation = new System.Windows.Media.Animation.DoubleAnimation(target, TimeSpan.FromMilliseconds(180))
+        var horizontal = DockSettings.Edge is DockEdge.Bottom or DockEdge.Top;
+        var animation = new System.Windows.Media.Animation.DoubleAnimation(EdgeOffset(shown), TimeSpan.FromMilliseconds(180))
         {
             EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut },
         };
-        BeginAnimation(TopProperty, animation);
+        BeginAnimation(horizontal ? TopProperty : LeftProperty, animation);
     }
-
-    private double ShownTop => (MonitorBottomPx / DockScale) - Height - BottomMargin + Sink;
-
-    private double HiddenTop => (MonitorBottomPx / DockScale) - TriggerShow - RestTop;
 
     private double DockScale
     {
@@ -121,52 +112,189 @@ public partial class DockWindow
         }
     }
 
-    private int MonitorBottomPx
-        => _monitorInfo.Monitor.Bottom > _monitorInfo.Monitor.Top
-            ? _monitorInfo.Monitor.Bottom
-            : ScreenInput.PrimaryScreenHeight;
-
     private bool CursorOverDock()
     {
-        if (_hwnd == IntPtr.Zero || !ScreenInput.TryGetWindowRect(_hwnd, out var rect))
+        if (_hwnd == IntPtr.Zero)
         {
             return false;
         }
 
-        var physicalWidth = rect.Right - rect.Left;
-        var pxPerDip = _windowWidth > 0 ? physicalWidth / _windowWidth : 1;
-        var centerDip = _capsuleLeft + (_capsuleWidth / 2);
-        var halfDip = (_capsuleWidth / 2) * _dockScale;
-        var left = rect.Left + ((centerDip - halfDip) * pxPerDip);
-        var right = rect.Left + ((centerDip + halfDip) * pxPerDip);
-
+        if (!ScreenInput.TryGetWindowRect(_hwnd, out var rect))
+        {
+            return false;
+        }
 
         var (x, y) = ScreenInput.GetCursorPosition();
-        return x >= left - 6 && x <= right + 6 && y >= rect.Top - 10 && y <= rect.Bottom + 6;
+        var bar = DockHoverBounds(rect);
+        return x >= bar.Left - 6 && x <= bar.Right + 6 && y >= bar.Top - 10 && y <= bar.Bottom + 6;
     }
 
     private void Reposition()
     {
         UpdateMonitor();
 
+        BeginAnimation(LeftProperty, null);
         BeginAnimation(TopProperty, null);
-        CenterOnMonitor();
-        Top = _shown ? ShownTop : HiddenTop;
-        if (BenchTop is { } benchTop) Top = benchTop;
-
+        ApplyDockOrientation();
         EnsureAppBar();
+        UpdateLayout();
+        PositionWindowAtEdge(_shown);
+        if (BenchTop is { } benchTop) Top = benchTop;
+        if (BenchLeft is { } benchLeft) Left = benchLeft;
     }
 
-    // The window is wider than the capsule and the capsule sits in its middle, so centring the window centres
-    // the dock. Width, not ActualWidth: right after a relayout ActualWidth still holds the old size.
     private void CenterOnMonitor()
     {
+        if (_monitorInfo.Monitor.Right <= _monitorInfo.Monitor.Left) return;
+        ApplyDockOrientation();
+        UpdateLayout();
+        PositionWindowAtEdge(_shown);
+    }
+
+    private void ApplyDockOrientation()
+    {
+        var edge = DockSettings.Edge;
+
+        // this runs on every relayout, and a new transform would measure the whole dock again
+        if (_orientedEdge != edge)
+        {
+            _orientedEdge = edge;
+            Root.LayoutTransform = edge switch
+            {
+                DockEdge.Left => new RotateTransform(90),
+                DockEdge.Right => new RotateTransform(270),
+                _ => Transform.Identity,
+            };
+            Root.RenderTransformOrigin = edge switch
+            {
+                DockEdge.Top => new Point(0.5, RestTop / WindowHeight),
+                DockEdge.Left => new Point(0, 0.5),
+                DockEdge.Right => new Point(1, 0.5),
+                _ => new Point(0.5, 1.0),
+            };
+        }
+
+        Root.Width = _windowWidth;
+        Root.Height = WindowHeight;
+        var vertical = edge is DockEdge.Left or DockEdge.Right;
+        Width = vertical ? WindowHeight : _windowWidth;
+        Height = vertical ? _windowWidth : WindowHeight;
+    }
+
+    private void PositionWindowAtEdge(bool shown)
+    {
+        var monitor = _monitorInfo.Monitor;
+        if (monitor.Right <= monitor.Left || monitor.Bottom <= monitor.Top) return;
+
+        var edge = DockSettings.Edge;
         var scale = DockScale;
-        var area = _monitorInfo.Monitor;
-        if (area.Right <= area.Left) return; // no monitor read yet; Reposition centres once there is
-        var width = double.IsNaN(Width) || Width <= 0 ? ActualWidth : Width;
-        Left = (area.Left / scale) + ((((area.Right - area.Left) / scale) - width) / 2);
-        if (BenchLeft is { } benchLeft) Left = benchLeft;
+        var vertical = edge is DockEdge.Left or DockEdge.Right;
+        if (vertical)
+        {
+            Top = (monitor.Top / scale) + (((monitor.Bottom - monitor.Top) / scale - Height) / 2);
+            Left = EdgeOffset(shown);
+        }
+        else
+        {
+            Left = (monitor.Left / scale) + (((monitor.Right - monitor.Left) / scale - Width) / 2);
+            Top = EdgeOffset(shown);
+        }
+    }
+
+    // Where the window stands across its edge. The bottom edge keeps the dock's own measures, so the free room under
+    // the bar stays and the scale of a compact dock does not move it; the other edges keep a margin off the screen.
+    private double EdgeOffset(bool shown)
+    {
+        var anchor = AppBarBounds;
+        var bar = CapsuleWindowBounds();
+        var scale = DockScale;
+        var edge = DockSettings.Edge;
+        if (edge == DockEdge.Bottom)
+        {
+            var bottom = anchor.Bottom / scale;
+            return shown ? bottom - Height - BottomMargin + Sink : bottom - TriggerShow - RestTop;
+        }
+
+        return (edge, shown) switch
+        {
+            (DockEdge.Top, true) => (anchor.Top / scale) - bar.Top + BottomMargin,
+            (DockEdge.Top, false) => (anchor.Top / scale) + TriggerShow - bar.Bottom,
+            (DockEdge.Left, true) => (anchor.Left / scale) - bar.Left + BottomMargin,
+            (DockEdge.Left, false) => (anchor.Left / scale) + TriggerShow - bar.Right,
+            (DockEdge.Right, true) => (anchor.Right / scale) - bar.Right - BottomMargin,
+            _ => (anchor.Right / scale) - TriggerShow - bar.Left,
+        };
+    }
+
+    // The capsule along the edge and the whole window across it: icons bulge out of the capsule on hover.
+    private ScreenInput.Rect DockHoverBounds(ScreenInput.Rect window)
+    {
+        var bar = CapsuleScreenBounds();
+        return DockSettings.Edge is DockEdge.Left or DockEdge.Right
+            ? new ScreenInput.Rect { Left = window.Left, Right = window.Right, Top = bar.Top, Bottom = bar.Bottom }
+            : new ScreenInput.Rect { Left = bar.Left, Right = bar.Right, Top = window.Top, Bottom = window.Bottom };
+    }
+
+    private bool CursorAtDockEdge(int cursorX, int cursorY, ScreenInput.Rect monitor)
+    {
+        var half = (int)Math.Ceiling((_capsuleWidth * DockScale) / 2) + 8;
+        var centerX = monitor.Left + ((monitor.Right - monitor.Left) / 2);
+        var centerY = monitor.Top + ((monitor.Bottom - monitor.Top) / 2);
+        return DockSettings.Edge switch
+        {
+            DockEdge.Top => cursorY <= monitor.Top + TriggerPx && Math.Abs(cursorX - centerX) <= half,
+            DockEdge.Left => cursorX <= monitor.Left + TriggerPx && Math.Abs(cursorY - centerY) <= half,
+            DockEdge.Right => cursorX >= monitor.Right - TriggerPx && Math.Abs(cursorY - centerY) <= half,
+            _ => cursorY >= monitor.Bottom - TriggerPx && Math.Abs(cursorX - centerX) <= half,
+        };
+    }
+
+    private Rect CapsuleWindowBounds()
+    {
+        var geometry = _glass.Data;
+        if (geometry is null || geometry.Bounds.IsEmpty)
+        {
+            return new Rect(_capsuleLeft, RestTop, _capsuleWidth, RestBarHeight);
+        }
+
+        try
+        {
+            return _glass.TransformToAncestor(this).TransformBounds(geometry.Bounds);
+        }
+        catch (InvalidOperationException)
+        {
+            return new Rect(_capsuleLeft, RestTop, _capsuleWidth, RestBarHeight);
+        }
+    }
+
+    private ScreenInput.Rect CapsuleScreenBounds()
+    {
+        try
+        {
+            var bounds = CapsuleWindowBounds();
+            var topLeft = PointToScreen(bounds.TopLeft);
+            var bottomRight = PointToScreen(bounds.BottomRight);
+            return new ScreenInput.Rect
+            {
+                Left = (int)Math.Floor(topLeft.X),
+                Top = (int)Math.Floor(topLeft.Y),
+                Right = (int)Math.Ceiling(bottomRight.X),
+                Bottom = (int)Math.Ceiling(bottomRight.Y),
+            };
+        }
+        catch (InvalidOperationException)
+        {
+            return _monitorInfo.Monitor;
+        }
+    }
+
+    private ScreenInput.Rect AppBarBounds
+    {
+        get
+        {
+            var applied = _appBar?.AppliedRect ?? default;
+            return applied.Right > applied.Left && applied.Bottom > applied.Top ? applied : _monitorInfo.Monitor;
+        }
     }
 
     /// <summary>The benchmark parks its dock here (DIP), off every screen, so it never covers the real one.</summary>
@@ -242,7 +370,40 @@ public partial class DockWindow
         // windows end above it instead of under it
         var restTop = ((ShadowRoom + RestBarHeight) * CompactScale) + BottomMargin - Sink + 4;
         var height = (int)Math.Round(Math.Max(RestBarHeight + BottomMargin, restTop) * DockScale);
-        _appBar.SetPosition(_monitorInfo.Monitor, height);
+        _appBar.SetPosition(_monitorInfo.Monitor, height, DockSettings.Edge, DockSettings.HideWindowsTaskbar || TaskbarController.IsHidden());
+        if (IsLoaded)
+        {
+            UpdateLayout();
+            PositionWindowAtEdge(_shown);
+        }
+    }
+
+    private void OnDockSettingsChanged()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(new Action(OnDockSettingsChanged));
+            return;
+        }
+
+        // the taskbar choice moves the reserved strip too, without a new edge
+        if (_lastDockEdge == DockSettings.Edge)
+        {
+            ApplyAppBarPosition();
+            return;
+        }
+
+        _lastDockEdge = DockSettings.Edge;
+        BeginAnimation(LeftProperty, null);
+        BeginAnimation(TopProperty, null);
+        ApplyDockOrientation();
+        if (_appBar is not null && _hwnd != IntPtr.Zero)
+        {
+            _appBar.Remove();
+            _appBar.Register(_hwnd);
+        }
+        UpdateShape();
+        Reposition();
     }
 
 
@@ -279,7 +440,8 @@ public partial class DockWindow
         }
 
         _fullscreenHidden = fullscreen;
-
+        var foreground = ScreenInput.GetForegroundInfo();
+        Log($"fullscreen hide={fullscreen} appbar={_appbarFullscreen} fg='{foreground.ProcessName}' title='{foreground.Title}'");
 
         if (fullscreen)
         {

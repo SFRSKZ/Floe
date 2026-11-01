@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Floe.App.Effects.Cyber;
 using Floe.App.Services;
@@ -10,14 +11,14 @@ namespace Floe.App.Windows;
 
 public partial class DockWindow
 {
-    // What the cyber themes play instead of the glass: a launch breaches a code matrix, a click on a running app
-    // tears its icon, sleep loses the signal and rains away column by column, waking boots the bar back up.
+    // What the cyber themes play instead of the glass: a click dumps the icon into its raw bytes, sleep loses the signal and rains away column by column, waking boots the bar back up.
 
     private const double FxRoom = 76;
     private const int SleepColumns = 40;
     private const string HexCells = "1C BD E9 55 7A FF 0F C4 E9 1C 55 BD";
 
-    private static readonly Color FxCyan = Color.FromRgb(0x02, 0xD7, 0xF2);
+    internal static readonly Color FxCyan = Color.FromRgb(0x02, 0xD7, 0xF2);
+    internal static readonly Color FxRed = Color.FromRgb(0xFF, 0x00, 0x3C);
     private static readonly Color FxInk = Color.FromRgb(0x0A, 0x0A, 0x10);
 
     private readonly CyberFxLayer _fx = new();
@@ -28,7 +29,7 @@ public partial class DockWindow
     private DockItemViewModel? _noticed;
     private IconSlot? _fxHover;
     private double _fxHoverStart = double.NaN;
-    private (ImageSource Red, ImageSource Cyan, Point At)? _fxGhost;
+    private (ImageSource Icon, Point At)? _fxGhost;
 
     private const double CoverSquare = 56;
     private const double CoverChamfer = 8;
@@ -67,65 +68,71 @@ public partial class DockWindow
 
     private Rect SlotBounds(IconSlot slot) => slot.Button.TransformToAncestor(Root).TransformBounds(new Rect(slot.Button.RenderSize));
 
+    private Rect SlotFrameBounds(IconSlot slot)
+    {
+        var box = SlotBounds(slot);
+        box.Inflate(6, 6);
+        box.Height = Math.Min(box.Height, Bottom - 2 - box.Top);
+        return box;
+    }
+
     private void PlayCyberClick(DockItemViewModel item)
     {
         if (_slots.FirstOrDefault(s => ReferenceEquals(s.Item, item)) is not { } slot) return;
-        if (item.Windows.Count > 0) PlayGlitch(slot);
-        else PlayBreach(slot);
+        PlayHexDump(slot);
     }
 
-    private void PlayGlitch(IconSlot slot)
+    // the icon turns cell by cell into its raw bytes, each in the colour of the pixels it stands for
+    private void PlayHexDump(IconSlot slot)
     {
-        var look = CyberLook.Current;
-        var first = CyberIcons.ForApp(slot.Item.Name, CyberFxLayer.Solid(look.Accent));
-        var second = CyberIcons.ForApp(slot.Item.Name, CyberFxLayer.Solid(FxCyan));
+        double seconds = .52 / AuraSettings.ClickSpeed;
+        const int columns = 5, rows = 6;
+        if (slot.Item.Icon is not { } icon) return;
+        var bytes = HexBrushes(icon, columns, rows);
+        var ink = CyberFxLayer.Solid(FxInk);
+        var unreadable = CyberFxLayer.Solid(FxRed);
         var seed = Environment.TickCount % 90;
-        _fx.Play(.42, (dc, p) =>
+        _fx.Play(seconds, (dc, p) =>
         {
-            const int bands = 7;
             if (!Root.IsAncestorOf(slot.Button)) return;
             var box = SlotBounds(slot);
-            box.Inflate(-box.Width * .13, -box.Height * .13);
-            double fall = 1 - p, tick = Math.Floor(p * 14);
-            for (var i = 0; i < bands; i++)
+            double width = box.Width / columns, height = box.Height / rows, tick = Math.Floor(p * seconds * 16);
+            double step = tick / (seconds * 16);
+            double reach = 1.45 * (step < .12 ? step / .12 : Math.Pow(1 - ((step - .12) / .88), 1.4));
+            for (var r = 0; r < rows; r++)
             {
-                double top = box.Top + (i * box.Height / bands);
-                double shift = (CyberFxLayer.Random(i + (tick * 30) + seed) - .5) * 30 * fall;
-                dc.PushClip(new RectangleGeometry(new Rect(box.Left - 40, top, box.Width + 80, (box.Height / bands) + .5)));
-                dc.DrawImage(first, new Rect(box.X + shift - 5, box.Y, box.Width, box.Height));
-                dc.DrawImage(second, new Rect(box.X + shift + 5, box.Y, box.Width, box.Height));
-                dc.Pop();
-            }
-        });
-    }
-
-    private void PlayBreach(IconSlot slot)
-    {
-        var ink = CyberFxLayer.Solid(FxInk);
-        var yellow = CyberFxLayer.Solid(CyberLook.Current.Strip);
-        var edge = new Pen(yellow, 1.5);
-        var cells = HexCells.Split(' ');
-        _fx.Play(.95, (dc, p) =>
-        {
-            const double width = 122, height = 64, cellW = 27, cellH = 17;
-            if (!Root.IsAncestorOf(slot.Button)) return;
-            double center = Math.Clamp(slot.Center, width / 2, _windowWidth - (width / 2));
-            var panel = new Rect(center - (width / 2), Math.Max(2, SlotBounds(slot).Top - height - 6), width, height);
-            dc.DrawGeometry(ink, edge, CyberFxLayer.Plate(panel, 7));
-            int active = Math.Min(3, (int)(CyberFxLayer.Segment(p, .2, .72) * 4));
-            double shown = CyberFxLayer.Segment(p, 0, .16) * 1.4;
-            for (var c = 0; c < 4; c++)
-            {
-                for (var r = 0; r < 3; r++)
+                for (var c = 0; c < columns; c++)
                 {
-                    if (CyberFxLayer.Random((c * 3) + r) > shown) continue;
-                    var cell = new Rect(panel.X + 7 + (c * cellW), panel.Y + 6 + (r * cellH), cellW - 2, cellH - 1);
-                    bool hit = c == active && p < .9;
-                    if (hit) dc.DrawRectangle(yellow, null, cell);
-                    _fx.Text(dc, cells[(c * 3) + r], cell.X + (cell.Width / 2), cell.Y - 1, 14, hit ? ink : yellow, TextAlignment.Center);
+                    double cell = (c * 7) + (r * 13);
+                    if (CyberFxLayer.Random(cell + seed) > reach) continue;
+                    var at = new Rect(box.X + (c * width), box.Y + (r * height), width, height);
+                    dc.DrawRectangle(ink, null, at);
+                    bool lost = CyberFxLayer.Random(cell + seed + (tick * 31)) < .14;
+                    var value = lost ? "??" : ((int)(CyberFxLayer.Random(cell + (tick * 17)) * 256)).ToString("X2");
+                    _fx.Text(dc, value, at.X + (width / 2), at.Y - 1, height * .9, lost ? unreadable : bytes[(r * columns) + c], TextAlignment.Center);
                 }
             }
         });
+    }
+
+    // the icon's colour under each cell; a cell over the transparent corners or a dark area reads in cyan
+    private static Brush[] HexBrushes(ImageSource icon, int columns, int rows)
+    {
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen()) dc.DrawImage(icon, new Rect(0, 0, columns, rows));
+        var small = new RenderTargetBitmap(columns, rows, 96, 96, PixelFormats.Pbgra32);
+        small.Render(visual);
+        var pixels = new byte[columns * rows * 4];
+        small.CopyPixels(pixels, columns * 4, 0);
+        var cyan = CyberFxLayer.Solid(FxCyan);
+        var brushes = new Brush[columns * rows];
+        for (var i = 0; i < brushes.Length; i++)
+        {
+            byte b = pixels[i * 4], g = pixels[(i * 4) + 1], r = pixels[(i * 4) + 2], a = pixels[(i * 4) + 3];
+            brushes[i] = a > 90 && r + g + b > 170 ? CyberFxLayer.Solid(Color.FromRgb(r, g, b)) : cyan;
+        }
+
+        return brushes;
     }
 
     private void SetFxHover(IconSlot? slot)
@@ -155,35 +162,33 @@ public partial class DockWindow
         if (_fxGhost is { } ghost)
         {
             var box = new Rect(ghost.At.X - 22, ghost.At.Y - 22, 44, 44);
-            dc.DrawImage(ghost.Red, new Rect(box.X + 3, box.Y, 44, 44));
-            dc.DrawImage(ghost.Cyan, box);
+            CyberFxLayer.Silhouette(dc, ghost.Icon, new Rect(box.X + 3, box.Y, 44, 44), CyberFxLayer.Solid(CyberLook.Current.Accent));
+            dc.DrawImage(ghost.Icon, box);
             var dash = new Pen(CyberFxLayer.Solid(FxCyan), 1) { DashStyle = new DashStyle(new double[] { 3, 3 }, 0) };
             dc.DrawLine(dash, new Point(ghost.At.X, box.Bottom), new Point(ghost.At.X, RestTop + (RestBarHeight / 2)));
         }
     }
 
-    // brackets on the icon, a leader and a card that decodes the name; a running app opens its window preview
-    // there instead, so it keeps the brackets and the data strip
+    // the item frame on the icon, a leader and a card that decodes the name; a running app opens its window preview
+    // there instead, so it keeps the frame and the data strip
     private void DrawScanTag(DrawingContext dc, IconSlot slot, double age)
     {
-        const double width = 150, height = 42;
+        const double width = 164, height = 46, inset = 15;
         var look = CyberLook.Current;
         var accent = CyberFxLayer.Solid(look.Accent);
-        var pen = new Pen(accent, 2);
-        var box = SlotBounds(slot);
-        box.Inflate(-2, -2);
-        CyberFxLayer.Corners(dc, box, 8, pen);
+        var box = SlotFrameBounds(slot);
+        CyberFxLayer.SlotFrame(dc, box, look.Accent, FxCyan, FxInk);
         if (slot.Item.Windows.Count > 0 || age < .08) return;
 
         bool flip = box.Right + 18 + width > _windowWidth - 4;
         double left = flip ? box.Left - 18 - width : box.Right + 18;
         var card = new Rect(left, Math.Max(2, box.Top - height - 8), width, height);
         dc.DrawLine(new Pen(accent, 1.5), new Point(flip ? box.Left : box.Right, box.Top), new Point(flip ? card.Right : card.Left, card.Bottom - 9));
-        dc.DrawGeometry(CyberFxLayer.Solid(FxInk), pen, CyberFxLayer.Plate(card, 7));
+        CyberFxLayer.ItemFrame(dc, card, look.Accent, FxCyan, FxInk);
         string name = slot.Item.Name.ToUpper(Loc.Culture);
         if (name.Length > 20) name = name[..20];
-        _fx.Text(dc, CyberFxLayer.Decode(name, CyberFxLayer.Segment(age, .08, .42), Math.Floor(age * 22)), card.X + 9, card.Y + 3, 16, CyberFxLayer.Solid(look.Strip));
-        _fx.Text(dc, Loc.T(slot.Item.IsPinned ? "SABİT // HAZIR" : "HAZIR"), card.X + 9, card.Y + 22, 12, CyberFxLayer.Solid(FxCyan));
+        _fx.Text(dc, CyberFxLayer.Decode(name, CyberFxLayer.Segment(age, .08, .42), Math.Floor(age * 22)), card.X + inset, card.Y + 5, 16, CyberFxLayer.Solid(look.Strip));
+        _fx.Text(dc, Loc.T(slot.Item.IsPinned ? "SABİT // HAZIR" : "HAZIR"), card.X + inset, card.Y + 24, 12, CyberFxLayer.Solid(FxCyan));
     }
 
     // the data strip in the free room under the bar
@@ -212,9 +217,8 @@ public partial class DockWindow
             return;
         }
 
-        var ghost = _fxGhost;
-        _fxGhost = (ghost?.Red ?? CyberIcons.ForApp(slot.Item.Name, CyberFxLayer.Solid(CyberLook.Current.Accent)),
-            ghost?.Cyan ?? CyberIcons.ForApp(slot.Item.Name, CyberFxLayer.Solid(FxCyan)), at);
+        if (slot.Item.Icon is not { } icon) return;
+        _fxGhost = (icon, at);
         UpdateFxOverlay();
     }
 
@@ -676,9 +680,13 @@ public partial class DockWindow
         if (slot is null) return;
         switch (name)
         {
-            case "glitch": PlayGlitch(slot); break;
-            case "breach": PlayBreach(slot); break;
-            case "hover": SetFxHover(slot); _fxHoverStart = -1; break;
+            case "hex": PlayHexDump(slot); break;
+            case "hover":
+                SetFxHover(slot);
+                PlaceSlotFill(slot);
+                slot.LineBrush.Color = CyberLook.Readable(CyberLook.Current.Accent, FxInk);
+                _fxHoverStart = -1;
+                break;
             case "notice": NoteCyberAttention(slot.Item); break;
             case "clock": PlayClockSplit(); break;
             case "sleep": CyberSleep(); break;

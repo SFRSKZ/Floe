@@ -107,10 +107,13 @@ internal sealed class TrayWindow : Window
             ToolTip = app.Name,
         };
 
-        // on the dock's colour a known app is the dock's own line icon; the rest show their full size icon
-        var icon = (GlassSettings.Cyber ? CyberIcons.Known($"{app.Name} {System.IO.Path.GetFileNameWithoutExtension(app.Path)}", Tone(0xFF)) : null)
-            ?? IconService.GetIcon(new DockApp { Target = app.Path }, 52) ?? app.Icon;
-        if (icon is not null)
+        var mask = GlassSettings.Cyber && GlassSettings.ContourIcons ? ContourIcons.Mask(app.Name, System.IO.Path.GetFileNameWithoutExtension(app.Path)) : null;
+        var icon = IconService.GetIcon(new DockApp { Target = app.Path }, 52) ?? app.Icon;
+        if (mask is not null)
+        {
+            cell.Child = new System.Windows.Shapes.Rectangle { Width = IconSize + 8, Height = IconSize + 8, Fill = Tone(0xFF), OpacityMask = mask };
+        }
+        else if (icon is not null)
         {
             var image = new Image { Source = icon, Width = IconSize, Height = IconSize };
             RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);

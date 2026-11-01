@@ -9,6 +9,7 @@ using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using Floe.App.Services;
 using Floe.Core.Interop;
+using Floe.Core.Models;
 
 namespace Floe.App.Windows;
 
@@ -35,6 +36,7 @@ internal sealed class IconMenuWindow : Window
     private DateTime _shownAt;
     // where the cursor was when the menu opened (the icon), in DIP
     private Point _anchor;
+    private DockEdge _edge;
 
     public event Action? Dismissed;
 
@@ -75,10 +77,9 @@ internal sealed class IconMenuWindow : Window
     }
 
     /// <summary>
-    /// Fills the list and shows it centred over <paramref name="centerX"/> with its glass ending
-    /// <paramref name="bottom"/> (screen DIP), kept inside <paramref name="work"/>.
+    /// Fills the list and opens it beside the selected dock edge, kept inside <paramref name="work"/>.
     /// </summary>
-    public void ShowFor(string title, ImageSource? icon, IReadOnlyList<(string Label, Action Run)> items, double centerX, double bottom, Rect work)
+    public void ShowFor(string title, ImageSource? icon, IReadOnlyList<(string Label, Action Run)> items, Point anchor, DockEdge edge, Rect work)
     {
         _rows.Children.Clear();
         _rows.Children.Add(Header(title, icon));
@@ -94,8 +95,21 @@ internal sealed class IconMenuWindow : Window
         var content = (FrameworkElement)Content;
         content.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var size = content.DesiredSize;
-        Left = Math.Clamp(centerX - (size.Width / 2), work.Left - Room, Math.Max(work.Left - Room, work.Right - size.Width + Room));
-        Top = Math.Max(work.Top - Room, bottom - size.Height + Room);
+        _edge = edge;
+        var left = edge switch
+        {
+            DockEdge.Left => anchor.X + 8 - Room,
+            DockEdge.Right => anchor.X - size.Width - 8 + Room,
+            _ => anchor.X - (size.Width / 2),
+        };
+        var top = edge switch
+        {
+            DockEdge.Bottom => anchor.Y - size.Height - 8 + Room,
+            DockEdge.Top => anchor.Y + 8 - Room,
+            _ => anchor.Y - (size.Height / 2),
+        };
+        Left = Math.Clamp(left, work.Left - Room, Math.Max(work.Left - Room, work.Right - size.Width + Room));
+        Top = Math.Clamp(top, work.Top - Room, Math.Max(work.Top - Room, work.Bottom - size.Height + Room));
 
         Show();
         var (anchorX, anchorY) = ScreenInput.GetCursorPosition();
@@ -136,7 +150,14 @@ internal sealed class IconMenuWindow : Window
         var ax = x - _anchor.X;
         var ay = y - _anchor.Y;
         if (Math.Sqrt((ax * ax) + (ay * ay)) <= AnchorReach) return;
-        if (x >= glass.Left && x <= glass.Right && y >= Math.Min(glass.Bottom, _anchor.Y) && y <= Math.Max(glass.Bottom, _anchor.Y)) return;
+        var corridor = _edge switch
+        {
+            DockEdge.Top => x >= glass.Left && x <= glass.Right && y >= Math.Min(glass.Top, _anchor.Y) && y <= Math.Max(glass.Top, _anchor.Y),
+            DockEdge.Left => y >= glass.Top && y <= glass.Bottom && x >= Math.Min(glass.Right, _anchor.X) && x <= Math.Max(glass.Right, _anchor.X),
+            DockEdge.Right => y >= glass.Top && y <= glass.Bottom && x >= Math.Min(glass.Left, _anchor.X) && x <= Math.Max(glass.Left, _anchor.X),
+            _ => x >= glass.Left && x <= glass.Right && y >= Math.Min(glass.Bottom, _anchor.Y) && y <= Math.Max(glass.Bottom, _anchor.Y),
+        };
+        if (corridor) return;
 
         Dismiss();
     }

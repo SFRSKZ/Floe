@@ -62,7 +62,8 @@ public partial class DockWindow
                     Pin(item);
                 }
             }),
-            (Loc.T("Konum"), () => OpenLocation(item.App)),
+            (Loc.T("Dosya konumunu aç"), () => OpenLocation(item.App)),
+            (Loc.T("İkonu değiştir"), () => OpenIconPicker(item)),
             (Loc.T("Kapat"), () => CloseApp(item)),
         };
 
@@ -89,11 +90,17 @@ public partial class DockWindow
 
         _menuOpen = true;
 
-        // above the icon at its hovered size
         var work = SettingsWindow.GetWorkArea(this);
-        var bottom = Top + IconBottom - (IconBox * HoverMaxScale) - 6;
-        _iconMenu.ShowFor(item.Name, item.Icon, actions, ToScreenX(slot.Center), bottom, work);
+        var anchor = DockAnchor(slot.Center);
+        if (DockSettings.Edge == DockEdge.Bottom) anchor.Y = Top + IconBottom - (IconBox * HoverMaxScale) + 2;
+        _iconMenu.ShowFor(item.Name, item.Icon, actions, anchor, DockSettings.Edge, work);
     }
+
+    private void OpenIconPicker(DockItemViewModel item) => new IconPickerWindow(item, () =>
+    {
+        item.ReloadIcon();
+        RebuildIcons();
+    }).Show();
 
     private static MenuItem MenuAction(string header, Action action)
     {
@@ -248,11 +255,7 @@ public partial class DockWindow
         window.Show();
         window.UpdateLayout();
         var work = SettingsWindow.GetWorkArea(this);
-        window.Left = Math.Clamp(
-            ToScreenX(Canvas.GetLeft(_clock) + (ClockWidth / 2)) - (window.ActualWidth / 2),
-            work.Left + 8, Math.Max(work.Left + 8, work.Right - window.ActualWidth - 8));
-        window.Top = Math.Clamp(Top + RestTop - window.ActualHeight - 12,
-            work.Top + 8, Math.Max(work.Top + 8, work.Bottom - window.ActualHeight - 8));
+        PlacePopover(window, DockAnchor(Canvas.GetLeft(_clock) + (ClockWidth / 2)), work, 12);
         window.Activate();
     }
 

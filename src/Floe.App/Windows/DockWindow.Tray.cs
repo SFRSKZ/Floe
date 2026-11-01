@@ -52,13 +52,14 @@ public partial class DockWindow
 
         window.Show();
         window.UpdateLayout();
-        var work = SettingsWindow.GetWorkArea(this);
-        window.Left = Math.Clamp(
-            ToScreenX(Canvas.GetLeft(_tray) + (TrayWidth / 2)) - (window.ActualWidth / 2),
-            work.Left, Math.Max(work.Left, work.Right - window.ActualWidth));
-        // the panel's shadow margin (14) lets it sit a touch closer to the dock
-        window.Top = Math.Clamp(Top + RestTop - window.ActualHeight + 2,
-            work.Top, Math.Max(work.Top, work.Bottom - window.ActualHeight));
+        KeepTrayOnDock();
         window.Activate();
+    }
+
+    // the capsule falls back once the cursor leaves for the panel, so the panel goes down with it
+    private void KeepTrayOnDock()
+    {
+        if (_trayWindow is not { IsLoaded: true } window) return;
+        PlacePopover(window, DockAnchor(Canvas.GetLeft(_tray) + (TrayWidth / 2)), SettingsWindow.GetWorkArea(this), -2);
     }
 }

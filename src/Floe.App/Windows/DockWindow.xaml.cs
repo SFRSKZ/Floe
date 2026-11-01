@@ -194,8 +194,11 @@ public partial class DockWindow : Window
     private readonly Rectangle _clockDivider = new();
     private readonly SolidColorBrush _lineBrush = new(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF));
     private PreviewWindow? _preview;
+    private IconSlot? _previewSlot;
     private HwndSource? _source;
     private IntPtr _trayIcon;
+    private DockEdge _lastDockEdge = DockEdge.Bottom;
+    private DockEdge? _orientedEdge;
 
     private readonly DispatcherTimer _clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private Color _currentGlowColor = Colors.White;
@@ -272,6 +275,10 @@ public partial class DockWindow : Window
         Root.RenderTransformOrigin = new Point(0.5, 1.0);
         Root.RenderTransform = _rootScale;
         _rootScale.Changed += (_, _) => UpdateBackdropUnscale();
+        _lastDockEdge = DockSettings.Edge;
+        ApplyDockOrientation();
+        DockSettings.Changed += OnDockSettingsChanged;
+        Closed += (_, _) => DockSettings.Changed -= OnDockSettingsChanged;
         AllowDrop = true;
         Root.AllowDrop = true;
         IconLayer.AllowDrop = true;

@@ -55,6 +55,7 @@ public partial class DockWindow
 
     private readonly Grid _quickSettings = new() { Width = StartWidth, Height = StartWidth, Background = Brushes.Transparent, Cursor = Cursors.Hand };
     private readonly Rectangle _settingsDivider = new();
+    private readonly BarcodeTag _barcodeTag = new(34) { Visibility = Visibility.Collapsed };
 
     private LiquidDropWindow? _dropWindow;
     private CubesIntroWindow? _cubesIntroWindow;
@@ -96,6 +97,8 @@ public partial class DockWindow
             divider.IsHitTestVisible = false;
             _clockLayer.Children.Add(divider);
         }
+
+        _clockLayer.Children.Add(_barcodeTag);
 
         BuildMedia();
         BuildWeather();
@@ -575,6 +578,8 @@ public partial class DockWindow
 
         Canvas.SetLeft(_settingsDivider, x + (StartGap / 2) - ((_settingsDivider.Width - 1) / 2));
         Canvas.SetTop(_settingsDivider, lineTop);
+        Canvas.SetLeft(_barcodeTag, x + (StartGap / 2) - (_barcodeTag.Width / 2));
+        Canvas.SetTop(_barcodeTag, lineTop);
         x += StartGap;
         Canvas.SetLeft(_quickSettings, x);
         Canvas.SetTop(_quickSettings, RestTop + ((RestBarHeight - StartWidth) / 2));

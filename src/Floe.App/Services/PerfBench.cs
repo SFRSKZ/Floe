@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Threading;
 using Floe.App.Windows;
+using Floe.Core.Models;
 
 namespace Floe.App.Services;
 
@@ -170,8 +171,8 @@ internal static class PerfBench
     private static void MenuShot(string file)
     {
         var menu = new IconMenuWindow { KeepOpen = true };
-        var actions = new List<(string, Action)> { ("Aç", () => { }), ("Sabitle", () => { }), ("Konum", () => { }), ("Kapat", () => { }) };
-        menu.ShowFor("Google Chrome", null, actions, 200, 260, SystemParameters.WorkArea);
+        var actions = new List<(string, Action)> { ("Aç", () => { }), ("Sabitle", () => { }), ("Dosya konumunu aç", () => { }), ("Kapat", () => { }) };
+        menu.ShowFor("Google Chrome", null, actions, new Point(200, 260), DockEdge.Bottom, SystemParameters.WorkArea);
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
         timer.Tick += (_, _) =>
         {

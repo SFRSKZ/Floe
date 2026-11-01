@@ -8,6 +8,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using Floe.App.Effects.Cyber;
 using Floe.App.Services;
+using Floe.App.ViewModels;
 
 namespace Floe.App.Windows;
 
@@ -17,14 +18,13 @@ public partial class DockWindow
     // start button, the icons, the sections and the clock. The plates share the glass's geometry, so the shadow and
     // the click-through follow them. Nothing bulges; the hovered icon stands on a plate of its own instead.
 
+    private readonly Path _slotFill = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed, Fill = CyberFxLayer.Solid(FxInk) };
     private static double CyberChamfer => 14 * GlassSettings.CyberCut;
-    private static double PlateChamfer => 9 * GlassSettings.CyberCut;
     private const double DecalRoom = 160;
     private const int SecondBars = 6;
     private const double ClockLight = 11;
 
     private readonly Path _cyberAccent = new() { IsHitTestVisible = false };
-    private readonly Path _cyberPlate = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed };
     private readonly List<(Image Image, string Key, double Size)> _inkGlyphs = new();
     private string? _weatherCondition;
     private double _sectionsX;
@@ -36,45 +36,49 @@ public partial class DockWindow
     // the markings beside the bar; the six slanted bars count the minute, one more every ten seconds
     private readonly Canvas _cyberDecal = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed };
     private static readonly Color DecalBacking = Color.FromRgb(0x0A, 0x0A, 0x10);
-    private readonly Path _decalPlate = new() { IsHitTestVisible = false };
     private readonly Path[] _secondBars = new Path[SecondBars];
     private readonly Path _decalBox = new() { StrokeThickness = 1.5 };
+    private readonly Path _decalBoxEdge = new() { StrokeThickness = 3.5 };
     private readonly Path _decalCross = new() { StrokeThickness = 1.5, Data = Geometry.Parse("M0,0 L16,16 M16,0 L0,16") };
+    private readonly Path _decalCrossEdge = new() { StrokeThickness = 3.5 };
     private readonly RotateTransform _crossTurn = new() { CenterX = 8, CenterY = 8 };
     private double _crossAngle;
     private int _shownSecond = -1;
     private int _shownTens = -1;
-    private readonly TextBlock _decalText = new() { Text = "BATCH A7-53X" + Environment.NewLine + "[ACCESS RESTRICTED]", FontSize = 11, LineHeight = 13, FontWeight = FontWeights.SemiBold };
+    private readonly Path _decalText = new(), _decalTextEdge = new() { StrokeThickness = 2.5, StrokeLineJoin = PenLineJoin.Round };
     private readonly DispatcherTimer _secondsTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 
     private void InitializeCyber()
     {
         ShapeLayer.Children.Add(_cyberAccent);
-        ShapeLayer.Children.Add(_cyberPlate);
         InitializeCyberGrain();
         ShapeLayer.Children.Add(_cyberDecal);
 
-        // the markings hang on the wallpaper, so they stand on a small dark plate of their own and read on any desktop
-        _decalPlate.Data = CyberFxLayer.Plate(new Rect(-6, -6, 152, 70), 6);
-        _decalPlate.Fill = CyberFxLayer.Solid(DecalBacking);
-        _cyberDecal.Children.Add(_decalPlate);
+        // the markings hang straight on the wallpaper; each carries a thin dark edge, so they read on any desktop
+        var edge = CyberFxLayer.Solid(DecalBacking);
+        _decalTextEdge.Stroke = edge;
+        _cyberDecal.Children.Add(_decalTextEdge);
         _cyberDecal.Children.Add(_decalText);
         for (var i = 0; i < SecondBars; i++)
         {
             double x = i * 17;
-            _secondBars[i] = new Path { Data = Geometry.Parse($"M{x + 14},0 h12 L{x + 12},30 h-12 Z") };
+            _secondBars[i] = new Path { Data = Geometry.Parse($"M{x + 14},0 h12 L{x + 12},30 h-12 Z"), Stroke = edge, StrokeThickness = 1 };
             Canvas.SetTop(_secondBars[i], 28);
             _cyberDecal.Children.Add(_secondBars[i]);
         }
 
         _decalBox.Data = Geometry.Parse("M0,0 H16 V16 H0 Z");
-        Canvas.SetLeft(_decalBox, 124);
-        Canvas.SetTop(_decalBox, 35);
-        _cyberDecal.Children.Add(_decalBox);
-        _decalCross.RenderTransform = _crossTurn;
-        Canvas.SetLeft(_decalCross, 124);
-        Canvas.SetTop(_decalCross, 35);
-        _cyberDecal.Children.Add(_decalCross);
+        _decalBoxEdge.Data = _decalBox.Data;
+        _decalBoxEdge.Stroke = edge;
+        _decalCrossEdge.Data = _decalCross.Data;
+        _decalCrossEdge.Stroke = edge;
+        _decalCross.RenderTransform = _decalCrossEdge.RenderTransform = _crossTurn;
+        foreach (var mark in new[] { _decalBoxEdge, _decalCrossEdge, _decalBox, _decalCross })
+        {
+            Canvas.SetLeft(mark, 124);
+            Canvas.SetTop(mark, 35);
+            _cyberDecal.Children.Add(mark);
+        }
 
         _secondsTimer.Tick += (_, _) => ShowSeconds();
         _secondsTimer.Start();
@@ -106,26 +110,6 @@ public partial class DockWindow
         _crossTurn.BeginAnimation(RotateTransform.AngleProperty, turn);
     }
 
-    // a barcode stands in for the last divider only; a whole row of them is noise
-    private static Brush Barcode(Color ink)
-    {
-        var rows = new GeometryGroup();
-        double y = 0;
-        var i = 0;
-        int[] pattern = { 3, 1, 2, 1, 4, 2, 1, 3, 1, 1, 2, 3, 1, 2, 3, 1 };
-        while (y < 34)
-        {
-            double row = Math.Min(pattern[i % pattern.Length], 34 - y);
-            rows.Children.Add(new RectangleGeometry(new Rect(0, y, 10, row)));
-            y += row + pattern[(i + 5) % pattern.Length];
-            i++;
-        }
-
-        var brush = new DrawingBrush(new GeometryDrawing(new SolidColorBrush(ink), null, rows)) { Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top };
-        brush.Freeze();
-        return brush;
-    }
-
     private static void AddPlate(PathGeometry target, double left, double top, double right, double bottom, double chamfer)
     {
         var figure = new PathFigure { IsClosed = true, IsFilled = true, StartPoint = new Point(left + chamfer, top) };
@@ -152,22 +136,14 @@ public partial class DockWindow
         Canvas.SetTop(_cyberDecal, top + 6);
     }
 
-    // every frame with the layout: the plate behind the most magnified icon, as tall as the icon stands
-    private void UpdateCyberPlate(IReadOnlyList<double> scales)
+    // every frame with the layout: the most magnified icon takes the item frame
+    private void UpdateCyberHover(IReadOnlyList<double> scales)
     {
-        if (!GlassSettings.Cyber || scales.Count == 0)
+        if (!GlassSettings.Cyber || scales.Count == 0 || _isDragging)
         {
             SetFxHover(null);
-            _cyberPlate.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        // a held icon leaves its plate behind, and in the plate's colour it would vanish into the bar
-        if (_isDragging)
-        {
-            SetFxHover(null);
-            _cyberPlate.Visibility = Visibility.Collapsed;
-            foreach (var held in _slots) held.LineBrush.Color = CyberLook.Current.Ink;
+            PlaceSlotFill(null);
+            foreach (var slot in _slots) slot.LineBrush.Color = CyberLook.Current.Ink;
             return;
         }
 
@@ -179,27 +155,24 @@ public partial class DockWindow
 
         var lift = (scales[index] - 1) / (HoverMaxScale - 1);
         lift = Math.Round(lift * 6) / 6; // it climbs in steps, it does not swell
-        SetFxHover(lift > .3 ? _slots[index] : null);
+        var hovered = lift > .3 ? _slots[index] : null;
+        SetFxHover(hovered);
+        PlaceSlotFill(hovered);
+
+        // the frame's inside is dark on every theme, where the ink would vanish
         var look = CyberLook.Current;
-        for (var i = 0; i < _slots.Count; i++)
+        foreach (var slot in _slots)
         {
-            var color = i == index && lift > 0.35 ? CyberLook.Readable(look.Accent, look.Ink) : look.Ink;
-            if (_slots[i].LineBrush.Color != color) _slots[i].LineBrush.Color = color;
+            var color = ReferenceEquals(slot, hovered) ? CyberLook.Readable(look.Accent, FxInk) : look.Ink;
+            if (slot.LineBrush.Color != color) slot.LineBrush.Color = color;
         }
+    }
 
-        if (lift < 0.04)
-        {
-            _cyberPlate.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        var slot = _slots[index];
-        var half = ((IconBox * scales[index]) / 2) + 5;
-        var plate = new PathGeometry();
-        AddPlate(plate, slot.Center - half, IconBottom - (IconBox * scales[index]) - 6, slot.Center + half, Bottom, PlateChamfer);
-        _cyberPlate.Data = plate;
-        _cyberPlate.Opacity = Math.Min(1, lift * 2);
-        _cyberPlate.Visibility = Visibility.Visible;
+    // the frame's inside sits under the icons, its lines over them
+    private void PlaceSlotFill(IconSlot? slot)
+    {
+        _slotFill.Visibility = slot is null ? Visibility.Collapsed : Visibility.Visible;
+        if (slot is not null) _slotFill.Data = CyberFxLayer.SlotOutline(SlotFrameBounds(slot));
     }
 
     // the text and glyphs that sit on the dock itself
@@ -247,14 +220,24 @@ public partial class DockWindow
         if (cyber)
         {
             _decalBox.Stroke = CyberFxLayer.Solid(CyberLook.Readable(look.Body, DecalBacking));
-            _decalText.Foreground = CyberFxLayer.Solid(Color.FromRgb(0xF3, 0xEF, 0xDC));
-            _decalText.FontFamily = CyberLook.Font;
+            _decalText.Fill = CyberFxLayer.Solid(Color.FromRgb(0xF3, 0xEF, 0xDC));
+            var words = new FormattedText(
+                "BATCH A7-53X" + Environment.NewLine + "[ACCESS RESTRICTED]",
+                System.Globalization.CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight,
+                new Typeface(CyberLook.Font, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal),
+                11,
+                Brushes.White,
+                VisualTreeHelper.GetDpi(this).PixelsPerDip)
+            { LineHeight = 13 };
+            _decalText.Data = _decalTextEdge.Data = words.BuildGeometry(default);
             ShowSeconds();
         }
 
         bool barcode = cyber;
-        _settingsDivider.Width = barcode ? 10 : 1;
-        _settingsDivider.Fill = barcode ? Barcode(ink) : _lineBrush;
+        _settingsDivider.Visibility = barcode ? Visibility.Collapsed : Visibility.Visible;
+        _barcodeTag.Visibility = barcode ? Visibility.Visible : Visibility.Collapsed;
+        _barcodeTag.Paint(look.Ink);
 
         // the clock's divider is a warning light on the HUD
         _clockDivider.Width = barcode ? ClockLight : 1;
@@ -262,9 +245,6 @@ public partial class DockWindow
         _clockDivider.RadiusX = _clockDivider.RadiusY = barcode ? 0 : .5;
         _clockDivider.Fill = barcode ? CyberFxLayer.Solid(look.Accent) : _lineBrush;
         _clockDivider.Opacity = 1;
-        var plate = new SolidColorBrush(look.Ink);
-        plate.Freeze();
-        _cyberPlate.Fill = plate;
         _grain.Visibility = cyber ? Visibility.Collapsed : Visibility.Visible;
 
         foreach (var (image, key, size) in _inkGlyphs)
@@ -279,16 +259,23 @@ public partial class DockWindow
         foreach (var slot in _slots) ApplyCyberIcon(slot);
     }
 
-    // the cyber themes draw every app as a line icon in the ink, as one family, and hide its own artwork
+    // the cyber themes draw the apps of the outline set in the ink, as one family; the rest keep their own artwork
     private void ApplyCyberIcon(IconSlot slot)
     {
-        if (slot.Button.Content is not Grid { Children: [Image artwork, Image line, ..] }) return;
-        bool cyber = GlassSettings.Cyber;
-        artwork.Visibility = cyber ? Visibility.Hidden : Visibility.Visible;
-        line.Visibility = cyber ? Visibility.Visible : Visibility.Collapsed;
-        if (!cyber) return;
+        if (slot.Button.Content is not Grid { Children: [Image artwork, Rectangle line, ..] }) return;
+        var mask = ContourMask(slot.Item);
+        artwork.Visibility = mask is null ? Visibility.Visible : Visibility.Hidden;
+        line.Visibility = mask is null ? Visibility.Collapsed : Visibility.Visible;
         slot.LineBrush.Color = CyberLook.Current.Ink;
-        line.Source ??= CyberIcons.ForApp(slot.Item.Name, slot.LineBrush);
+        line.Fill = slot.LineBrush;
+        line.OpacityMask = mask;
+    }
+
+    private static ImageBrush? ContourMask(DockItemViewModel item)
+    {
+        if (!GlassSettings.Cyber || !GlassSettings.ContourIcons) return null;
+        if (IconChoices.SetIcon(item.App) is { } file) return ContourIcons.Load(file);
+        return IconChoices.HasChoice(item.App) ? null : ContourIcons.Mask(item.Name, item.ProcessName);
     }
 
     private static string CyberGlyph(string key) => key == "settings" ? "adjustments-horizontal" : "chevron-up";

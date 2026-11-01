@@ -14,10 +14,10 @@ public sealed class DockItemViewModel
         IsPinned = isPinned;
         ProcessName = ExtractProcessName(AppLauncher.ResolveTarget(app));
 
-        Icon = IconService.GetIcon(app);
+        ReloadIcon();
         if (Icon is null && window != IntPtr.Zero)
         {
-            Icon = IconService.GetWindowIcon(window);
+            Icon = IconService.GetWindowIcon(window) ?? IconService.GetFallbackIcon();
         }
 
         Glow = IconService.GetGlowColor(app);
@@ -25,9 +25,16 @@ public sealed class DockItemViewModel
 
     public DockApp App { get; }
 
+    /// <summary>Reads the icon again after a new one was picked for this app.</summary>
+    public void ReloadIcon()
+    {
+        var file = IconChoices.File(App);
+        Icon = (file is null ? null : IconService.GetIcon(new DockApp { Target = App.Target, IconPath = file })) ?? IconService.GetIcon(App);
+    }
+
     public string Name => App.Name;
 
-    public ImageSource? Icon { get; }
+    public ImageSource? Icon { get; private set; }
 
     public Color Glow { get; }
 

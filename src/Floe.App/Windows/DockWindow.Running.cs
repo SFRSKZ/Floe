@@ -43,7 +43,7 @@ public partial class DockWindow
         var self = Process.GetCurrentProcess().Id;
         var windows = AppWindows.Enumerate(self);
 
-        var remaining = windows.Where(window => !IsHelperProcess(window.ProcessName)).ToList();
+        var remaining = windows.ToList();
 
         foreach (var pinned in _pinnedList)
         {
@@ -61,6 +61,9 @@ public partial class DockWindow
                 pinned.Windows = Array.Empty<IntPtr>();
             }
         }
+
+        // a helper's window belongs to its pinned app (Steam's are steamwebhelper's) but is no app of its own
+        remaining.RemoveAll(window => IsHelperProcess(window.ProcessName));
 
         var grouped = new Dictionary<string, (string Path, List<IntPtr> Windows)>(StringComparer.OrdinalIgnoreCase);
         foreach (var window in remaining)

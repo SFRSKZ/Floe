@@ -63,10 +63,10 @@ public partial class SettingsWindow
         var parts = new WrapPanel { Margin = new Thickness(0, 8, 0, 4) };
         foreach (var (part, name, tip) in new[]
         {
-            (StudioPart.Body, "Gövde", "Dockun rengi"),
-            (StudioPart.Accent, "Vurgu", "Üstüne gelinen ikon, çalışan noktaları, medya çubuğu"),
+            (StudioPart.Body, "Gövde", "Dock'un rengi"),
+            (StudioPart.Accent, "Vurgu", "Üstüne gelinen ikonun çerçevesi, çalışan noktaları, medya çubuğu"),
             (StudioPart.Strip, "Şerit", "Menü kenarları, HUD yazıları, seçili düğmeler"),
-            (StudioPart.Ink, "Yazı", "İkonlar, saat, yazılar ve ikonun altındaki plaka"),
+            (StudioPart.Ink, "Yazı", "Saat ve yazılar"),
         })
         {
             var tab = new RadioButton { GroupName = "StudioPart", Style = (Style)FindResource("ModeToggle"), Content = name, ToolTip = tip };
@@ -103,6 +103,16 @@ public partial class SettingsWindow
         var grain = new Slider { Style = (Style)FindResource("GlassSlider"), Minimum = 0.3, Maximum = 2, Value = GlassSettings.GrainAmount };
         grain.ValueChanged += (_, _) => GlassSettings.SetGrainAmount(grain.Value);
 
+        var contour = new CheckBox
+        {
+            Style = (Style)FindResource("GlassToggle"),
+            Content = "Kontur ikonlar",
+            ToolTip = "Uygulamaların kendi ikonları yerine tek renk çizgi ikonlar",
+            IsChecked = GlassSettings.ContourIcons,
+        };
+        contour.Checked += (_, _) => GlassSettings.SetContourIcons(true);
+        contour.Unchecked += (_, _) => GlassSettings.SetContourIcons(false);
+
         var reset = new Button { Style = (Style)FindResource("GlassButton"), Content = "Otomatik", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 3, 12, 3), Margin = new Thickness(0, 4, 0, 0), Foreground = CloseButton.Foreground };
         _studioReset = reset;
         reset.Click += (_, _) => SetPart(null);
@@ -119,6 +129,8 @@ public partial class SettingsWindow
         StudioHost.Children.Add(StudioTitle("Şekil"));
         StudioHost.Children.Add(StudioRow("Köşe kesimi", cut));
         StudioHost.Children.Add(StudioRow("Gren miktarı", grain));
+        StudioHost.Children.Add(StudioTitle("İkonlar"));
+        StudioHost.Children.Add(contour);
 
         _studioTabs[StudioPart.Body].IsChecked = true;
         DrawStudioPacks();
@@ -307,13 +319,13 @@ public partial class SettingsWindow
         var plate = Plate(Left, Top, Width, Height, cut);
         Add(new Path { Data = plate, Fill = new SolidColorBrush(look.Body) }, StudioPart.Body);
 
-        // the icons: the second one stands hovered, on its plate, in the accent
+        // the icons: the second one stands hovered, in its frame, in the accent
         const double Icon = 16;
         for (int i = 0; i < 5; i++)
         {
             double x = Left + 22 + (i * 36);
             bool hovered = i == 1;
-            if (hovered) Add(new Path { Data = Plate(x - 8, Top + 3, Icon + 16, Height - 3, 5 * GlassSettings.CyberCut), Fill = new SolidColorBrush(look.Ink) }, StudioPart.Ink);
+            if (hovered) Add(new Path { Data = Plate(x - 8, Top + 3, Icon + 16, Height - 3, 5 * GlassSettings.CyberCut), Stroke = new SolidColorBrush(look.Accent), StrokeThickness = 1.5 }, StudioPart.Accent);
             Add(new Path { Data = Plate(x, Top + 13, Icon, Icon, 4), Fill = new SolidColorBrush(hovered ? look.Accent : look.Ink) }, hovered ? StudioPart.Accent : StudioPart.Ink);
         }
 

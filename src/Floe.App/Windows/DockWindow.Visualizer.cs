@@ -91,7 +91,8 @@ public partial class DockWindow
         // the strip covers the space the dock reserves at the bottom of the monitor
         var scale = DockScale;
         var area = _monitorInfo.Monitor;
-        var dockRect = new Rect(new Point(ToScreenX(_capsuleLeft), ToScreenY(RestTop)), new Point(ToScreenX(_capsuleLeft + _capsuleWidth), ToScreenY(RestTop + RestBarHeight)));
+        var bounds = CapsuleScreenBounds();
+        var dockRect = new Rect(bounds.Left / scale, bounds.Top / scale, (bounds.Right - bounds.Left) / scale, (bounds.Bottom - bounds.Top) / scale);
         // the feedback looks fill their whole strip, so they stand above the dock instead of hiding behind it;
         // the strip takes the extra height only when the GPU layer actually carries the look. It is placed at the
         // height it already has: a passing size would resize the layer, and a resize wipes a feedback field

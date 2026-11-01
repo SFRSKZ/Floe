@@ -169,6 +169,8 @@ public static class GlassSettings
 
     public static bool FilmGrain { get; private set; }
 
+    public static bool ContourIcons { get; private set; } = true;
+
     public static AppLanguage Language { get; private set; }
 
     public static bool GlyphNegative { get; private set; }
@@ -266,6 +268,7 @@ public static class GlassSettings
             Surface = Enum.TryParse<DockSurface>(model.Surface, true, out var surface) ? surface : DockSurface.Classic;
             Shrink = model.Shrink;
             FilmGrain = model.FilmGrain;
+            ContourIcons = model.ContourIcons;
             Language = Enum.TryParse<AppLanguage>(model.Language, true, out var language) ? language : AppLanguage.Auto;
             GlyphNegative = model.GlyphNegative;
             VisualizerThemeColours = model.VisualizerThemeColours;
@@ -421,6 +424,18 @@ public static class GlassSettings
         }
 
         Language = language;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetContourIcons(bool enabled)
+    {
+        if (ContourIcons == enabled)
+        {
+            return;
+        }
+
+        ContourIcons = enabled;
         Save();
         Changed?.Invoke();
     }
@@ -727,6 +742,7 @@ public static class GlassSettings
                 Surface = Surface.ToString(),
                 Shrink = Shrink,
                 FilmGrain = FilmGrain,
+                ContourIcons = ContourIcons,
                 Language = Language.ToString(),
                 GlyphNegative = GlyphNegative,
                 VisualizerThemeColours = VisualizerThemeColours,
@@ -804,6 +820,8 @@ public static class GlassSettings
         public bool Shrink { get; set; } = true;
 
         public bool FilmGrain { get; set; }
+
+        public bool ContourIcons { get; set; } = true;
 
         public string Language { get; set; } = nameof(AppLanguage.Auto);
 

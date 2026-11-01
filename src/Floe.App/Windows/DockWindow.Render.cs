@@ -209,6 +209,7 @@ public partial class DockWindow
         ApplyLayout(scales);
         UpdateShape();
         UpdateGlow();
+        KeepTrayOnDock();
 
         var settled = _targetBulge == 0
             && _currentBulge < 0.3

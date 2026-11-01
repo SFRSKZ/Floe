@@ -26,6 +26,8 @@
     <EmbeddedResource Include="Effects\Glass\LiquidGlass.hlsl" LogicalName="Floe.LiquidGlass.hlsl" />
     <EmbeddedResource Include="Effects\Visualizer\LedScreen.hlsl" LogicalName="Floe.LedScreen.hlsl" />
     <Resource Include="Assets\Fonts\*.ttf" />
+    <Resource Include="Assets\ContourIcons\*.png" />
+    <Resource Include="Assets\ContourIcons\names.csv" />
   </ItemGroup>
 
   <ItemGroup>

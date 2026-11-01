@@ -150,6 +150,74 @@ public sealed class CyberFxLayer : FrameworkElement
         return brush;
     }
 
+    private const double SlotCut = 9;
+
+    /// <summary>
+    /// An inventory slot: a square-cornered plate with a rarity bar down its left edge, a bracket at the top right and a
+    /// cut bottom right corner with its stripe.
+    /// </summary>
+    public static void ItemFrame(DrawingContext dc, Rect r, Color accent, Color cyan, Color ink, bool hot = false, double bar = 7)
+    {
+        const double cut = 9, tick = 3;
+        var outline = Polygon(new Point(r.Left, r.Top), new Point(r.Right, r.Top), new Point(r.Right, r.Bottom - cut), new Point(r.Right - cut, r.Bottom), new Point(r.Left, r.Bottom));
+        dc.DrawGeometry(Solid(ink), null, outline);
+
+        dc.DrawGeometry(null, new Pen(Solid(hot ? cyan : Color.FromArgb(0x80, cyan.R, cyan.G, cyan.B)), hot ? 2 : 1), outline);
+
+        dc.DrawRectangle(Solid(accent), null, new Rect(r.Left, r.Top, bar, r.Height));
+        var notch = new Pen(Solid(ink), 1);
+        for (double y = r.Top + 7; y < r.Top + 16; y += tick) dc.DrawLine(notch, new Point(r.Left + 2, y), new Point(r.Left + bar - 2, y));
+
+        var bracket = new Pen(Solid(cyan), 2);
+        dc.DrawLine(bracket, new Point(r.Right - 10, r.Top), new Point(r.Right, r.Top));
+        dc.DrawLine(bracket, new Point(r.Right, r.Top - 1), new Point(r.Right, r.Top + 6));
+        dc.DrawGeometry(Solid(cyan), null, Polygon(new Point(r.Right, r.Bottom - cut - 6), new Point(r.Right, r.Bottom - cut), new Point(r.Right - cut, r.Bottom), new Point(r.Right - cut - 6, r.Bottom)));
+    }
+
+    /// <summary>
+    /// The lines of <see cref="ItemFrame"/> around an icon, drawn over the icons so that its neighbours cannot hide them;
+    /// <see cref="SlotOutline"/> fills it from under the icon. Its dark edge carries it across a dock of any colour and a
+    /// neighbour of any shape.
+    /// </summary>
+    public static void SlotFrame(DrawingContext dc, Rect r, Color accent, Color cyan, Color ink)
+    {
+        const double cut = SlotCut, bar = 5, tick = 3;
+        var outline = SlotOutline(r);
+        r = Snap(r);
+        dc.DrawGeometry(null, new Pen(Solid(ink), 3), outline);
+        dc.DrawGeometry(null, new Pen(Solid(cyan), 1), outline);
+
+        dc.DrawRectangle(Solid(accent), new Pen(Solid(ink), 1), new Rect(r.Left - 2, r.Top, bar, r.Height));
+        var notch = new Pen(Solid(ink), 1);
+        for (double y = r.Top + 7; y < r.Top + 16; y += tick) dc.DrawLine(notch, new Point(r.Left - 2, y), new Point(r.Left - 2 + bar, y));
+
+        dc.DrawGeometry(Solid(cyan), new Pen(Solid(ink), 1), Polygon(new Point(r.Right, r.Bottom - cut - 6), new Point(r.Right, r.Bottom - cut), new Point(r.Right - cut, r.Bottom), new Point(r.Right - cut - 6, r.Bottom)));
+    }
+
+    /// <summary>The frame's shape, snapped to whole pixels so the lines stay sharp.</summary>
+    public static Geometry SlotOutline(Rect r)
+    {
+        r = Snap(r);
+        return Polygon(new Point(r.Left, r.Top), new Point(r.Right, r.Top), new Point(r.Right, r.Bottom - SlotCut), new Point(r.Right - SlotCut, r.Bottom), new Point(r.Left, r.Bottom));
+    }
+
+    private static Rect Snap(Rect r) => new(Math.Round(r.X) + .5, Math.Round(r.Y) + .5, Math.Round(r.Width), Math.Round(r.Height));
+
+    /// <summary>The icon's silhouette in one colour.</summary>
+    public static void Silhouette(DrawingContext dc, ImageSource icon, Rect r, Brush brush)
+    {
+        dc.PushOpacityMask(new ImageBrush(icon) { ViewportUnits = BrushMappingMode.Absolute, Viewport = r });
+        dc.DrawRectangle(brush, null, r);
+        dc.Pop();
+    }
+
+    private static Geometry Polygon(params Point[] points)
+    {
+        var figure = new PathFigure { IsClosed = true, IsFilled = true, StartPoint = points[0] };
+        figure.Segments.Add(new PolyLineSegment(points[1..], true));
+        return new PathGeometry(new[] { figure });
+    }
+
     public static Geometry Plate(Rect r, double chamfer)
     {
         var figure = new PathFigure { IsClosed = true, IsFilled = true, StartPoint = new Point(r.Left + chamfer, r.Top) };
@@ -157,7 +225,7 @@ public sealed class CyberFxLayer : FrameworkElement
         {
             new Point(r.Right, r.Top), new Point(r.Right, r.Bottom - chamfer), new Point(r.Right - chamfer, r.Bottom),
             new Point(r.Left, r.Bottom), new Point(r.Left, r.Top + chamfer),
-        }, false));
+        }, true));
         return new PathGeometry(new[] { figure });
     }
 

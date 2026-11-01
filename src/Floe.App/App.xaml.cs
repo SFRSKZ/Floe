@@ -15,12 +15,15 @@ public partial class App : Application
     private bool _hideTaskbar;
     private bool _dockRunning;
     private DispatcherTimer? _taskbarTimer;
+    private string[] _startupArgs = Array.Empty<string>();
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         // Before anything reads settings: bring them over from the MacDock days.
         Floe.Core.Services.LegacyMigration.Run(Environment.ProcessPath);
+        Services.DockSettings.Load();
+        _startupArgs = e.Args;
 
         // FLOE_WEAK stands in for a low-end PC: two cores, and with FLOE_WEAK=gpu no GPU either.
         if (Environment.GetEnvironmentVariable("FLOE_WEAK") is { } weak)
@@ -46,8 +49,7 @@ public partial class App : Application
                 // logging must never throw
             }
 
-            // Once the dock is up it replaces the taskbar: dying would leave the user with no
-            // taskbar and no Start menu, so log and keep running. Startup failures and render
+            // Once the dock is up, log and keep it running after an exception. Startup failures and render
             // runs still crash so the process does not linger invisibly.
             args.Handled = _dockRunning;
         };
@@ -171,30 +173,6 @@ public partial class App : Application
         }
 
         var autoHide = e.Args.Any(a => a.Equals("--autohide", StringComparison.OrdinalIgnoreCase));
-        _hideTaskbar = !e.Args.Any(a => a.Equals("--keep-taskbar", StringComparison.OrdinalIgnoreCase));
-
-        if (_hideTaskbar)
-        {
-            TaskbarController.Hide();
-
-            _taskbarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-            _taskbarTimer.Tick += (_, _) =>
-            {
-                if (_hideTaskbar && !TaskbarController.IsHidden())
-                {
-                    TaskbarController.Hide();
-                }
-            };
-            _taskbarTimer.Start();
-
-            Exit += (_, _) => TaskbarController.Show();
-            AppDomain.CurrentDomain.ProcessExit += (_, _) => TaskbarController.Show();
-        }
-        else
-        {
-            // recover from a previous forced kill that left the taskbar hidden
-            TaskbarController.Show();
-        }
 
         var blurArg = e.Args
             .FirstOrDefault(a => a.StartsWith("--blur=", StringComparison.OrdinalIgnoreCase))?["--blur=".Length..];
@@ -205,6 +183,19 @@ public partial class App : Application
 
         var renderPath = e.Args
             .FirstOrDefault(a => a.StartsWith("--render=", StringComparison.OrdinalIgnoreCase))?["--render=".Length..];
+
+        if (renderPath is null)
+        {
+            ConfigureTaskbarPreference(restoreWhenVisible: true);
+            Services.DockSettings.Changed += OnDockSettingsChanged;
+            Exit += (_, _) =>
+            {
+                _taskbarTimer?.Stop();
+                Services.DockSettings.Changed -= OnDockSettingsChanged;
+                TaskbarController.Show();
+            };
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => TaskbarController.Show();
+        }
 
         if (renderPath is null
             && !e.Args.Any(a => a.Equals("--no-autostart", StringComparison.OrdinalIgnoreCase))
@@ -250,6 +241,38 @@ public partial class App : Application
                 RenderDock(dock, renderPath, backgroundArg);
                 Shutdown();
             });
+        }
+    }
+
+    private void OnDockSettingsChanged()
+        => ConfigureTaskbarPreference(restoreWhenVisible: true);
+
+    private void ConfigureTaskbarPreference(bool restoreWhenVisible)
+    {
+        var forceVisible = _startupArgs.Any(a => a.Equals("--keep-taskbar", StringComparison.OrdinalIgnoreCase));
+        var forceHidden = _startupArgs.Any(a => a.Equals("--hide-taskbar", StringComparison.OrdinalIgnoreCase));
+        _hideTaskbar = !forceVisible && (forceHidden || Services.DockSettings.HideWindowsTaskbar);
+
+        if (_hideTaskbar)
+        {
+            TaskbarController.Hide();
+            _taskbarTimer ??= new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+            _taskbarTimer.Tick -= EnforceTaskbarPreference;
+            _taskbarTimer.Tick += EnforceTaskbarPreference;
+            _taskbarTimer.Start();
+        }
+        else
+        {
+            _taskbarTimer?.Stop();
+            if (restoreWhenVisible) TaskbarController.Show();
+        }
+    }
+
+    private void EnforceTaskbarPreference(object? sender, EventArgs e)
+    {
+        if (_hideTaskbar && !TaskbarController.IsHidden())
+        {
+            TaskbarController.Hide();
         }
     }
 

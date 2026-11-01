@@ -226,7 +226,8 @@ public partial class DockWindow
                 _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, null);
             }
 
-            SetIconEffect((Image)((Grid)_slots[_activeIndex].Button.Content).Children[0], item);
+            // the cyber themes keep the icon as it is
+            SetIconEffect(GlassSettings.Cyber ? null : (Image)((Grid)_slots[_activeIndex].Button.Content).Children[0], item);
             return;
         }
 

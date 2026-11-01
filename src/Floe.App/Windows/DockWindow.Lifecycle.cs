@@ -46,7 +46,11 @@ public partial class DockWindow
         _source?.AddHook(WndProc);
         if (_source is not null) CaptureReveal.Initialize(_source);
         WatchUsbDevices();
-        IsVisibleChanged += (_, _) => UpdateEffectVisibility();
+        IsVisibleChanged += (_, _) =>
+        {
+            Log($"dock visible={IsVisible}");
+            UpdateEffectVisibility();
+        };
 
         _taskbarCreatedMessage = TrayNotification.TaskbarCreatedMessage;
         DpiChanged += OnDpiChanged;
@@ -166,6 +170,7 @@ public partial class DockWindow
 
     private void ToggleDockVisible()
     {
+        Log("tray toggled the dock");
         if (IsVisible)
         {
             Hide();
@@ -188,7 +193,7 @@ public partial class DockWindow
             (Loc.T(AutoStart.IsEnabled() ? "Açılışta başlatmayı kapat" : "Açılışta başlat"), AutoStart.Toggle),
             (Loc.T("Kayıt modu"), () => CaptureReveal.Recording = !CaptureReveal.Recording),
             ("-", () => { }),
-            (Loc.T("Çıkış"), () => Application.Current.Shutdown()),
+            (Loc.T(Floe.Core.Services.Product.QuitLabel), () => Application.Current.Shutdown()),
         };
 
         var index = TrayNotification.ShowMenu(_hwnd, x, y, actions.Select(action => action.Label).ToList(), CaptureReveal.Recording ? 4 : -1);

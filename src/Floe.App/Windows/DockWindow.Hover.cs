@@ -184,17 +184,19 @@ public partial class DockWindow
             _preview.MouseLeave += (_, _) => StartPreviewHideTimer();
             _preview.WindowActivated += HidePreview;
             _preview.SourcesGone += HidePreview;
+            _preview.SourcesChanged += () =>
+            {
+                if (_previewSlot is { } shown) PlacePopover(_preview, DockAnchor(shown.Center), SettingsWindow.GetWorkArea(this));
+            };
             _previewHideTimer.Tick += (_, _) => FinishPreviewHide();
         }
 
         _previewHideTimer.Stop();
+        _previewSlot = slot;
         _preview.Show();
         _preview.ShowFor(slot.Item.Windows);
 
-        var left = ToScreenX(slot.Center) - (_preview.Width / 2);
-        left = Math.Max(8, Math.Min(left, SystemParameters.PrimaryScreenWidth - _preview.Width - 8));
-        _preview.Left = left;
-        _preview.Top = Top + RestTop - _preview.Height - 10;
+        PlacePopover(_preview, DockAnchor(slot.Center), SettingsWindow.GetWorkArea(this));
     }
 
     private void ShowTooltip()
