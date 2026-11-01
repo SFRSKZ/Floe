@@ -49,8 +49,9 @@ public partial class DockWindow : Window
 
     private const double CornerRadius = 22;
     private const double BottomMargin = 8;
-    // the shown dock sits this much lower than the reserved strip, its shadow running off the screen's edge
-    private const double Sink = 8;
+    // the shown dock sits this much lower than the reserved strip, its shadow running off the screen's edge;
+    // a Cyber dock has no shadow to make room for, so it comes down until its top meets the strip's
+    private static double Sink => GlassSettings.Cyber ? 16 : 8;
     private const int TriggerShow = 6;
     private const int TriggerPx = 4;
 
