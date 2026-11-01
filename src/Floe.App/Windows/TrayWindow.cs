@@ -110,8 +110,10 @@ internal sealed class TrayWindow : Window
         var process = System.IO.Path.GetFileNameWithoutExtension(app.Path);
         var mask = GlassSettings.Cyber && GlassSettings.IconSet == DockIconSet.Contour ? ContourIcons.Mask(app.Name, process) : null;
         var card = GlassSettings.Cyber && GlassSettings.IconSet == DockIconSet.Cards ? CardIcons.Image(app.Name, process) : null;
+        var real = IconService.GetIcon(new DockApp { Target = app.Path }, 52) ?? app.Icon;
+        if (GlassSettings.Cyber && GlassSettings.IconSet == DockIconSet.Cards && card is null && real is not null) card = CardIcons.Forge(real);
         if (card is not null) card = CardIcons.OnBody(card, CyberLook.Current.Body, CyberLook.Readable(CyberLook.Current.Ink, CyberLook.Current.Body));
-        var icon = card ?? IconService.GetIcon(new DockApp { Target = app.Path }, 52) ?? app.Icon;
+        var icon = card ?? real;
         if (mask is not null)
         {
             cell.Child = new System.Windows.Shapes.Rectangle { Width = IconSize + 8, Height = IconSize + 8, Fill = Tone(0xFF), OpacityMask = mask };

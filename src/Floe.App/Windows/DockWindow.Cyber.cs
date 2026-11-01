@@ -300,7 +300,8 @@ public partial class DockWindow
     {
         if (!GlassSettings.Cyber) return null;
         if (IconChoices.CardIcon(item.App) is { } file) return CardIcons.Load(file);
-        return !IconChoices.HasChoice(item.App) && GlassSettings.IconSet == DockIconSet.Cards ? CardIcons.Image(item.Name, item.ProcessName) : null;
+        if (IconChoices.HasChoice(item.App) || GlassSettings.IconSet != DockIconSet.Cards) return null;
+        return CardIcons.Image(item.Name, item.ProcessName) ?? (item.Icon is { } own ? CardIcons.Forge(own) : null);
     }
 
     private static string CyberGlyph(string key) => key == "settings" ? "adjustments-horizontal" : "chevron-up";

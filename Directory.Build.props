@@ -5,4 +5,8 @@
     <DefineConstants Condition="'$(FloeProduct)' == 'CP77'">$(DefineConstants);CP77</DefineConstants>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- the published binaries must not carry the build machine's folders -->
+    <PathMap>$(MSBuildThisFileDirectory)=/floe/</PathMap>
+  </PropertyGroup>
 </Project>

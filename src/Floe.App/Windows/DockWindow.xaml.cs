@@ -283,11 +283,7 @@ public partial class DockWindow : Window
         Root.AllowDrop = true;
         IconLayer.AllowDrop = true;
 
-        _clockFont = FontService.LoadFromFile(
-            @"C:\Users\dev\Documents\Codex\2026-09-09\referenced-chatgpt-conversation-this-is-an\outputs\NothingRoundUI\fonts\Doto-Variable.ttf")
-            ?? FontService.LoadFromFile(
-            @"C:\Users\dev\Documents\Codex\2026-09-09\referenced-chatgpt-conversation-this-is-an\outputs\NothingRoundUI\fonts\Doto.ttf")
-            ?? new FontFamily(FontService.Resolve("Ndot 55", "Ndot-55", "Ndot", "Nothing Font", "NothingFont", "Manrope", "Segoe UI"));
+        _clockFont = new FontFamily(new Uri($"pack://application:,,,/{Product.Exe};component/"), "./Assets/Fonts/#Doto");
 
         var clockGlow = new DropShadowEffect { Color = Colors.White, ShadowDepth = 0, BlurRadius = 10, Opacity = 0.6 };
 

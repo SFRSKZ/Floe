@@ -26,6 +26,8 @@ internal sealed class IconCatalog
         ["photos"] = "fotograflar",
         ["camera"] = "kamera",
         ["snippingtool"] = "ekran-alintisi-araci",
+        ["eadesktop"] = "ea",
+        ["eaapp"] = "ea",
     };
 
     private readonly string _folder;
@@ -69,7 +71,8 @@ internal sealed class IconCatalog
     private string? Find(string plain)
     {
         if (plain.Length == 0) return null;
-        if (Aliases.TryGetValue(plain, out var alias) || _catalog.Value.TryGetValue(plain, out alias)) return alias;
+        if (Aliases.TryGetValue(plain, out var alias) && _names.Value.Any(entry => entry.File == alias)) return alias;
+        if (_catalog.Value.TryGetValue(plain, out alias)) return alias;
         if (plain.Length < LooseMatch) return null;
 
         // "Blender" finds "Blender 5.0" and "OrcaSlicer 2.3" finds "OrcaSlicer"; the longest name is the closest
