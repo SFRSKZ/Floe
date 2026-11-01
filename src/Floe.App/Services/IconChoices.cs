@@ -9,6 +9,7 @@ public static class IconChoices
 {
     private const string Real = "real";
     private const string SetPrefix = "set:";
+    private const string CardPrefix = "card:";
     private const string FilePrefix = "file:";
 
     private static readonly string ConfigPath = Path.Combine(
@@ -25,10 +26,15 @@ public static class IconChoices
     /// <summary>The outline icon's file name when one was picked.</summary>
     public static string? SetIcon(DockApp app) => Value(app, SetPrefix);
 
+    /// <summary>The Cyberpunk card's file name when one was picked.</summary>
+    public static string? CardIcon(DockApp app) => Value(app, CardPrefix);
+
     /// <summary>The image file when one was picked.</summary>
     public static string? File(DockApp app) => Value(app, FilePrefix);
 
     public static void ChooseSetIcon(DockApp app, string file) => Store(app, SetPrefix + file);
+
+    public static void ChooseCardIcon(DockApp app, string file) => Store(app, CardPrefix + file);
 
     public static void ChooseFile(DockApp app, string path) => Store(app, FilePrefix + path);
 

@@ -591,6 +591,9 @@ public partial class DockWindow : Window
 
         public SolidColorBrush LineBrush { get; } = new(Colors.Black);
 
+        /// <summary>The Cyberpunk card as it reads on the dock, and the grey one for the dark frame.</summary>
+        public (ImageSource OnDock, ImageSource OnFrame)? Card { get; set; }
+
         public Ellipse Dot { get; }
 
         public DockItemViewModel Item { get; }

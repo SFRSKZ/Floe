@@ -107,15 +107,18 @@ internal sealed class TrayWindow : Window
             ToolTip = app.Name,
         };
 
-        var mask = GlassSettings.Cyber && GlassSettings.ContourIcons ? ContourIcons.Mask(app.Name, System.IO.Path.GetFileNameWithoutExtension(app.Path)) : null;
-        var icon = IconService.GetIcon(new DockApp { Target = app.Path }, 52) ?? app.Icon;
+        var process = System.IO.Path.GetFileNameWithoutExtension(app.Path);
+        var mask = GlassSettings.Cyber && GlassSettings.IconSet == DockIconSet.Contour ? ContourIcons.Mask(app.Name, process) : null;
+        var card = GlassSettings.Cyber && GlassSettings.IconSet == DockIconSet.Cards ? CardIcons.Image(app.Name, process) : null;
+        if (card is not null) card = CardIcons.OnBody(card, CyberLook.Current.Body, CyberLook.Readable(CyberLook.Current.Ink, CyberLook.Current.Body));
+        var icon = card ?? IconService.GetIcon(new DockApp { Target = app.Path }, 52) ?? app.Icon;
         if (mask is not null)
         {
             cell.Child = new System.Windows.Shapes.Rectangle { Width = IconSize + 8, Height = IconSize + 8, Fill = Tone(0xFF), OpacityMask = mask };
         }
         else if (icon is not null)
         {
-            var image = new Image { Source = icon, Width = IconSize, Height = IconSize };
+            var image = new Image { Source = icon, Width = IconSize + (card is null ? 0 : 8), Height = IconSize + (card is null ? 0 : 8) };
             RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
             cell.Child = image;
         }

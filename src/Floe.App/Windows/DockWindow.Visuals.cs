@@ -251,6 +251,12 @@ public partial class DockWindow
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(OnGlassSettingsChanged)); return; }
         ApplyGlassSettings();
+        if (_appliedIconSet != GlassSettings.IconSet)
+        {
+            _appliedIconSet = GlassSettings.IconSet;
+            foreach (var slot in _slots) ApplyCyberIcon(slot);
+        }
+
         if (!IsMouseOver && !_menuOpen)
         {
             _targetDockScale = CompactScale; // shrinking may have been turned on or off
@@ -533,6 +539,7 @@ public partial class DockWindow
     private DockTheme _appliedTheme = (DockTheme)(-1);
     private DockSurface _appliedSurface = (DockSurface)(-1);
     private bool _appliedShrink = GlassSettings.Shrink;
+    private DockIconSet _appliedIconSet = GlassSettings.IconSet;
 
     // brushed dark steel for the graphite card: silver with a cool grey tint and a dimmer highlight
     private static MetalRimEffect GunmetalPreset()

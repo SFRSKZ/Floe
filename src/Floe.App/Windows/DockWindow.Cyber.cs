@@ -21,6 +21,7 @@ public partial class DockWindow
     private readonly Path _slotFill = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed, Fill = CyberFxLayer.Solid(FxInk) };
     private static double CyberChamfer => 14 * GlassSettings.CyberCut;
     private const double DecalRoom = 160;
+    private const double CardBleed = 10; // the Cyberpunk card's frame takes this much room around the logo
     private const int SecondBars = 6;
     private const double ClockLight = 11;
 
@@ -141,9 +142,7 @@ public partial class DockWindow
     {
         if (!GlassSettings.Cyber || scales.Count == 0 || _isDragging)
         {
-            SetFxHover(null);
-            PlaceSlotFill(null);
-            foreach (var slot in _slots) slot.LineBrush.Color = CyberLook.Current.Ink;
+            MarkCyberSlot(null);
             return;
         }
 
@@ -155,7 +154,14 @@ public partial class DockWindow
 
         var lift = (scales[index] - 1) / (HoverMaxScale - 1);
         lift = Math.Round(lift * 6) / 6; // it climbs in steps, it does not swell
-        var hovered = lift > .3 ? _slots[index] : null;
+        MarkCyberSlot(CyberDropSlot ?? (lift > .3 ? _slots[index] : null));
+    }
+
+    // a file held over an icon gets the same frame as the cursor
+    private IconSlot? CyberDropSlot => GlassSettings.Cyber && _dropIndex >= 0 && _dropIndex < _slots.Count ? _slots[_dropIndex] : null;
+
+    private void MarkCyberSlot(IconSlot? hovered)
+    {
         SetFxHover(hovered);
         PlaceSlotFill(hovered);
 
@@ -165,6 +171,11 @@ public partial class DockWindow
         {
             var color = ReferenceEquals(slot, hovered) ? CyberLook.Readable(look.Accent, FxInk) : look.Ink;
             if (slot.LineBrush.Color != color) slot.LineBrush.Color = color;
+            if (slot.Card is { } card && slot.Button.Content is Grid { Children: [Image artwork, ..] })
+            {
+                var face = ReferenceEquals(slot, hovered) ? card.OnFrame : card.OnDock;
+                if (!ReferenceEquals(artwork.Source, face)) artwork.Source = face;
+            }
         }
     }
 
@@ -264,6 +275,13 @@ public partial class DockWindow
     {
         if (slot.Button.Content is not Grid { Children: [Image artwork, Rectangle line, ..] }) return;
         var mask = ContourMask(slot.Item);
+        var card = CardIcon(slot.Item);
+        var look = CyberLook.Current;
+        var onDock = card is null ? null : CardIcons.OnBody(card, look.Body, CyberLook.Readable(look.Ink, look.Body));
+        slot.Card = card is null ? null : (onDock!, card);
+        artwork.Source = onDock ?? slot.Item.Icon;
+        artwork.Width = artwork.Height = IconBox + (card is null ? 0 : 2 * CardBleed);
+        artwork.Margin = new Thickness(card is null ? 0 : -CardBleed);
         artwork.Visibility = mask is null ? Visibility.Visible : Visibility.Hidden;
         line.Visibility = mask is null ? Visibility.Collapsed : Visibility.Visible;
         slot.LineBrush.Color = CyberLook.Current.Ink;
@@ -273,9 +291,16 @@ public partial class DockWindow
 
     private static ImageBrush? ContourMask(DockItemViewModel item)
     {
-        if (!GlassSettings.Cyber || !GlassSettings.ContourIcons) return null;
+        if (!GlassSettings.Cyber) return null;
         if (IconChoices.SetIcon(item.App) is { } file) return ContourIcons.Load(file);
-        return IconChoices.HasChoice(item.App) ? null : ContourIcons.Mask(item.Name, item.ProcessName);
+        return !IconChoices.HasChoice(item.App) && GlassSettings.IconSet == DockIconSet.Contour ? ContourIcons.Mask(item.Name, item.ProcessName) : null;
+    }
+
+    private static ImageSource? CardIcon(DockItemViewModel item)
+    {
+        if (!GlassSettings.Cyber) return null;
+        if (IconChoices.CardIcon(item.App) is { } file) return CardIcons.Load(file);
+        return !IconChoices.HasChoice(item.App) && GlassSettings.IconSet == DockIconSet.Cards ? CardIcons.Image(item.Name, item.ProcessName) : null;
     }
 
     private static string CyberGlyph(string key) => key == "settings" ? "adjustments-horizontal" : "chevron-up";

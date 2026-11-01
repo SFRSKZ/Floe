@@ -103,15 +103,18 @@ public partial class SettingsWindow
         var grain = new Slider { Style = (Style)FindResource("GlassSlider"), Minimum = 0.3, Maximum = 2, Value = GlassSettings.GrainAmount };
         grain.ValueChanged += (_, _) => GlassSettings.SetGrainAmount(grain.Value);
 
-        var contour = new CheckBox
+        var iconSets = new WrapPanel();
+        foreach (var (set, name, tip) in new[]
         {
-            Style = (Style)FindResource("GlassToggle"),
-            Content = "Kontur ikonlar",
-            ToolTip = "Uygulamaların kendi ikonları yerine tek renk çizgi ikonlar",
-            IsChecked = GlassSettings.ContourIcons,
-        };
-        contour.Checked += (_, _) => GlassSettings.SetContourIcons(true);
-        contour.Unchecked += (_, _) => GlassSettings.SetContourIcons(false);
+            (DockIconSet.Contour, "Kontur", "Tek renk çizgi ikonlar, temanın rengini alır"),
+            (DockIconSet.Cards, "Cyberpunk", "Gri logolar, veri kartı çerçevesinde"),
+            (DockIconSet.Real, "Gerçek", "Uygulamaların kendi ikonları"),
+        })
+        {
+            var option = new RadioButton { GroupName = "StudioIcons", Style = (Style)FindResource("ModeToggle"), Content = name, ToolTip = tip, IsChecked = GlassSettings.IconSet == set };
+            option.Checked += (_, _) => GlassSettings.SetIconSet(set);
+            iconSets.Children.Add(option);
+        }
 
         var reset = new Button { Style = (Style)FindResource("GlassButton"), Content = "Otomatik", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 3, 12, 3), Margin = new Thickness(0, 4, 0, 0), Foreground = CloseButton.Foreground };
         _studioReset = reset;
@@ -130,7 +133,7 @@ public partial class SettingsWindow
         StudioHost.Children.Add(StudioRow("Köşe kesimi", cut));
         StudioHost.Children.Add(StudioRow("Gren miktarı", grain));
         StudioHost.Children.Add(StudioTitle("İkonlar"));
-        StudioHost.Children.Add(contour);
+        StudioHost.Children.Add(iconSets);
 
         _studioTabs[StudioPart.Body].IsChecked = true;
         DrawStudioPacks();

@@ -202,7 +202,7 @@ public partial class DockWindow
     private void ShowTooltip()
     {
         _tooltipTimer.Stop();
-        if (_hoveredIndex < 0 || _hoveredIndex >= _slots.Count || _iconMenu?.IsVisible == true)
+        if (_hoveredIndex < 0 || _hoveredIndex >= _slots.Count || _iconMenu?.IsVisible == true || _dragSlot is not null)
         {
             return;
         }

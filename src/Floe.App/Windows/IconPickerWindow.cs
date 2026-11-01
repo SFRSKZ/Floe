@@ -21,6 +21,9 @@ public sealed class IconPickerWindow : Window
     private readonly DockItemViewModel _item;
     private readonly Action _changed;
     private readonly List<(Border Cell, string Name)> _cells = new();
+    private readonly WrapPanel _grid = new() { Width = Columns * CellSize };
+    private readonly TextBox _search = new();
+    private readonly List<(Border Tab, bool Cards)> _tabs = new();
     private bool _leaving;
     private bool _dialogOpen;
 
@@ -45,7 +48,7 @@ public sealed class IconPickerWindow : Window
         title.Margin = new Thickness(0, 0, 0, 12);
         body.Children.Add(title);
 
-        if (GlassSettings.Cyber && GlassSettings.ContourIcons) AddSet(body);
+        if (GlassSettings.Cyber) AddSet(body);
 
         var actions = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
         actions.Children.Add(Action(Loc.T("Dosyadan seç"), PickFile));
@@ -79,19 +82,22 @@ public sealed class IconPickerWindow : Window
 
     private void AddSet(Panel body)
     {
-        var search = new TextBox
-        {
-            FontFamily = CyberLook.UiFont,
-            FontSize = 14,
-            Padding = new Thickness(8, 5, 8, 5),
-            Background = CyberFxLayer.Solid(Color.FromRgb(0x1A, 0x1A, 0x24)),
-            Foreground = Cold,
-            CaretBrush = Cold,
-            BorderBrush = Cold,
-            BorderThickness = new Thickness(1),
-            Margin = new Thickness(0, 0, 0, 10),
-            ToolTip = Loc.T("İkon ara"),
-        };
+        var tabs = new WrapPanel { Margin = new Thickness(0, 0, 0, 10) };
+        tabs.Children.Add(SetTab(Loc.T("Kontur"), false));
+        tabs.Children.Add(SetTab(Loc.T("Cyberpunk"), true));
+        body.Children.Add(tabs);
+
+        var search = _search;
+        search.FontFamily = CyberLook.UiFont;
+        search.FontSize = 14;
+        search.Padding = new Thickness(8, 5, 8, 5);
+        search.Background = CyberFxLayer.Solid(Color.FromRgb(0x1A, 0x1A, 0x24));
+        search.Foreground = Cold;
+        search.CaretBrush = Cold;
+        search.BorderBrush = Cold;
+        search.BorderThickness = new Thickness(1);
+        search.Margin = new Thickness(0, 0, 0, 10);
+        search.ToolTip = Loc.T("İkon ara");
         var hint = Label(Loc.T("İkon ara"), Cold, 14);
         hint.Opacity = .6;
         hint.Margin = new Thickness(10, 6, 0, 0);
@@ -111,24 +117,60 @@ public sealed class IconPickerWindow : Window
         box.Children.Add(hint);
         body.Children.Add(box);
 
-        var grid = new WrapPanel { Width = Columns * CellSize };
-        var chosen = IconChoices.SetIcon(_item.App);
-        foreach (var (name, file) in ContourIcons.All)
-        {
-            var cell = Cell(name, file, file == chosen);
-            _cells.Add((cell, name));
-            grid.Children.Add(cell);
-        }
-
+        ShowSet(IconChoices.CardIcon(_item.App) is not null || (IconChoices.SetIcon(_item.App) is null && GlassSettings.IconSet == DockIconSet.Cards));
         body.Children.Add(new ScrollViewer
         {
             Height = SetHeight,
             VerticalScrollBarVisibility = ScrollBarVisibility.Hidden,
-            Content = grid,
+            Content = _grid,
         });
     }
 
-    private Border Cell(string name, string file, bool chosen)
+    private Border SetTab(string text, bool cards)
+    {
+        var tab = new Border
+        {
+            Padding = new Thickness(12, 4, 12, 4),
+            Margin = new Thickness(0, 0, 8, 0),
+            BorderThickness = new Thickness(0, 0, 0, 2),
+            Background = Brushes.Transparent,
+            Cursor = Cursors.Hand,
+            Child = Label(text, Cold, 14),
+        };
+        tab.MouseLeftButtonUp += (_, _) => ShowSet(cards);
+        _tabs.Add((tab, cards));
+        return tab;
+    }
+
+    private void ShowSet(bool cards)
+    {
+        foreach (var (tab, isCards) in _tabs)
+        {
+            bool active = isCards == cards;
+            tab.BorderBrush = active ? Hot : Brushes.Transparent;
+            ((TextBlock)tab.Child).Foreground = active ? Hot : Cold;
+        }
+
+        _cells.Clear();
+        _grid.Children.Clear();
+        var chosen = cards ? IconChoices.CardIcon(_item.App) : IconChoices.SetIcon(_item.App);
+        foreach (var (name, file) in cards ? CardIcons.All : ContourIcons.All)
+        {
+            UIElement face = cards
+                ? new Image { Source = CardIcons.Load(file) }
+                : new Rectangle { Fill = Cold, OpacityMask = ContourIcons.Load(file) };
+            Action choose = cards
+                ? () => IconChoices.ChooseCardIcon(_item.App, file)
+                : () => IconChoices.ChooseSetIcon(_item.App, file);
+            var cell = Cell(name, face, file == chosen, choose);
+            _cells.Add((cell, name));
+            _grid.Children.Add(cell);
+        }
+
+        Filter(_search.Text);
+    }
+
+    private Border Cell(string name, UIElement face, bool chosen, Action choose)
     {
         var cell = new Border
         {
@@ -139,11 +181,11 @@ public sealed class IconPickerWindow : Window
             BorderThickness = new Thickness(chosen ? 2 : 0),
             Cursor = Cursors.Hand,
             ToolTip = name,
-            Child = new Rectangle { Fill = Cold, OpacityMask = ContourIcons.Load(file) },
+            Child = face,
         };
         cell.MouseEnter += (_, _) => cell.Background = CyberFxLayer.Solid(Color.FromArgb(0x40, 0x80, 0x80, 0x90));
         cell.MouseLeave += (_, _) => cell.Background = Brushes.Transparent;
-        cell.MouseLeftButtonUp += (_, _) => Finish(() => IconChoices.ChooseSetIcon(_item.App, file));
+        cell.MouseLeftButtonUp += (_, _) => Finish(choose);
         return cell;
     }
 

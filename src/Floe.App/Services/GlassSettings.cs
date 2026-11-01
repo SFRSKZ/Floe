@@ -78,6 +78,13 @@ public enum VisualizerStyle
 }
 
 /// <summary>A theme dresses the whole dock (glass, rim, glows) and its visualizer in one look.</summary>
+public enum DockIconSet
+{
+    Contour,
+    Cards,
+    Real,
+}
+
 public enum DockTheme
 {
     None,
@@ -169,7 +176,7 @@ public static class GlassSettings
 
     public static bool FilmGrain { get; private set; }
 
-    public static bool ContourIcons { get; private set; } = true;
+    public static DockIconSet IconSet { get; private set; } = DockIconSet.Contour;
 
     public static AppLanguage Language { get; private set; }
 
@@ -268,7 +275,7 @@ public static class GlassSettings
             Surface = Enum.TryParse<DockSurface>(model.Surface, true, out var surface) ? surface : DockSurface.Classic;
             Shrink = model.Shrink;
             FilmGrain = model.FilmGrain;
-            ContourIcons = model.ContourIcons;
+            IconSet = Enum.TryParse<DockIconSet>(model.IconSet, true, out var iconSet) ? iconSet : model.ContourIcons ? DockIconSet.Contour : DockIconSet.Real;
             Language = Enum.TryParse<AppLanguage>(model.Language, true, out var language) ? language : AppLanguage.Auto;
             GlyphNegative = model.GlyphNegative;
             VisualizerThemeColours = model.VisualizerThemeColours;
@@ -428,14 +435,17 @@ public static class GlassSettings
         Changed?.Invoke();
     }
 
-    public static void SetContourIcons(bool enabled)
+    /// <summary>Shows a set in a --render frame without touching the saved settings.</summary>
+    internal static void PreviewIconSet(DockIconSet set) => IconSet = set;
+
+    public static void SetIconSet(DockIconSet set)
     {
-        if (ContourIcons == enabled)
+        if (IconSet == set)
         {
             return;
         }
 
-        ContourIcons = enabled;
+        IconSet = set;
         Save();
         Changed?.Invoke();
     }
@@ -742,7 +752,7 @@ public static class GlassSettings
                 Surface = Surface.ToString(),
                 Shrink = Shrink,
                 FilmGrain = FilmGrain,
-                ContourIcons = ContourIcons,
+                IconSet = IconSet.ToString(),
                 Language = Language.ToString(),
                 GlyphNegative = GlyphNegative,
                 VisualizerThemeColours = VisualizerThemeColours,
@@ -821,6 +831,9 @@ public static class GlassSettings
 
         public bool FilmGrain { get; set; }
 
+        public string? IconSet { get; set; }
+
+        // what came before IconSet: off meant the real icons
         public bool ContourIcons { get; set; } = true;
 
         public string Language { get; set; } = nameof(AppLanguage.Auto);

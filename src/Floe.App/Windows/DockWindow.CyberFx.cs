@@ -29,7 +29,7 @@ public partial class DockWindow
     private DockItemViewModel? _noticed;
     private IconSlot? _fxHover;
     private double _fxHoverStart = double.NaN;
-    private (ImageSource Icon, Point At)? _fxGhost;
+    private (ImageSource Icon, ImageBrush? Mask, Point At)? _fxGhost;
 
     private const double CoverSquare = 56;
     private const double CoverChamfer = 8;
@@ -161,12 +161,38 @@ public partial class DockWindow
 
         if (_fxGhost is { } ghost)
         {
-            var box = new Rect(ghost.At.X - 22, ghost.At.Y - 22, 44, 44);
-            CyberFxLayer.Silhouette(dc, ghost.Icon, new Rect(box.X + 3, box.Y, 44, 44), CyberFxLayer.Solid(CyberLook.Current.Accent));
-            dc.DrawImage(ghost.Icon, box);
-            var dash = new Pen(CyberFxLayer.Solid(FxCyan), 1) { DashStyle = new DashStyle(new double[] { 3, 3 }, 0) };
-            dc.DrawLine(dash, new Point(ghost.At.X, box.Bottom), new Point(ghost.At.X, RestTop + (RestBarHeight / 2)));
+            DrawCarriedItem(dc, ghost.Icon, ghost.Mask, ghost.At);
         }
+    }
+
+    // the dragged app travels in its own item frame, so it reads over the dock and whatever is behind it alike
+    private void DrawCarriedItem(DrawingContext dc, ImageSource icon, ImageBrush? mask, Point at)
+    {
+        var look = CyberLook.Current;
+        var box = new Rect(at.X - (IconBox / 2), at.Y - (IconBox / 2), IconBox, IconBox);
+        var frame = Rect.Inflate(box, 6, 6);
+        var middle = RestTop + (RestBarHeight / 2);
+        dc.PushOpacity(_isDragging && _dragGap < 0 ? .45 : 1); // pulled off the dock: it is on its way out
+        if (frame.Bottom < middle)
+        {
+            var dash = new Pen(CyberFxLayer.Solid(FxCyan), 1) { DashStyle = new DashStyle(new double[] { 3, 3 }, 0) };
+            dc.DrawLine(dash, new Point(at.X, frame.Bottom), new Point(at.X, middle));
+        }
+
+        dc.DrawGeometry(CyberFxLayer.Solid(FxInk), null, CyberFxLayer.SlotOutline(frame));
+        if (mask is null)
+        {
+            dc.DrawImage(icon, box);
+        }
+        else
+        {
+            dc.PushOpacityMask(mask);
+            dc.DrawRectangle(CyberFxLayer.Solid(CyberLook.Readable(look.Accent, FxInk)), null, box);
+            dc.Pop();
+        }
+
+        CyberFxLayer.SlotFrame(dc, frame, look.Accent, FxCyan, FxInk);
+        dc.Pop();
     }
 
     // the item frame on the icon, a leader and a card that decodes the name; a running app opens its window preview
@@ -178,7 +204,8 @@ public partial class DockWindow
         var accent = CyberFxLayer.Solid(look.Accent);
         var box = SlotFrameBounds(slot);
         CyberFxLayer.SlotFrame(dc, box, look.Accent, FxCyan, FxInk);
-        if (slot.Item.Windows.Count > 0 || age < .08) return;
+        bool dropping = ReferenceEquals(CyberDropSlot, slot);
+        if ((slot.Item.Windows.Count > 0 && !dropping) || age < .08) return;
 
         bool flip = box.Right + 18 + width > _windowWidth - 4;
         double left = flip ? box.Left - 18 - width : box.Right + 18;
@@ -188,7 +215,7 @@ public partial class DockWindow
         string name = slot.Item.Name.ToUpper(Loc.Culture);
         if (name.Length > 20) name = name[..20];
         _fx.Text(dc, CyberFxLayer.Decode(name, CyberFxLayer.Segment(age, .08, .42), Math.Floor(age * 22)), card.X + inset, card.Y + 5, 16, CyberFxLayer.Solid(look.Strip));
-        _fx.Text(dc, Loc.T(slot.Item.IsPinned ? "SABİT // HAZIR" : "HAZIR"), card.X + inset, card.Y + 24, 12, CyberFxLayer.Solid(FxCyan));
+        _fx.Text(dc, Loc.T(dropping ? "BIRAK // BUNUNLA AÇ" : slot.Item.IsPinned ? "SABİT // HAZIR" : "HAZIR"), card.X + inset, card.Y + 24, 12, CyberFxLayer.Solid(FxCyan));
     }
 
     // the data strip in the free room under the bar
@@ -217,8 +244,8 @@ public partial class DockWindow
             return;
         }
 
-        if (slot.Item.Icon is not { } icon) return;
-        _fxGhost = (icon, at);
+        if ((CardIcon(slot.Item) ?? slot.Item.Icon) is not { } icon) return;
+        _fxGhost = (icon, ContourMask(slot.Item), at);
         UpdateFxOverlay();
     }
 
@@ -692,6 +719,14 @@ public partial class DockWindow
             case "sleep": CyberSleep(); break;
             case "wake": _dozeHidden = true; CyberWake(); break;
             case "relic": PlayRelic(); break;
+            case "cards":
+                GlassSettings.PreviewIconSet(DockIconSet.Cards);
+                foreach (var each in _slots) ApplyCyberIcon(each);
+                break;
+            case "drop":
+                _dropIndex = _slots.IndexOf(slot);
+                UpdateDropRing();
+                break;
             case "ghost": SetFxGhost(slot, new Point(slot.Center + 90, RestTop - 26)); break;
             case "coverin": PreviewMedia(); PlayCoverIn(); break;
             case "coverswap": PreviewMedia(); PlayCoverSwap(); break;

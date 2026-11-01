@@ -492,7 +492,6 @@ internal sealed class GpuLayerWindow : IDisposable
     private void ResizeTarget()
     {
         if (_swapChain is null || _device is null) return;
-        try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "floe.log"), $"{DateTime.Now:HH:mm:ss} gpu resize {_width}x{_height}{Environment.NewLine}"); } catch (System.IO.IOException) { }
         _renderTarget?.Dispose();
         _renderTarget = null;
         _swapChain.Resize(_width, _height);

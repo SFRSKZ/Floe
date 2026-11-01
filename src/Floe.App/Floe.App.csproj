@@ -28,6 +28,8 @@
     <Resource Include="Assets\Fonts\*.ttf" />
     <Resource Include="Assets\ContourIcons\*.png" />
     <Resource Include="Assets\ContourIcons\names.csv" />
+    <Resource Include="Assets\CardIcons\*.png" />
+    <Resource Include="Assets\CardIcons\names.csv" />
   </ItemGroup>
 
   <ItemGroup>
