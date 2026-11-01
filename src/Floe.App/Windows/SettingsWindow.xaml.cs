@@ -417,21 +417,6 @@ public partial class SettingsWindow : Window
 
     private void BuildDockControls()
     {
-        DockBottom.IsChecked = DockSettings.Edge == DockEdge.Bottom;
-        DockTop.IsChecked = DockSettings.Edge == DockEdge.Top;
-        DockLeft.IsChecked = DockSettings.Edge == DockEdge.Left;
-        DockRight.IsChecked = DockSettings.Edge == DockEdge.Right;
-        foreach (var (button, edge) in new[]
-        {
-            (DockBottom, DockEdge.Bottom),
-            (DockTop, DockEdge.Top),
-            (DockLeft, DockEdge.Left),
-            (DockRight, DockEdge.Right),
-        })
-        {
-            button.Checked += (_, _) => DockSettings.SetEdge(edge);
-        }
-
         HideWindowsTaskbarToggle.IsChecked = DockSettings.HideWindowsTaskbar;
         HideWindowsTaskbarToggle.Checked += (_, _) => DockSettings.SetHideWindowsTaskbar(true);
         HideWindowsTaskbarToggle.Unchecked += (_, _) => DockSettings.SetHideWindowsTaskbar(false);

@@ -659,18 +659,10 @@
                 </WrapPanel>
             </StackPanel>
             <StackPanel x:Name="DockPage">
-                <TextBlock Text="Dock konumu" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
-                <WrapPanel>
-                    <RadioButton x:Name="DockBottom" GroupName="DockEdge" Style="{StaticResource ModeToggle}" Content="Alt" />
-                    <RadioButton x:Name="DockTop" GroupName="DockEdge" Style="{StaticResource ModeToggle}" Content="Üst" />
-                    <RadioButton x:Name="DockLeft" GroupName="DockEdge" Style="{StaticResource ModeToggle}" Content="Sol" />
-                    <RadioButton x:Name="DockRight" GroupName="DockEdge" Style="{StaticResource ModeToggle}" Content="Sağ" />
-                </WrapPanel>
                 <CheckBox x:Name="HideWindowsTaskbarToggle"
                           Style="{StaticResource GlassToggle}"
                           Content="Windows görev çubuğunu gizle"
-                          ToolTip="Kapalıyken Windows görev çubuğu açık kalır; dock kapanınca görev çubuğu geri gösterilir."
-                          Margin="0,10,0,0" />
+                          ToolTip="Kapalıyken Windows görev çubuğu açık kalır; dock kapanınca görev çubuğu geri gösterilir." />
                 <TextBlock Text="Görev çubuğu varsayılan olarak açık kalır."
                            Foreground="#8AFFFFFF" FontSize="11" Margin="2,6,0,0" TextWrapping="Wrap" />
             </StackPanel>

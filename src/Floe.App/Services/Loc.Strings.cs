@@ -6,11 +6,6 @@ public static partial class Loc
     {
         ["Dil"] = "Language",
         ["Dock"] = "Dock",
-        ["Dock konumu"] = "Dock position",
-        ["Alt"] = "Bottom",
-        ["Üst"] = "Top",
-        ["Sol"] = "Left",
-        ["Sağ"] = "Right",
         ["Windows görev çubuğunu gizle"] = "Hide the Windows taskbar",
         ["Kapalıyken Windows görev çubuğu açık kalır; dock kapanınca görev çubuğu geri gösterilir."] = "When off, the Windows taskbar stays visible; Floe restores it when the dock closes.",
         ["Görev çubuğu varsayılan olarak açık kalır."] = "The taskbar stays visible by default.",
