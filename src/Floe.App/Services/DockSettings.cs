@@ -17,6 +17,11 @@ public static class DockSettings
 
     public static bool HideWindowsTaskbar { get; private set; }
 
+    /// <summary>The dock's size at full scale, 0.6 .. 1.</summary>
+    public static double Scale { get; private set; } = 1;
+
+    public const double MinScale = 0.6;
+
     public static void Load()
     {
         try
@@ -25,6 +30,7 @@ public static class DockSettings
             var model = JsonSerializer.Deserialize<Model>(File.ReadAllText(ConfigPath));
             if (model is null) return;
             HideWindowsTaskbar = model.HideWindowsTaskbar;
+            Scale = Math.Clamp(model.Scale, MinScale, 1);
         }
         catch
         {
@@ -40,6 +46,15 @@ public static class DockSettings
         Changed?.Invoke();
     }
 
+    public static void SetScale(double scale)
+    {
+        scale = Math.Clamp(scale, MinScale, 1);
+        if (Math.Abs(Scale - scale) < 0.001) return;
+        Scale = scale;
+        Save();
+        Changed?.Invoke();
+    }
+
     private static void Save()
     {
         try
@@ -47,6 +62,7 @@ public static class DockSettings
             Floe.Core.Services.AtomicFile.WriteAllText(ConfigPath, JsonSerializer.Serialize(new Model
             {
                 HideWindowsTaskbar = HideWindowsTaskbar,
+                Scale = Scale,
             }));
         }
         catch
@@ -58,5 +74,7 @@ public static class DockSettings
     private sealed class Model
     {
         public bool HideWindowsTaskbar { get; set; }
+
+        public double Scale { get; set; } = 1;
     }
 }

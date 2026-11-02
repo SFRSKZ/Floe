@@ -34,6 +34,14 @@ public partial class DockWindow
                 return;
             }
 
+            // with nothing that could show a visualizer, the player is not asked at all
+            if (!GlassSettings.Visualizer || !IsVisible || !_shown || _fullscreenHidden)
+            {
+                _visualizerRunning = false;
+                ApplyVisualizerState();
+                return;
+            }
+
             _visualizerPolling = true;
             try
             {
@@ -98,7 +106,7 @@ public partial class DockWindow
         // height it already has: a passing size would resize the layer, and a resize wipes a feedback field
         void Place(bool tall)
         {
-            var height = RestBarHeight + BottomMargin + (tall ? RestBarHeight * .12 : 0);
+            var height = (RestBarHeight + BottomMargin + (tall ? RestBarHeight * .12 : 0)) * FullScale;
             _visualizerWindow.Place(new Rect(area.Left / scale, (area.Bottom / scale) - height, (area.Right - area.Left) / scale, height), scale, _hwnd, dockRect);
         }
 

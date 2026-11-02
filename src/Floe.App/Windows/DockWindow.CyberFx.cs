@@ -221,6 +221,8 @@ public partial class DockWindow
     // the data strip in the free room under the bar
     private void DrawTicker(DrawingContext dc, IconSlot slot, double age)
     {
+        // a small dock has no room for the band under it: its letters would be too small to read
+        if (FullScale < .85) return;
         const double height = 11, glyph = 5.6, gap = 4;
         var band = new Rect(_capsuleLeft + 14, Bottom + gap, Math.Max(1, _capsuleWidth - 28), height);
         var count = slot.Item.Windows.Count;
@@ -723,6 +725,10 @@ public partial class DockWindow
                 GlassSettings.PreviewIconSet(DockIconSet.Cards);
                 foreach (var each in _slots) ApplyCyberIcon(each);
                 break;
+            case "black":
+                GlassSettings.PreviewIconSet(DockIconSet.Black);
+                foreach (var each in _slots) ApplyCyberIcon(each);
+                break;
             case "drop":
                 _dropIndex = _slots.IndexOf(slot);
                 UpdateDropRing();
@@ -731,6 +737,12 @@ public partial class DockWindow
             case "coverin": PreviewMedia(); PlayCoverIn(); break;
             case "coverswap": PreviewMedia(); PlayCoverSwap(); break;
             case "coverout": PreviewMedia(); PlayCoverOut(); break;
+            case "lock" or "rest" or "tear":
+                SetCyberLock(slot);
+                UpdateLayout();
+                _lockMark.Preview(name, progress);
+                UpdateLayout();
+                return;
         }
 
         _fx.Seek(progress);

@@ -443,11 +443,6 @@
                     <Slider x:Name="DockValue" Grid.Row="2" Grid.Column="1" Style="{StaticResource ColorSlider}" Minimum="0.05" Maximum="1" />
                 </Grid>
                 <Border Height="6" />
-                <CheckBox x:Name="FastDockToggle"
-                          Style="{StaticResource GlassToggle}"
-                          Content="Hızlı dock (deneysel, yeniden başlatınca)"
-                          ToolTip="Dock kareleri GPU'da kalır, animasyonlar daha akıcı olur" />
-                <Border Height="6" />
                 <CheckBox x:Name="ShrinkToggle"
                           Style="{StaticResource GlassToggle}"
                           Content="İmleç uzaktayken küçül" />
@@ -659,6 +654,16 @@
                 </WrapPanel>
             </StackPanel>
             <StackPanel x:Name="DockPage">
+                <TextBlock Text="Dock boyutu" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Slider x:Name="DockScaleSlider" Style="{StaticResource GlassSlider}" Minimum="0.6" Maximum="1" SmallChange="0.05" LargeChange="0.1"
+                            TickFrequency="0.05" IsSnapToTickEnabled="True" Value="1" />
+                    <TextBlock x:Name="DockScaleValue" Grid.Column="1" Width="44" TextAlignment="Right" VerticalAlignment="Center" Foreground="#F2FFFFFF" FontSize="12" />
+                </Grid>
                 <CheckBox x:Name="HideWindowsTaskbarToggle"
                           Style="{StaticResource GlassToggle}"
                           Content="Windows görev çubuğunu gizle"

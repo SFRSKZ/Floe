@@ -83,6 +83,7 @@ public enum DockIconSet
     Contour,
     Cards,
     Real,
+    Black,
 }
 
 public enum DockTheme
@@ -164,9 +165,6 @@ public static class GlassSettings
     /// <summary>Every other look is shown through a colour LED screen of RGB dots.</summary>
     public static bool LedOverlay { get; private set; }
 
-    /// <summary>The dock as a window DWM blends on the GPU instead of a layered one; takes effect on restart.</summary>
-    public static bool FastDock { get; private set; }
-
     public static BulgeStyle Bulge { get; private set; } = BulgeStyle.Soft;
 
     public static DockSurface Surface { get; private set; } = DockSurface.Classic;
@@ -176,7 +174,7 @@ public static class GlassSettings
 
     public static bool FilmGrain { get; private set; }
 
-    public static DockIconSet IconSet { get; private set; } = DockIconSet.Contour;
+    public static DockIconSet IconSet { get; private set; } = DockIconSet.Real;
 
     public static AppLanguage Language { get; private set; }
 
@@ -268,14 +266,14 @@ public static class GlassSettings
             WeatherLongitude = model.WeatherLongitude;
             OledColour = model.OledColour;
             LedOverlay = model.LedOverlay;
-            FastDock = model.FastDock;
             // a theme that is gone (Mordor) falls back to none, as does its visualizer (the eye flame)
             Theme = Enum.TryParse<DockTheme>(model.Theme, true, out var theme) ? theme : DockTheme.None;
             Bulge = Enum.TryParse<BulgeStyle>(model.Bulge, true, out var bulge) ? bulge : BulgeStyle.Soft;
             Surface = Enum.TryParse<DockSurface>(model.Surface, true, out var surface) ? surface : DockSurface.Classic;
             Shrink = model.Shrink;
             FilmGrain = model.FilmGrain;
-            IconSet = Enum.TryParse<DockIconSet>(model.IconSet, true, out var iconSet) ? iconSet : model.ContourIcons ? DockIconSet.Contour : DockIconSet.Real;
+            // the outline set is gone from the settings: whoever had it gets the apps' own icons
+            IconSet = Enum.TryParse<DockIconSet>(model.IconSet, true, out var iconSet) && iconSet != DockIconSet.Contour ? iconSet : DockIconSet.Real;
             Language = Enum.TryParse<AppLanguage>(model.Language, true, out var language) ? language : AppLanguage.Auto;
             GlyphNegative = model.GlyphNegative;
             VisualizerThemeColours = model.VisualizerThemeColours;
@@ -559,14 +557,6 @@ public static class GlassSettings
         Changed?.Invoke();
     }
 
-    public static void SetFastDock(bool enabled)
-    {
-        if (FastDock == enabled) return;
-        FastDock = enabled;
-        Save();
-        Changed?.Invoke();
-    }
-
     public static void SetLedOverlay(bool enabled)
     {
         if (LedOverlay == enabled) return;
@@ -746,7 +736,6 @@ public static class GlassSettings
                 WeatherLongitude = WeatherLongitude,
                 OledColour = OledColour,
                 LedOverlay = LedOverlay,
-                FastDock = FastDock,
                 Theme = Theme.ToString(),
                 Bulge = Bulge.ToString(),
                 Surface = Surface.ToString(),
@@ -817,8 +806,6 @@ public static class GlassSettings
         public bool OledColour { get; set; }
 
         public bool LedOverlay { get; set; }
-
-        public bool FastDock { get; set; }
 
 
         public string Theme { get; set; } = nameof(DockTheme.None);

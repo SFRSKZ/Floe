@@ -15,6 +15,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using Floe.App.Effects.ActiveIcon;
+using Floe.App.Effects.Cyber;
 using Floe.App.Services;
 using Floe.App.ViewModels;
 using Floe.Core.Interop;
@@ -142,6 +143,35 @@ public partial class DockWindow
         }
     }
 
+    private readonly CyberLockMark _lockMark = new();
+    private DockItemViewModel? _lockItem;
+
+    // the lock sits in the slot itself, so it follows the icon as the dock magnifies; it snaps in only for a new app
+    private void SetCyberLock(IconSlot? slot)
+    {
+        var grid = slot?.Button.Content as Grid;
+        if (!ReferenceEquals(_lockMark.Parent, grid))
+        {
+            (_lockMark.Parent as Panel)?.Children.Remove(_lockMark);
+            grid?.Children.Add(_lockMark);
+        }
+
+        if (slot is null)
+        {
+            _lockItem = null;
+            return;
+        }
+
+        if (ReferenceEquals(_lockItem, slot.Item))
+        {
+            _lockMark.Refresh();
+            return;
+        }
+
+        _lockItem = slot.Item;
+        _lockMark.Lock();
+    }
+
     private void UpdateAura()
     {
         ApplyAura();
@@ -185,7 +215,9 @@ public partial class DockWindow
 
         NoteCyberAttention(_auraAttention ? _attentionItem : null);
 
-        if (_activeIndex < 0 || _slots[_activeIndex].Item.Icon is not { } icon)
+        // the cyber themes lock on to the active icon instead: none of the glass edition's glows around it
+        SetCyberLock(GlassSettings.Cyber && _activeIndex >= 0 && _activeIndex < _slots.Count ? _slots[_activeIndex] : null);
+        if (GlassSettings.Cyber || _activeIndex < 0 || _slots[_activeIndex].Item.Icon is not { } icon)
         {
             SetIconEffect(null, null);
             SetAurora(false);
@@ -226,8 +258,7 @@ public partial class DockWindow
                 _auraEffects[k].BeginAnimation(DropShadowEffect.DirectionProperty, null);
             }
 
-            // the cyber themes keep the icon as it is
-            SetIconEffect(GlassSettings.Cyber ? null : (Image)((Grid)_slots[_activeIndex].Button.Content).Children[0], item);
+            SetIconEffect((Image)((Grid)_slots[_activeIndex].Button.Content).Children[0], item);
             return;
         }
 

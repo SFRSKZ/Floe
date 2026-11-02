@@ -77,10 +77,25 @@ public partial class DockWindow
             entry.Windows.Add(window.Hwnd);
         }
 
+        // an app already in the dock keeps its item: only a newcomer has its icon resolved
+        var known = new Dictionary<(string, string), DockItemViewModel>();
+        foreach (var item in Items)
+        {
+            if (!item.IsPinned) known[(item.Name.ToLowerInvariant(), item.App.Target.ToLowerInvariant())] = item;
+        }
+
         var unpinned = new List<DockItemViewModel>();
         foreach (var name in grouped.Keys.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
         {
             var entry = grouped[name];
+            if (known.TryGetValue((name.ToLowerInvariant(), entry.Path.ToLowerInvariant()), out var existing))
+            {
+                existing.Windows = entry.Windows;
+                existing.IsRunning = true;
+                unpinned.Add(existing);
+                continue;
+            }
+
             var vm = new DockItemViewModel(
                 new DockApp { Name = name, Target = entry.Path },
                 isPinned: false,
@@ -115,14 +130,14 @@ public partial class DockWindow
 
             RebuildIcons();
         }
-        else
+        else if (!unpinned.SequenceEqual(Items.Where(item => !item.IsPinned)))
         {
-            // Same app set: keep the existing slots (and their icons) but refresh the window
-            // handles, otherwise new or recreated windows are never picked up.
+            // the same apps, one of them under a new item (say it restarted from elsewhere): keep the existing
+            // slots and their icons but take the newcomer's windows, or recreated windows are never picked up
             var fresh = unpinned.ToDictionary(vm => vm.ProcessName, StringComparer.OrdinalIgnoreCase);
             foreach (var item in Items)
             {
-                if (!item.IsPinned && fresh.TryGetValue(item.ProcessName, out var current))
+                if (!item.IsPinned && fresh.TryGetValue(item.ProcessName, out var current) && !ReferenceEquals(item, current))
                 {
                     item.Windows = current.Windows;
                     item.IsRunning = true;

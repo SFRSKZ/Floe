@@ -8,6 +8,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using Floe.App.Effects.Cyber;
 using Floe.App.Services;
+using Floe.App.Services.MonoIcons;
 using Floe.App.ViewModels;
 
 namespace Floe.App.Windows;
@@ -169,7 +170,7 @@ public partial class DockWindow
         var look = CyberLook.Current;
         foreach (var slot in _slots)
         {
-            var color = ReferenceEquals(slot, hovered) ? CyberLook.Readable(look.Accent, FxInk) : look.Ink;
+            var color = ReferenceEquals(slot, hovered) ? CyberLook.Readable(look.Accent, FxInk) : _monoSlots.Contains(slot) ? MonoIconSet.Ink : look.Ink;
             if (slot.LineBrush.Color != color) slot.LineBrush.Color = color;
             if (slot.Card is { } card && slot.Button.Content is Grid { Children: [Image artwork, ..] })
             {
@@ -274,7 +275,9 @@ public partial class DockWindow
     private void ApplyCyberIcon(IconSlot slot)
     {
         if (slot.Button.Content is not Grid { Children: [Image artwork, Rectangle line, ..] }) return;
-        var mask = ContourMask(slot.Item);
+        var mono = MonoMask(slot.Item);
+        var mask = mono ?? ContourMask(slot.Item);
+        if (mono is null) _monoSlots.Remove(slot); else _monoSlots.Add(slot);
         var card = CardIcon(slot.Item);
         var look = CyberLook.Current;
         var onDock = card is null ? null : CardIcons.OnBody(card, look.Body, CyberLook.Readable(look.Ink, look.Body));
@@ -284,9 +287,38 @@ public partial class DockWindow
         artwork.Margin = new Thickness(card is null ? 0 : -CardBleed);
         artwork.Visibility = mask is null ? Visibility.Visible : Visibility.Hidden;
         line.Visibility = mask is null ? Visibility.Collapsed : Visibility.Visible;
-        slot.LineBrush.Color = CyberLook.Current.Ink;
+        slot.LineBrush.Color = mono is null ? CyberLook.Current.Ink : MonoIconSet.Ink;
         line.Fill = slot.LineBrush;
         line.OpacityMask = mask;
+    }
+
+    // the slots drawn from the black set, which keep its fixed ink off the hover frame
+    private readonly HashSet<IconSlot> _monoSlots = new();
+    private bool _monoHooked;
+    private bool _monoRefresh;
+
+    // black icons are prepared in the background whenever the dock is cyber, so picking the set later is instant;
+    // until one is ready (or when it can't be made) the app shows its own icon
+    private ImageBrush? MonoMask(DockItemViewModel item)
+    {
+        if (!GlassSettings.Cyber || IconChoices.HasChoice(item.App)) return null;
+        if (!_monoHooked)
+        {
+            _monoHooked = true;
+            MonoIconSet.Updated += () => Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_monoRefresh) return;
+                _monoRefresh = true;
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    _monoRefresh = false;
+                    foreach (var slot in _slots) ApplyCyberIcon(slot);
+                }), System.Windows.Threading.DispatcherPriority.Background);
+            }));
+        }
+
+        var mask = MonoIconSet.Mask(item.App);
+        return GlassSettings.IconSet == DockIconSet.Black ? mask : null;
     }
 
     private static ImageBrush? ContourMask(DockItemViewModel item)

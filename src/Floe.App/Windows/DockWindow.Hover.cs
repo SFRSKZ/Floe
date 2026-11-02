@@ -60,7 +60,7 @@ public partial class DockWindow
 
         _targetHoverX = Math.Min(_windowWidth, Math.Max(0, position.X));
         _targetBulge = MaxBulge;
-        _targetDockScale = 1;
+        _targetDockScale = FullScale;
         SetIconsDimmed(false);
         EnsureAnimation();
         UpdateHoveredIcon();
@@ -235,7 +235,7 @@ public partial class DockWindow
     {
         _targetHoverX = Math.Min(_windowWidth, Math.Max(0, x));
         _targetBulge = MaxBulge;
-        _targetDockScale = 1;
+        _targetDockScale = FullScale;
         SetIconsDimmed(false);
         EnsureAnimation();
     }
@@ -273,6 +273,8 @@ public partial class DockWindow
     {
         _activeProcess = processName;
         UpdateAura();
+        _lockMark.Settle();
+        UpdateLayout(); // the still render is taken before the next layout pass would place the lock
         Log($"preview aura idx={_activeIndex} effect={AuraSettings.Effect}");
     }
 

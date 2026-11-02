@@ -303,14 +303,13 @@ public partial class DockWindow
     internal static double? BenchTop { get; set; }
 
     /// <summary>
-    /// The fast dock (the setting, FLOE_DWM_DOCK=1 or --dwm-dock): a plain window DWM blends by its alpha instead of a
-    /// layered one, so frames stay on the GPU; clicks off the glass pass through (DockWindow.ClickThrough.cs).
-    /// Read once, when the dock is built: a window cannot switch between the two.
+    /// The fast dock, now the only one: a plain window DWM blends by its alpha instead of a layered one, so frames
+    /// stay on the GPU; clicks off the glass pass through (DockWindow.ClickThrough.cs). FLOE_DWM_DOCK=0 brings back
+    /// the old layered window. Read once, when the dock is built: a window cannot switch between the two.
     /// </summary>
     internal static bool DwmDock { get; private set; }
 
-    private static bool WantsDwmDock() => GlassSettings.FastDock || Environment.GetEnvironmentVariable("FLOE_DWM_DOCK") == "1"
-        || Environment.GetCommandLineArgs().Any(a => a.Equals("--dwm-dock", StringComparison.OrdinalIgnoreCase));
+    private static bool WantsDwmDock() => Environment.GetEnvironmentVariable("FLOE_DWM_DOCK") != "0";
 
     private void UpdateMonitor()
     {
@@ -369,7 +368,7 @@ public partial class DockWindow
         // reserve up to the capsule's top as it rests: full size when the dock does not shrink, so maximized
         // windows end above it instead of under it
         var restTop = ((ShadowRoom + RestBarHeight) * CompactScale) + BottomMargin - Sink + 4;
-        var height = (int)Math.Round(Math.Max(RestBarHeight + BottomMargin, restTop) * DockScale);
+        var height = (int)Math.Round(Math.Max((RestBarHeight + BottomMargin) * FullScale, restTop) * DockScale);
         _appBar.SetPosition(_monitorInfo.Monitor, height, DockSettings.Edge, DockSettings.HideWindowsTaskbar || TaskbarController.IsHidden());
         if (IsLoaded)
         {
@@ -385,6 +384,11 @@ public partial class DockWindow
             Dispatcher.BeginInvoke(new Action(OnDockSettingsChanged));
             return;
         }
+
+        // a new size: the dock grows or shrinks to it, and the visualizer strip follows
+        _targetDockScale = IsMouseOver || _menuOpen ? FullScale : CompactScale;
+        EnsureAnimation();
+        ApplyVisualizerState();
 
         // the taskbar choice moves the reserved strip too, without a new edge
         if (_lastDockEdge == DockSettings.Edge)

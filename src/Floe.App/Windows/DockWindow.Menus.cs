@@ -169,7 +169,7 @@ public partial class DockWindow
 
         _menuOpen = true;
         _targetBulge = MaxBulge;
-        _targetDockScale = 1;
+        _targetDockScale = FullScale;
         EnsureAnimation();
 
         var menu = BuildBackgroundMenu();

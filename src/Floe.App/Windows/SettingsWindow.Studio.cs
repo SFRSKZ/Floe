@@ -106,8 +106,8 @@ public partial class SettingsWindow
         var iconSets = new WrapPanel();
         foreach (var (set, name, tip) in new[]
         {
-            (DockIconSet.Contour, "Kontur", "Tek renk çizgi ikonlar, temanın rengini alır"),
             (DockIconSet.Cards, "Cyberpunk", "Gri logolar, veri kartı çerçevesinde"),
+            (DockIconSet.Black, "Siyah", "Her uygulamanın logosu, dock'un üstünde opak siyah"),
             (DockIconSet.Real, "Gerçek", "Uygulamaların kendi ikonları"),
         })
         {

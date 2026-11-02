@@ -150,7 +150,7 @@ public partial class DockWindow
         if (e.Effects != DragDropEffects.None)
         {
             _targetBulge = MaxBulge;
-            _targetDockScale = 1;
+            _targetDockScale = FullScale;
             EnsureAnimation();
 
             var index = FindIndexAt(e.GetPosition(this).X);

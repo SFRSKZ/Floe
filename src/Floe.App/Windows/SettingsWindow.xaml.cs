@@ -417,6 +417,14 @@ public partial class SettingsWindow : Window
 
     private void BuildDockControls()
     {
+        DockScaleSlider.Value = DockSettings.Scale;
+        DockScaleValue.Text = $"{DockSettings.Scale * 100:0}%";
+        DockScaleSlider.ValueChanged += (_, e) =>
+        {
+            DockSettings.SetScale(e.NewValue);
+            DockScaleValue.Text = $"{DockSettings.Scale * 100:0}%";
+        };
+
         HideWindowsTaskbarToggle.IsChecked = DockSettings.HideWindowsTaskbar;
         HideWindowsTaskbarToggle.Checked += (_, _) => DockSettings.SetHideWindowsTaskbar(true);
         HideWindowsTaskbarToggle.Unchecked += (_, _) => DockSettings.SetHideWindowsTaskbar(false);
@@ -435,9 +443,6 @@ public partial class SettingsWindow : Window
         RimGold.Checked += (_, _) => GlassSettings.SetRim(RimStyle.MetalGold);
         RimChromatic.Checked += (_, _) => GlassSettings.SetRim(RimStyle.MetalChromatic);
 
-        FastDockToggle.IsChecked = GlassSettings.FastDock;
-        FastDockToggle.Checked += (_, _) => GlassSettings.SetFastDock(true);
-        FastDockToggle.Unchecked += (_, _) => GlassSettings.SetFastDock(false);
         VisualizerThemeToggle.IsChecked = GlassSettings.VisualizerThemeColours;
         VisualizerThemeToggle.Checked += (_, _) => GlassSettings.SetVisualizerThemeColours(true);
         VisualizerThemeToggle.Unchecked += (_, _) => GlassSettings.SetVisualizerThemeColours(false);

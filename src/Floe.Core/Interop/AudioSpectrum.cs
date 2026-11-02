@@ -71,6 +71,9 @@ public sealed class AudioSpectrum : IDisposable
     private readonly double[] _sinceOnset = { 1, 1, 1 };
     private int _fluxAt;
     private long _lastReceived;
+    // where each band starts and ends in the FFT bins, for the rate and band count they were worked out for
+    private int[] _bandFrom = Array.Empty<int>(), _bandTo = Array.Empty<int>();
+    private int _bandRate;
     private readonly float[] _scope = new float[SpectrumFrame.WaveLength * 2];
     private float _wavePeak;
 
@@ -114,17 +117,23 @@ public sealed class AudioSpectrum : IDisposable
         // nothing new arrived: loopback sends no packets while nothing plays
         bool silent = received == _lastReceived;
         _lastReceived = received;
-        Array.Clear(_im);
-        if (silent) Array.Clear(_re);
-        Fft(_re, _im);
-
         int bins = FftSize / 2;
         float total = 0;
-        for (int k = 1; k < bins; k++)
+        if (silent)
         {
-            float m = MathF.Sqrt((_re[k] * _re[k]) + (_im[k] * _im[k]));
-            _magnitude[k] = m;
-            total += m;
+            // the transform of silence is silence: no FFT for it
+            Array.Clear(_magnitude);
+        }
+        else
+        {
+            Array.Clear(_im);
+            Fft(_re, _im);
+            for (int k = 1; k < bins; k++)
+            {
+                float m = MathF.Sqrt((_re[k] * _re[k]) + (_im[k] * _im[k]));
+                _magnitude[k] = m;
+                total += m;
+            }
         }
 
         float hzPerBin = rate / (float)FftSize;
@@ -136,14 +145,25 @@ public sealed class AudioSpectrum : IDisposable
             Array.Fill(_average, float.NaN);
         }
 
+        if (_bandFrom.Length != bands.Length || _bandRate != rate)
+        {
+            _bandFrom = new int[bands.Length];
+            _bandTo = new int[bands.Length];
+            _bandRate = rate;
+            for (int b = 0; b < bands.Length; b++)
+            {
+                float lo = MinHz * MathF.Pow(MaxHz / MinHz, b / (float)bands.Length);
+                float hi = MinHz * MathF.Pow(MaxHz / MinHz, (b + 1) / (float)bands.Length);
+                _bandFrom[b] = Math.Clamp((int)(lo / hzPerBin), 1, bins - 1);
+                _bandTo[b] = Math.Clamp((int)MathF.Ceiling(hi / hzPerBin), _bandFrom[b] + 1, bins);
+            }
+        }
+
         _reads++;
         for (int b = 0; b < bands.Length; b++)
         {
-            float lo = MinHz * MathF.Pow(MaxHz / MinHz, b / (float)bands.Length);
-            float hi = MinHz * MathF.Pow(MaxHz / MinHz, (b + 1) / (float)bands.Length);
-            int k0 = Math.Clamp((int)(lo / hzPerBin), 1, bins - 1), k1 = Math.Clamp((int)MathF.Ceiling(hi / hzPerBin), k0 + 1, bins);
             float sum = 0;
-            for (int k = k0; k < k1; k++) sum = Math.Max(sum, _magnitude[k]);
+            for (int k = _bandFrom[b]; k < _bandTo[b]; k++) sum = Math.Max(sum, _magnitude[k]);
             bands[b] = Normalise(b, 20 * MathF.Log10(sum + 1e-6f), dt, silent);
         }
 
