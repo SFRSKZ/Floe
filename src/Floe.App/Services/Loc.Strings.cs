@@ -166,6 +166,7 @@ public static partial class Loc
         ["Küp boyutu"] = "Cube size",
         ["Küpler"] = "Cubes",
         ["Küplere ayrılarak uyu"] = "Sleep by breaking into cubes",
+        ["Boşta kalınca uyu"] = "Sleep when idle",
         ["LED ekran"] = "LED screen",
         ["LED ekran camı"] = "LED screen glass",
         ["Manyetik sıvı şerit: her frekans bandı sıvıdan diken çıkarır, bas vuruşta dikenler fışkırır"] = "A magnetic liquid strip: each frequency band draws a spike from the fluid, and bass hits make the spikes erupt",

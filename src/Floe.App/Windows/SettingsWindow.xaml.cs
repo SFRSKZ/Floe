@@ -37,6 +37,12 @@ public partial class SettingsWindow : Window
         TabGlass.Content = "Stüdyo";
         ClickEffectToggle.Content = "Hex dökümü";
         ClickSoundToggle.Content = "Tıklama sesi";
+        // no cubes here, but the sleep itself can still be turned off so the dock stays; the page it sits on is the
+        // Studio here, so it moves to the Dock page
+        DerezzToggle.Content = "Boşta kalınca uyu";
+        ((Panel)DerezzToggle.Parent).Children.Remove(DerezzToggle);
+        DerezzToggle.Margin = new Thickness(0, 0, 0, 8);
+        DockPage.Children.Insert(DockPage.Children.IndexOf(HideOnFullscreenToggle) + 1, DerezzToggle);
         VisualizerLookHologram.Visibility = Visibility.Collapsed;
         VisualizerLookStardust.Visibility = Visibility.Collapsed;
         VisualizerLookDustWave.Visibility = Visibility.Collapsed;
@@ -51,7 +57,7 @@ public partial class SettingsWindow : Window
         foreach (var unused in new UIElement[]
         {
             EffectTitle, EffectRow, ColorModeTitle, ColorModeRow, PaletteList, ClickScreenToggle, ClickPaintToggle, ClickToneRow, ClickPaletteRow,
-            SurfaceTitle, SurfaceRow, RimTitle, RimRow, BulgeTitle, BulgeRow, IntroTitle, IntroRow, DerezzToggle, DerezzCellTitle, DerezzCellRow,
+            SurfaceTitle, SurfaceRow, RimTitle, RimRow, BulgeTitle, BulgeRow, IntroTitle, IntroRow, DerezzCellTitle, DerezzCellRow,
         })
         {
             unused.Visibility = Visibility.Collapsed;

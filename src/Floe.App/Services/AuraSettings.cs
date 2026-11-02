@@ -142,7 +142,6 @@ public static class AuraSettings
             Effect = Enum.TryParse<AuraEffect>(model.Effect, true, out var effect) ? effect : AuraEffect.Glow;
 #if CP77
             Effect = AuraEffect.Neon; // the only one with the theme's hard edges
-            Derezz = true; // the cubes are gone here, this only keeps the sleep itself on
 #endif
             SpectralIntensity = model.SpectralIntensity <= 0 ? 1.5 : Math.Clamp(model.SpectralIntensity, 0.5, 2.5);
             PaletteIndex = Math.Clamp(model.PaletteIndex, 0, Palettes.Count - 1);
