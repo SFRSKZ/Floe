@@ -725,10 +725,6 @@ public partial class DockWindow
                 GlassSettings.PreviewIconSet(DockIconSet.Cards);
                 foreach (var each in _slots) ApplyCyberIcon(each);
                 break;
-            case "black":
-                GlassSettings.PreviewIconSet(DockIconSet.Black);
-                foreach (var each in _slots) ApplyCyberIcon(each);
-                break;
             case "drop":
                 _dropIndex = _slots.IndexOf(slot);
                 UpdateDropRing();

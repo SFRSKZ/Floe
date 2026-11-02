@@ -30,13 +30,6 @@
     <Resource Include="Assets\ContourIcons\names.csv" />
     <Resource Include="Assets\CardIcons\*.png" />
     <Resource Include="Assets\CardIcons\names.csv" />
-    <!-- the verified logo bank travels beside the exe; the converter for every other app is compiled in -->
-    <Content Include="Assets\IconBank\**" Link="IconBank\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- System.Drawing for the bundled black icon converter; part of the desktop runtime, no package -->
-    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
   </ItemGroup>
 
   <ItemGroup>

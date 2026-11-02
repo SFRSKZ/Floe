@@ -10,8 +10,8 @@ namespace Floe.App.Effects.Cyber;
 /// <summary>
 /// The cyber themes' mark on the app in front, in the language of a glitched logo intro: the icon arrives out of its
 /// own rows stretched into long lines, then holds with a few thin signal lines running out of its edges; now and then
-/// a short tear throws bands of it sideways into streaks. The lines are one colour, black or white, whichever reads
-/// on the dock.
+/// a short tear throws bands of it sideways into streaks. The lines are one colour: the one picked in the studio, or
+/// black or white, whichever reads on the dock.
 /// <para>
 /// It lives in the slot, so it follows the icon as the dock magnifies, and it runs on a stepped clock like the
 /// Signal Lost visualizer: a state holds for a few steps and then jumps, and the element only redraws on a jump.
@@ -119,7 +119,7 @@ public sealed class CyberLockMark : FrameworkElement
         if (_icon is null || _solid.Length == 0) return;
 
         var look = CyberLook.Current;
-        var ink = new SolidColorBrush(CyberLook.InkOn(look.Body));
+        var ink = new SolidColorBrush(Ink(look));
         double intensity = _lock > 0 ? _lock / (double)LockSteps : _burst > 0 ? .55 : 0;
         if (intensity > 0) DrawTear(dc, look, ink, intensity, (_seed * 131) + _step);
         DrawLines(dc, ink, intensity, _seed);
@@ -174,6 +174,9 @@ public sealed class CyberLockMark : FrameworkElement
             }
         }
     }
+
+    /// <summary>The mark's colour on a dock of this look: the one picked in the studio, or black or white.</summary>
+    public static Color Ink(CyberLook look) => GlassSettings.GlitchColor ?? CyberLook.InkOn(look.Body);
 
     private static void Line(DrawingContext dc, Brush ink, double x, double y, double length)
     {

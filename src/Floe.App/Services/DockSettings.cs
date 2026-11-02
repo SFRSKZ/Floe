@@ -17,6 +17,9 @@ public static class DockSettings
 
     public static bool HideWindowsTaskbar { get; private set; }
 
+    /// <summary>The dock slides off the edge when the cursor leaves it and comes back when it touches the edge.</summary>
+    public static bool AutoHide { get; private set; }
+
     /// <summary>The dock's size at full scale, 0.6 .. 1.</summary>
     public static double Scale { get; private set; } = 1;
 
@@ -30,6 +33,7 @@ public static class DockSettings
             var model = JsonSerializer.Deserialize<Model>(File.ReadAllText(ConfigPath));
             if (model is null) return;
             HideWindowsTaskbar = model.HideWindowsTaskbar;
+            AutoHide = model.AutoHide;
             Scale = Math.Clamp(model.Scale, MinScale, 1);
         }
         catch
@@ -42,6 +46,14 @@ public static class DockSettings
     {
         if (HideWindowsTaskbar == hide) return;
         HideWindowsTaskbar = hide;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetAutoHide(bool hide)
+    {
+        if (AutoHide == hide) return;
+        AutoHide = hide;
         Save();
         Changed?.Invoke();
     }
@@ -62,6 +74,7 @@ public static class DockSettings
             Floe.Core.Services.AtomicFile.WriteAllText(ConfigPath, JsonSerializer.Serialize(new Model
             {
                 HideWindowsTaskbar = HideWindowsTaskbar,
+                AutoHide = AutoHide,
                 Scale = Scale,
             }));
         }
@@ -74,6 +87,8 @@ public static class DockSettings
     private sealed class Model
     {
         public bool HideWindowsTaskbar { get; set; }
+
+        public bool AutoHide { get; set; }
 
         public double Scale { get; set; } = 1;
     }

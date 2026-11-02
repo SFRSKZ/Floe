@@ -17,6 +17,7 @@ public partial class SettingsWindow
         Accent,
         Strip,
         Ink,
+        Glitch,
     }
 
     private static Color Rgb(uint hex) => Color.FromRgb((byte)(hex >> 16), (byte)(hex >> 8), (byte)hex);
@@ -44,7 +45,7 @@ public partial class SettingsWindow
     private readonly Slider _studioValue = new() { Minimum = 0.05, Maximum = 1 };
     private DispatcherTimer? _studioTimer;
     private StudioPart _part;
-    private Color? _studioBody, _studioAccent, _studioStrip, _studioInk;
+    private Color? _studioBody, _studioAccent, _studioStrip, _studioInk, _studioGlitch;
     private bool _syncingStudio;
     private Button? _studioReset;
 
@@ -59,6 +60,7 @@ public partial class SettingsWindow
         _studioAccent = GlassSettings.CyberAccent;
         _studioStrip = GlassSettings.CyberStrip;
         _studioInk = GlassSettings.CyberInk;
+        _studioGlitch = GlassSettings.GlitchColor;
 
         var parts = new WrapPanel { Margin = new Thickness(0, 8, 0, 4) };
         foreach (var (part, name, tip) in new[]
@@ -67,6 +69,7 @@ public partial class SettingsWindow
             (StudioPart.Accent, "Vurgu", "Üstüne gelinen ikonun çerçevesi, çalışan noktaları, medya çubuğu"),
             (StudioPart.Strip, "Şerit", "Menü kenarları, HUD yazıları, seçili düğmeler"),
             (StudioPart.Ink, "Yazı", "Saat ve yazılar"),
+            (StudioPart.Glitch, "Glitch", "Öndeki uygulamanın glitch çizgileri; Otomatik: dock'a göre siyah ya da beyaz"),
         })
         {
             var tab = new RadioButton { GroupName = "StudioPart", Style = (Style)FindResource("ModeToggle"), Content = name, ToolTip = tip };
@@ -107,7 +110,6 @@ public partial class SettingsWindow
         foreach (var (set, name, tip) in new[]
         {
             (DockIconSet.Cards, "Cyberpunk", "Gri logolar, veri kartı çerçevesinde"),
-            (DockIconSet.Black, "Siyah", "Her uygulamanın logosu, dock'un üstünde opak siyah"),
             (DockIconSet.Real, "Gerçek", "Uygulamaların kendi ikonları"),
         })
         {
@@ -182,6 +184,7 @@ public partial class SettingsWindow
         StudioPart.Body => look.Body,
         StudioPart.Accent => look.Accent,
         StudioPart.Strip => look.Strip,
+        StudioPart.Glitch => _studioGlitch ?? CyberLook.InkOn(look.Body),
         _ => look.Ink,
     };
 
@@ -200,6 +203,7 @@ public partial class SettingsWindow
             case StudioPart.Body: _studioBody = color; break;
             case StudioPart.Accent: _studioAccent = color; break;
             case StudioPart.Strip: _studioStrip = color; break;
+            case StudioPart.Glitch: _studioGlitch = color; break;
             default: _studioInk = color; break;
         }
     }
@@ -226,7 +230,12 @@ public partial class SettingsWindow
         _studioTimer.Start();
     }
 
-    private void PushStudio() => GlassSettings.SetCyberColours(_studioBody, _studioAccent, _studioStrip, _studioInk);
+    private void PushStudio()
+    {
+        // the glitch colour is the mark's own, not part of a pack
+        GlassSettings.SetGlitchColor(_studioGlitch);
+        GlassSettings.SetCyberColours(_studioBody, _studioAccent, _studioStrip, _studioInk);
+    }
 
     private void RefreshStudioTracks()
     {
@@ -332,6 +341,15 @@ public partial class SettingsWindow
             Add(new Path { Data = Plate(x, Top + 13, Icon, Icon, 4), Fill = new SolidColorBrush(hovered ? look.Accent : look.Ink) }, hovered ? StudioPart.Accent : StudioPart.Ink);
         }
 
+        // the glitch: a few lines running out of the fourth icon, as the mark draws them on the app in front
+        var glitch = _studioGlitch ?? CyberLook.InkOn(look.Body);
+        double gx = Left + 22 + (3 * 36);
+        foreach (var (dy, length, right) in new[] { (15.0, 9.0, false), (21.0, 14.0, true), (25.0, 6.0, false), (29.0, 11.0, true) })
+        {
+            double lx = right ? gx + Icon + 2 : gx - length - 2;
+            Add(new Rectangle { Width = length, Height = 2, Fill = new SolidColorBrush(glitch) }, StudioPart.Glitch, lx, Top + dy);
+        }
+
         var clock = new TextBlock { Text = "23:41", FontFamily = CyberLook.Font, FontWeight = FontWeights.Bold, FontSize = 20, Foreground = new SolidColorBrush(look.Ink) };
         Canvas.SetLeft(clock, Left + Width - 66);
         Canvas.SetTop(clock, Top + 8);
@@ -352,6 +370,7 @@ public partial class SettingsWindow
             StudioPart.Body => plate,
             StudioPart.Accent => Plate(Left + 54, Top + 9, Icon + 8, Icon + 8, 0),
             StudioPart.Strip => Plate(Left + 4, Top + 4, Width - 8, Height - 8, Math.Max(0, cut - 4)),
+            StudioPart.Glitch => Plate(Left + 22 + (3 * 36) - 14, Top + 11, Icon + 30, 22, 0),
             _ => Plate(Left + Width - 72, Top + 7, 60, 28, 0),
         };
         var markInk = _part switch
@@ -361,8 +380,14 @@ public partial class SettingsWindow
         };
         canvas.Children.Add(new Path { Data = mark, Stroke = new SolidColorBrush(markInk), StrokeThickness = 1, StrokeDashArray = new DoubleCollection { 3, 2 }, IsHitTestVisible = false, SnapsToDevicePixels = true });
 
-        void Add(FrameworkElement shape, StudioPart part)
+        void Add(FrameworkElement shape, StudioPart part, double x = double.NaN, double y = double.NaN)
         {
+            if (!double.IsNaN(x))
+            {
+                Canvas.SetLeft(shape, x);
+                Canvas.SetTop(shape, y);
+            }
+
             shape.Cursor = Cursors.Hand;
             shape.MouseLeftButtonDown += (_, _) => _studioTabs[part].IsChecked = true;
             canvas.Children.Add(shape);

@@ -27,7 +27,7 @@ public partial class DockWindow
 
     private void HideTimer_Tick(object? sender, EventArgs e)
     {
-        if (!AutoHide || _menuOpen || _settingsOpen || _hwnd == IntPtr.Zero)
+        if (!Hides || _menuOpen || _settingsOpen || _hwnd == IntPtr.Zero)
         {
             return;
         }
@@ -369,6 +369,8 @@ public partial class DockWindow
         // windows end above it instead of under it
         var restTop = ((ShadowRoom + RestBarHeight) * CompactScale) + BottomMargin - Sink + 4;
         var height = (int)Math.Round(Math.Max((RestBarHeight + BottomMargin) * FullScale, restTop) * DockScale);
+        // a hiding dock leaves the screen to the windows: only a sliver stays reserved
+        if (Hides) height = 1;
         _appBar.SetPosition(_monitorInfo.Monitor, height, DockSettings.Edge, DockSettings.HideWindowsTaskbar || TaskbarController.IsHidden());
         if (IsLoaded)
         {
@@ -390,7 +392,15 @@ public partial class DockWindow
         EnsureAnimation();
         ApplyVisualizerState();
 
-        // the taskbar choice moves the reserved strip too, without a new edge
+        // turning hiding on or off: the timer follows, and a dock that stops hiding comes back
+        if (Hides) _hideTimer.Start();
+        else
+        {
+            _hideTimer.Stop();
+            ShowDock();
+        }
+
+        // the taskbar and hiding choices move the reserved strip too, without a new edge
         if (_lastDockEdge == DockSettings.Edge)
         {
             ApplyAppBarPosition();

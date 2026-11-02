@@ -83,7 +83,6 @@ public enum DockIconSet
     Contour,
     Cards,
     Real,
-    Black,
 }
 
 public enum DockTheme
@@ -202,6 +201,9 @@ public static class GlassSettings
 
     public static Color? CyberInk { get; private set; }
 
+    /// <summary>The colour of the glitch mark on the app in front; null: black or white, whichever reads on the dock.</summary>
+    public static Color? GlitchColor { get; private set; }
+
     /// <summary>How deep the plates' corners are cut: 1 is the design, 0 square.</summary>
     public static double CyberCut { get; private set; } = 1;
 
@@ -272,7 +274,7 @@ public static class GlassSettings
             Surface = Enum.TryParse<DockSurface>(model.Surface, true, out var surface) ? surface : DockSurface.Classic;
             Shrink = model.Shrink;
             FilmGrain = model.FilmGrain;
-            // the outline set is gone from the settings: whoever had it gets the apps' own icons
+            // the outline and black sets are gone from the settings: whoever had one gets the apps' own icons
             IconSet = Enum.TryParse<DockIconSet>(model.IconSet, true, out var iconSet) && iconSet != DockIconSet.Contour ? iconSet : DockIconSet.Real;
             Language = Enum.TryParse<AppLanguage>(model.Language, true, out var language) ? language : AppLanguage.Auto;
             GlyphNegative = model.GlyphNegative;
@@ -291,6 +293,7 @@ public static class GlassSettings
             if (TryParseColor(model.CyberAccent, out var cyberAccent)) CyberAccent = cyberAccent;
             if (TryParseColor(model.CyberStrip, out var cyberStrip)) CyberStrip = cyberStrip;
             if (TryParseColor(model.CyberInk, out var cyberInk)) CyberInk = cyberInk;
+            if (TryParseColor(model.GlitchColor, out var glitchColor)) GlitchColor = glitchColor;
             CyberCut = Math.Clamp(model.CyberCut, 0, 2);
             GrainAmount = Math.Clamp(model.GrainAmount, 0.3, 2);
             CyberPresets = (model.CyberPresets ?? new List<PresetModel>())
@@ -515,6 +518,14 @@ public static class GlassSettings
         CyberInk = ink;
         SaveSoon();
         Changed?.Invoke();
+    }
+
+    // the mark reads it on its next step, so the dock is not repainted for it
+    public static void SetGlitchColor(Color? color)
+    {
+        if (GlitchColor == color) return;
+        GlitchColor = color;
+        SaveSoon();
     }
 
     public static void SetCyberPresets(IEnumerable<CyberPreset> presets)
@@ -757,6 +768,7 @@ public static class GlassSettings
                 CyberAccent = CyberAccent is { } cyberAccent ? Hex(cyberAccent) : null,
                 CyberStrip = CyberStrip is { } cyberStrip ? Hex(cyberStrip) : null,
                 CyberInk = CyberInk is { } cyberInk ? Hex(cyberInk) : null,
+                GlitchColor = GlitchColor is { } glitchColor ? Hex(glitchColor) : null,
                 CyberCut = CyberCut,
                 GrainAmount = GrainAmount,
                 CyberPresets = CyberPresets.Select(preset => new PresetModel
@@ -852,6 +864,8 @@ public static class GlassSettings
         public string? CyberStrip { get; set; }
 
         public string? CyberInk { get; set; }
+
+        public string? GlitchColor { get; set; }
 
         public double CyberCut { get; set; } = 1;
 

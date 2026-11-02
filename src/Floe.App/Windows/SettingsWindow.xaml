@@ -664,6 +664,11 @@
                             TickFrequency="0.05" IsSnapToTickEnabled="True" Value="1" />
                     <TextBlock x:Name="DockScaleValue" Grid.Column="1" Width="44" TextAlignment="Right" VerticalAlignment="Center" Foreground="#F2FFFFFF" FontSize="12" />
                 </Grid>
+                <CheckBox x:Name="AutoHideToggle"
+                          Style="{StaticResource GlassToggle}"
+                          Content="Dock'u otomatik gizle"
+                          ToolTip="İmleç dock'tan ayrılınca kenara kayar, imleç ekranın kenarına gelince geri çıkar"
+                          Margin="0,0,0,8" />
                 <CheckBox x:Name="HideWindowsTaskbarToggle"
                           Style="{StaticResource GlassToggle}"
                           Content="Windows görev çubuğunu gizle"
