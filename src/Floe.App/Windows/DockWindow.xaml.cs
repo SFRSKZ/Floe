@@ -248,11 +248,7 @@ public partial class DockWindow : Window
     private int _shapeCount = -1;
     private IconMenuWindow? _iconMenu;
 
-    /// <summary>--autohide: the dock hides whatever the settings say.</summary>
     public bool AutoHide { get; set; }
-
-    // hiding as asked on the command line or in the settings; a dock that reserves no room (a render) never hides
-    private bool Hides => AutoHide || (DockSettings.AutoHide && ReserveScreenSpace);
 
     public bool BlurBackdrop { get; set; } = true;
 
@@ -549,7 +545,7 @@ public partial class DockWindow : Window
             Reposition();
             PrepareGlassPreview();
             UpdateShape();
-            if (Hides)
+            if (AutoHide)
             {
                 _hideTimer.Start();
             }

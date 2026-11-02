@@ -17,8 +17,8 @@ public static class DockSettings
 
     public static bool HideWindowsTaskbar { get; private set; }
 
-    /// <summary>The dock slides off the edge when the cursor leaves it and comes back when it touches the edge.</summary>
-    public static bool AutoHide { get; private set; }
+    /// <summary>The dock steps aside while a full-screen app is in front; off, it always stays.</summary>
+    public static bool HideOnFullscreen { get; private set; } = true;
 
     /// <summary>The dock's size at full scale, 0.6 .. 1.</summary>
     public static double Scale { get; private set; } = 1;
@@ -33,7 +33,7 @@ public static class DockSettings
             var model = JsonSerializer.Deserialize<Model>(File.ReadAllText(ConfigPath));
             if (model is null) return;
             HideWindowsTaskbar = model.HideWindowsTaskbar;
-            AutoHide = model.AutoHide;
+            HideOnFullscreen = model.HideOnFullscreen;
             Scale = Math.Clamp(model.Scale, MinScale, 1);
         }
         catch
@@ -50,10 +50,10 @@ public static class DockSettings
         Changed?.Invoke();
     }
 
-    public static void SetAutoHide(bool hide)
+    public static void SetHideOnFullscreen(bool hide)
     {
-        if (AutoHide == hide) return;
-        AutoHide = hide;
+        if (HideOnFullscreen == hide) return;
+        HideOnFullscreen = hide;
         Save();
         Changed?.Invoke();
     }
@@ -74,7 +74,7 @@ public static class DockSettings
             Floe.Core.Services.AtomicFile.WriteAllText(ConfigPath, JsonSerializer.Serialize(new Model
             {
                 HideWindowsTaskbar = HideWindowsTaskbar,
-                AutoHide = AutoHide,
+                HideOnFullscreen = HideOnFullscreen,
                 Scale = Scale,
             }));
         }
@@ -88,7 +88,7 @@ public static class DockSettings
     {
         public bool HideWindowsTaskbar { get; set; }
 
-        public bool AutoHide { get; set; }
+        public bool HideOnFullscreen { get; set; } = true;
 
         public double Scale { get; set; } = 1;
     }

@@ -27,7 +27,7 @@ public partial class DockWindow
 
     private void HideTimer_Tick(object? sender, EventArgs e)
     {
-        if (!Hides || _menuOpen || _settingsOpen || _hwnd == IntPtr.Zero)
+        if (!AutoHide || _menuOpen || _settingsOpen || _hwnd == IntPtr.Zero)
         {
             return;
         }
@@ -369,8 +369,6 @@ public partial class DockWindow
         // windows end above it instead of under it
         var restTop = ((ShadowRoom + RestBarHeight) * CompactScale) + BottomMargin - Sink + 4;
         var height = (int)Math.Round(Math.Max((RestBarHeight + BottomMargin) * FullScale, restTop) * DockScale);
-        // a hiding dock leaves the screen to the windows: only a sliver stays reserved
-        if (Hides) height = 1;
         _appBar.SetPosition(_monitorInfo.Monitor, height, DockSettings.Edge, DockSettings.HideWindowsTaskbar || TaskbarController.IsHidden());
         if (IsLoaded)
         {
@@ -387,20 +385,15 @@ public partial class DockWindow
             return;
         }
 
+        // turning the full-screen hiding off brings a hidden dock back at once
+        UpdateFullscreenState();
+
         // a new size: the dock grows or shrinks to it, and the visualizer strip follows
         _targetDockScale = IsMouseOver || _menuOpen ? FullScale : CompactScale;
         EnsureAnimation();
         ApplyVisualizerState();
 
-        // turning hiding on or off: the timer follows, and a dock that stops hiding comes back
-        if (Hides) _hideTimer.Start();
-        else
-        {
-            _hideTimer.Stop();
-            ShowDock();
-        }
-
-        // the taskbar and hiding choices move the reserved strip too, without a new edge
+        // the taskbar choice moves the reserved strip too, without a new edge
         if (_lastDockEdge == DockSettings.Edge)
         {
             ApplyAppBarPosition();
@@ -441,8 +434,9 @@ public partial class DockWindow
         }
 
         // ABN_FULLSCREENAPP is desktop-wide, so only honour it when the foreground app is on our monitor
-        var fullscreen = ScreenInput.IsForegroundFullscreen(_monitor)
-            || (_appbarFullscreen && ScreenInput.GetForegroundMonitor() == _monitor);
+        var fullscreen = DockSettings.HideOnFullscreen
+            && (ScreenInput.IsForegroundFullscreen(_monitor)
+                || (_appbarFullscreen && ScreenInput.GetForegroundMonitor() == _monitor));
         if (!ScreenInput.IsForegroundFullscreen())
         {
             _appbarFullscreen = false;

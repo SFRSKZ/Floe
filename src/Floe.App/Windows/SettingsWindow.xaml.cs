@@ -425,9 +425,9 @@ public partial class SettingsWindow : Window
             DockScaleValue.Text = $"{DockSettings.Scale * 100:0}%";
         };
 
-        AutoHideToggle.IsChecked = DockSettings.AutoHide;
-        AutoHideToggle.Checked += (_, _) => DockSettings.SetAutoHide(true);
-        AutoHideToggle.Unchecked += (_, _) => DockSettings.SetAutoHide(false);
+        HideOnFullscreenToggle.IsChecked = DockSettings.HideOnFullscreen;
+        HideOnFullscreenToggle.Checked += (_, _) => DockSettings.SetHideOnFullscreen(true);
+        HideOnFullscreenToggle.Unchecked += (_, _) => DockSettings.SetHideOnFullscreen(false);
         HideWindowsTaskbarToggle.IsChecked = DockSettings.HideWindowsTaskbar;
         HideWindowsTaskbarToggle.Checked += (_, _) => DockSettings.SetHideWindowsTaskbar(true);
         HideWindowsTaskbarToggle.Unchecked += (_, _) => DockSettings.SetHideWindowsTaskbar(false);
