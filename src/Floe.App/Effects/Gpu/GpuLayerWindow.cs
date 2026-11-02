@@ -37,6 +37,7 @@ internal sealed class GpuLayerWindow : IDisposable
     private readonly float[] _paletteG = new float[GpuFrame.PaletteSize];
     private readonly float[] _paletteB = new float[GpuFrame.PaletteSize];
     private readonly IntPtr[] _waitOne = new IntPtr[1];
+    private readonly ID3D11ShaderResourceView[] _noInputs = new ID3D11ShaderResourceView[1];
     private readonly WndProc _wndProc;
 
     // Requests from the WPF thread, guarded by _gate.
@@ -48,6 +49,13 @@ internal sealed class GpuLayerWindow : IDisposable
     private IntPtr _requestedDock;
     private volatile bool _runningWanted;
     private volatile bool _waveRequested;
+    // the album cover and the playing icon's place, handed over from the UI thread
+    private volatile byte[]? _cover;
+    private volatile int _coverSize;
+    private int _coverVersion;
+    private float _sourceX = 0.5f;
+    private float _dockLeft = 0.37f, _dockRight = 0.63f;
+    private volatile bool _led;
     private volatile bool _disposed;
 
     // Render-thread state; nothing below is touched from the WPF thread.
@@ -60,7 +68,10 @@ internal sealed class GpuLayerWindow : IDisposable
     private ID3D11DeviceContext? _context;
     private GpuSwapChain? _swapChain;
     private ID3D11RenderTargetView? _renderTarget;
+    private LedScreenPass? _ledPass;
+    private bool _ledUnavailable;
     private AudioSpectrum? _audio;
+    private readonly AudioCalm _calm = new();
     private bool _active;
     private bool _shown;
     private double _fade;
@@ -100,6 +111,26 @@ internal sealed class GpuLayerWindow : IDisposable
 
     public IntPtr Handle => Volatile.Read(ref _hwnd);
 
+    /// <summary>
+    /// Frames a second this layer draws at, overriding the visualizer pacing (0 keeps it); a layer that moves with
+    /// the dock asks for the monitor's rate, so it never steps slower than the dock beside it.
+    /// </summary>
+    public double Fps { get; set; }
+
+    /// <summary>
+    /// Draws only when <see cref="RequestFrame"/> asks (while running; the fade-out still runs at <see cref="Fps"/>):
+    /// for a layer whose content arrives from the dock's frames, so it never presents the same picture twice.
+    /// </summary>
+    public bool OnDemand { get; set; }
+
+    public void RequestFrame()
+    {
+        _frameRequested = true;
+        _wake.Set();
+    }
+
+    private volatile bool _frameRequested;
+
     public bool IsRunning => _runningWanted && !_disposed;
 
     /// <summary>The dust wave look of the stardust scene; copied into <see cref="GpuFrame.Wave"/>.</summary>
@@ -107,6 +138,36 @@ internal sealed class GpuLayerWindow : IDisposable
     {
         get => _waveRequested;
         set => _waveRequested = value;
+    }
+
+    /// <summary>Shows the strip as a colour LED screen instead of the plain picture.</summary>
+    /// <summary>The album cover as square BGRA rows (null: none); a new array counts as a new song.</summary>
+    public void SetCover(byte[]? bgra, int size)
+    {
+        if (ReferenceEquals(bgra, _cover)) return;
+        _coverSize = size;
+        _cover = bgra;
+        Interlocked.Increment(ref _coverVersion);
+    }
+
+    /// <summary>Where the dock's capsule stands along the strip, 0..1.</summary>
+    public void SetDock(float left, float right)
+    {
+        Volatile.Write(ref _dockLeft, left);
+        Volatile.Write(ref _dockRight, right);
+    }
+
+    /// <summary>Where the playing app's icon sits along the strip, 0..1.</summary>
+    public float SourceX
+    {
+        get => Volatile.Read(ref _sourceX);
+        set => Volatile.Write(ref _sourceX, value);
+    }
+
+    public bool LedScreen
+    {
+        get => _led;
+        set => _led = value;
     }
 
     /// <summary>Physical-pixel strip, in screen coordinates, kept just below <paramref name="dock"/>.</summary>
@@ -346,9 +407,22 @@ internal sealed class GpuLayerWindow : IDisposable
             if (result == WaitObject0 + 1) PumpMessages();
         }
 
+        if (OnDemand && _runningWanted)
+        {
+            while (!_exit && !_frameRequested && _runningWanted)
+            {
+                _waitOne[0] = _wake.SafeWaitHandle.DangerousGetHandle();
+                uint woke = MsgWaitForMultipleObjects(1, _waitOne, false, 250, QsAllInput);
+                if (woke == WaitObject0 + 1) PumpMessages();
+            }
+
+            _frameRequested = false;
+            return;
+        }
+
         // Performance.VisualizerFps is the user's cap; without one the strip runs at 60, or 30 while
         // the dock animates (see VisualizerPacing).
-        double fps = Performance.VisualizerFps;
+        double fps = Fps > 0 ? Fps : Performance.VisualizerFps;
         if (fps <= 0) fps = VisualizerPacing.DockAnimating ? 30 : 60;
         long interval = (long)(Stopwatch.Frequency / fps);
         while (!_exit)
@@ -423,6 +497,7 @@ internal sealed class GpuLayerWindow : IDisposable
         _swapChain.Resize(_width, _height);
         CreateTarget();
         _scene.Resize(_width, _height);
+        _ledPass?.Resize(_width, _height);
         _lastPresent = 0;
     }
 
@@ -439,6 +514,14 @@ internal sealed class GpuLayerWindow : IDisposable
         _frame.Performance = Performance.Level;
         _frame.Wave = _waveRequested;
         _audio?.Read(_frame.Audio, dt);
+        _calm.Apply(_frame.Audio, (float)dt);
+        _frame.Balance = _frame.Audio.Balance;
+        _frame.Cover = _cover;
+        _frame.CoverSize = _coverSize;
+        _frame.CoverVersion = Volatile.Read(ref _coverVersion);
+        _frame.SourceX = SourceX;
+        _frame.DockLeft = Volatile.Read(ref _dockLeft);
+        _frame.DockRight = Volatile.Read(ref _dockRight);
 
         VisualizerPalette.Fill(_paletteR, _paletteG, _paletteB, _time, BasePrimary);
         for (int i = 0; i < GpuFrame.PaletteSize; i++)
@@ -447,7 +530,27 @@ internal sealed class GpuLayerWindow : IDisposable
         }
 
         _context.ClearRenderTargetView(_renderTarget, new Color4(0, 0, 0, 0));
-        _scene.Render(_context, _renderTarget, _frame);
+        if (_led && !_ledUnavailable)
+        {
+            // The scene draws into the pass's own picture, then the pass turns that into the LED grid; a failed
+            // pass falls back to the plain picture rather than taking the strip down.
+            _context.PSSetShaderResources(0, _noInputs);
+            _ledPass ??= CreateLedPass();
+            if (_ledPass?.SceneTarget is { } sceneTarget)
+            {
+                _context.ClearRenderTargetView(sceneTarget, new Color4(0, 0, 0, 0));
+                _scene.Render(_context, sceneTarget, _frame);
+                _ledPass.Apply(_context, _renderTarget, _width, _height, (float)_ppd, (float)_time);
+            }
+            else
+            {
+                _scene.Render(_context, _renderTarget, _frame);
+            }
+        }
+        else
+        {
+            _scene.Render(_context, _renderTarget, _frame);
+        }
 
         // Pace from the start of the present: Present(1) itself waits for the monitor's vblank, so the
         // interval has to cover that wait or 30 fps would come out as 20.
@@ -485,6 +588,27 @@ internal sealed class GpuLayerWindow : IDisposable
         _renderTarget = _device.CreateRenderTargetView(backBuffer, null);
     }
 
+    // Made on first use, so a layer that never turns the LED look on never pays for its picture and shaders.
+    private LedScreenPass? CreateLedPass()
+    {
+        if (_device is null) return null;
+        LedScreenPass? pass = null;
+        try
+        {
+            pass = new LedScreenPass();
+            pass.Initialize(_device);
+            pass.Resize(_width, _height);
+            return pass;
+        }
+        catch (Exception ex)
+        {
+            pass?.Dispose();
+            _ledUnavailable = true;
+            Debug.WriteLine($"[Floe.Gpu] led pass: {ex.Message}");
+            return null;
+        }
+    }
+
     private void RecoverDevice()
     {
         _scene.ReleaseDevice();
@@ -501,6 +625,10 @@ internal sealed class GpuLayerWindow : IDisposable
 
     private void ReleaseDevice()
     {
+        _ledPass?.Dispose();
+        _ledPass = null;
+        // a new device may compile the pass fine even if the last one could not
+        _ledUnavailable = false;
         _renderTarget?.Dispose();
         _renderTarget = null;
         _swapChain?.Dispose();

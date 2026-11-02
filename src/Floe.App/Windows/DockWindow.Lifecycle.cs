@@ -31,6 +31,11 @@ public partial class DockWindow
 
         _hwnd = new WindowInteropHelper(this).Handle;
         WindowStyling.MakeNonActivatingToolWindow(_hwnd);
+        if (DwmDock)
+        {
+            DwmTransparency.Apply(this);
+            StartClickThrough();
+        }
         DesktopController.RegisterHotKey(_hwnd, DesktopController.HotkeyIdVeil, DesktopController.ModControl | DesktopController.ModAlt, DesktopController.VkV);
         if (BlurBackdrop)
         {
@@ -40,7 +45,12 @@ public partial class DockWindow
         _source = HwndSource.FromHwnd(_hwnd);
         _source?.AddHook(WndProc);
         if (_source is not null) CaptureReveal.Initialize(_source);
-        IsVisibleChanged += (_, _) => UpdateEffectVisibility();
+        WatchUsbDevices();
+        IsVisibleChanged += (_, _) =>
+        {
+            Log($"dock visible={IsVisible}");
+            UpdateEffectVisibility();
+        };
 
         _taskbarCreatedMessage = TrayNotification.TaskbarCreatedMessage;
         DpiChanged += OnDpiChanged;
@@ -64,6 +74,8 @@ public partial class DockWindow
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (msg == DeviceChangeMessage && wParam.ToInt64() == DeviceArrival) NoteUsbArrival();
+
         if (msg == 0x0312 && wParam.ToInt32() == DesktopController.HotkeyIdVeil)
         {
             ToggleVeil();
@@ -134,7 +146,7 @@ public partial class DockWindow
             _trayIcon = TrayNotification.LoadAppIcon(Environment.ProcessPath ?? string.Empty);
         }
 
-        TrayNotification.Add(_hwnd, "Floe", _trayIcon);
+        TrayNotification.Add(_hwnd, Product.Name, _trayIcon);
 
         // ABM_REMOVE is a no-op against the fresh shell, but it clears our stale registration state
         if (_appBar is not null)
@@ -158,6 +170,7 @@ public partial class DockWindow
 
     private void ToggleDockVisible()
     {
+        Log("tray toggled the dock");
         if (IsVisible)
         {
             Hide();
@@ -174,13 +187,13 @@ public partial class DockWindow
         var (x, y) = ScreenInput.GetCursorPosition();
         var actions = new List<(string Label, Action Run)>
         {
-            (IsVisible ? "Dock'u gizle" : "Dock'u göster", ToggleDockVisible),
-            ("Masaüstünü göster", DesktopController.ShowDesktop),
-            (_veil?.IsVisible == true ? "Perde modunu kapat" : "Perde modu (Ctrl+Alt+V)", ToggleVeil),
-            (AutoStart.IsEnabled() ? "Açılışta başlatmayı kapat" : "Açılışta başlat", AutoStart.Toggle),
-            ("Kay?t modu", () => CaptureReveal.Recording = !CaptureReveal.Recording),
+            (Loc.T(IsVisible ? "Dock'u gizle" : "Dock'u göster"), ToggleDockVisible),
+            (Loc.T("Masaüstünü göster"), DesktopController.ShowDesktop),
+            (Loc.T(_veil?.IsVisible == true ? "Perde modunu kapat" : "Perde modu (Ctrl+Alt+V)"), ToggleVeil),
+            (Loc.T(AutoStart.IsEnabled() ? "Açılışta başlatmayı kapat" : "Açılışta başlat"), AutoStart.Toggle),
+            (Loc.T("Kayıt modu"), () => CaptureReveal.Recording = !CaptureReveal.Recording),
             ("-", () => { }),
-            ("Çıkış", () => Application.Current.Shutdown()),
+            (Loc.T(Floe.Core.Services.Product.QuitLabel), () => Application.Current.Shutdown()),
         };
 
         var index = TrayNotification.ShowMenu(_hwnd, x, y, actions.Select(action => action.Label).ToList(), CaptureReveal.Recording ? 4 : -1);
@@ -196,6 +209,8 @@ public partial class DockWindow
         CaptureReveal.Shutdown();
         _activeFx?.Stop();
         StopAnimation();
+        _tronLayer?.Dispose();
+        _tronLayer = null;
         AuraSettings.Changed -= OnAuraSettingsChanged;
         _settings?.Close();
         for (var k = 0; k < _auraEffects.Length; k++)
@@ -220,12 +235,13 @@ public partial class DockWindow
         _alertHook?.Dispose();
         _ambientTimer.Stop();
         _backdropCapture?.Dispose();
-        TrayNotification.Remove(_hwnd, "Floe", _trayIcon);
+        TrayNotification.Remove(_hwnd, Product.Name, _trayIcon);
         if (_trayIcon != IntPtr.Zero)
         {
             TrayNotification.DestroyAppIcon(_trayIcon);
         }
 
+        StopWatchingUsbDevices();
         _source?.RemoveHook(WndProc);
         DpiChanged -= OnDpiChanged;
         _appBar?.Dispose();

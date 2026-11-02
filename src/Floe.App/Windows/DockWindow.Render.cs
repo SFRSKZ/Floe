@@ -14,6 +14,7 @@ using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using Floe.App.Effects.Gpu;
 using Floe.App.Services;
 using Floe.App.ViewModels;
 using Floe.Core.Interop;
@@ -66,12 +67,20 @@ public partial class DockWindow
     }
 
     private static readonly bool PerfLog = Environment.GetEnvironmentVariable("FLOE_PERF") is not null;
+    // the loose cubes scatter on the dock's own frame time
+    private double _frameDt = 1 / 60.0;
+    private readonly List<TronCubes.Column> _tronColumns = new();
     private int _perfFrames;
     private double _perfWork;
     private double _perfMaxWork;
     private double _perfMaxGap;
     private long _perfStart;
     internal static int PerfBackdrops;
+    // what the benchmark reads: frames drawn, their work on the UI thread, and the gaps between them
+    internal static int BenchFrames;
+    internal static double BenchWork;
+    internal static int BenchLate;
+    internal static double BenchMaxGap;
     internal static int PerfMoves;
     internal static double PerfMoveMs;
     private TimeSpan _perfCpu;
@@ -89,7 +98,14 @@ public partial class DockWindow
     {
         var started = Stopwatch.GetTimestamp();
         // frames the cap skips are not counted as drawn
-        if (OnRenderingCore(e is RenderingEventArgs args ? args.RenderingTime.TotalSeconds : -1) && PerfLog)
+        var drawn = OnRenderingCore(e is RenderingEventArgs args ? args.RenderingTime.TotalSeconds : -1);
+        if (drawn)
+        {
+            BenchFrames++;
+            BenchWork += (Stopwatch.GetTimestamp() - started) * 1000.0 / Stopwatch.Frequency;
+        }
+
+        if (drawn && PerfLog)
         {
             if (!_perfHooked)
             {
@@ -148,6 +164,11 @@ public partial class DockWindow
         _perfMaxGap = Math.Max(_perfMaxGap, gap * 1000);
         if (_renderDrawn)
         {
+            BenchMaxGap = Math.Max(BenchMaxGap, gap * 1000);
+            if (gap > .025) BenchLate++;
+        }
+        if (_renderDrawn)
+        {
             // judged against 60 fps at most: 100 fps on a 180 Hz monitor is smooth, not late
             Performance.ReportFrame(gap, 1 / Math.Min(60, cap > 0 ? Math.Min(cap, Performance.RefreshRate) : Performance.RefreshRate));
         }
@@ -158,6 +179,8 @@ public partial class DockWindow
         {
             dt = 1.0 / 60.0;
         }
+
+        _frameDt = dt;
 
         if (_metalEffect is not null && !_glassPreview)
         {
@@ -186,6 +209,7 @@ public partial class DockWindow
         ApplyLayout(scales);
         UpdateShape();
         UpdateGlow();
+        KeepTrayOnDock();
 
         var settled = _targetBulge == 0
             && _currentBulge < 0.3
@@ -195,7 +219,9 @@ public partial class DockWindow
             && Math.Abs(_dockScale - _targetDockScale) < 0.002
             && Math.Abs(_dockScaleVel) < 0.02
             && scales.All(s => Math.Abs(s - 1) < 0.0015)
-            && SectionsSettled;
+            && SectionsSettled
+            && !_isDragging
+            && _slots.All(s => Math.Abs(s.Shift) < 0.3);
 
         if (settled)
         {
@@ -210,8 +236,8 @@ public partial class DockWindow
             UpdateShape();
             // UpdateShape may skip its rebuild here, but the warp has to go once the bulge is gone
             UpdateRimWarp();
-            // a held-still rim must not keep the loop alive by itself
-            if (_metalEffect is null || !IsMouseOver || !Performance.AmbientMotion) StopAnimation();
+            // a held-still rim must not keep the loop alive by itself; a loose cube still in the air must
+            if ((_metalEffect is null || !IsMouseOver || !Performance.AmbientMotion) && !_tronCubes.Busy) StopAnimation();
         }
 
         return true;
@@ -246,6 +272,9 @@ public partial class DockWindow
 
     private void UpdateShape()
     {
+        // the loose cubes follow the springs every frame, even when the geometry itself is skipped
+        UpdateTronCubes(_frameDt);
+
         // skip rebuilding the geometry when nothing meaningful changed (per-frame cost)
         if (Math.Abs(_shapeHover - _currentHoverX) < 0.25
             && Math.Abs(_shapeBulge - _currentBulge) < 0.25
@@ -264,8 +293,18 @@ public partial class DockWindow
         _shapeScale = _dockScale;
         _shapeCount = _slots.Count;
 
-        var points = BuildShape();
-        if (points.Count >= 2)
+        if (GlassSettings.Cyber)
+        {
+            BuildCyberShape();
+        }
+        else if (_shapeGeometry.Figures.Count != 1 || _shapeGeometry.Figures[0] != _shapeFigure)
+        {
+            _shapeGeometry.Figures.Clear();
+            _shapeGeometry.Figures.Add(_shapeFigure);
+        }
+
+        var points = GlassSettings.Cyber ? _shapePoints : BuildShape();
+        if (!GlassSettings.Cyber && points.Count >= 2)
         {
             _shapeFigure.StartPoint = points[0];
             var segmentPoints = _shapeSegment.Points;
@@ -289,7 +328,7 @@ public partial class DockWindow
 
     private void UpdateGlow()
     {
-        if (_slots.Count == 0 || _currentBulge <= 0.5)
+        if (_slots.Count == 0 || _currentBulge <= 0.5 || GlassSettings.Cyber)
         {
             _glow.Visibility = Visibility.Collapsed;
             return;
@@ -315,7 +354,7 @@ public partial class DockWindow
                 continue;
             }
 
-            var color = GlassSettings.Mordor ? AuraSettings.Embers[1] : slot.Item.Glow;
+            var color = GlassSettings.Tron ? ThemePalette.LineColor : slot.Item.Glow;
             var alpha = (byte)(0x6E * weight * intensity);
             _glowPairs.Add((rel, Color.FromArgb(alpha, color.R, color.G, color.B)));
         }
@@ -352,8 +391,9 @@ public partial class DockWindow
         _shapePoints.Clear();
         var points = _shapePoints;
 
+        // Tron's glass stays flat: its bulge is the cube mound TronCubes draws on top
         double TopAt(double localX)
-            => Math.Max(0, RestTop - (EffectiveBulge * BulgeProfile(localX - (_currentHoverX - offset))));
+            => GlassSettings.Tron ? RestTop : Math.Max(0, RestTop - (EffectiveBulge * BulgeProfile(localX - (_currentHoverX - offset))));
 
         var y0 = TopAt(r);
         var y1 = TopAt(width - r);
@@ -376,6 +416,110 @@ public partial class DockWindow
 
         ApplySideStretch(points, offset, width);
         return points;
+    }
+
+    // Tron's cube mound, one column per cube width, right to left, each standing on the flat glass.
+    // The columns get the side stretch too, so they stay over the glass the shape's points stretch.
+    private void BuildCubeColumns(List<TronCubes.Column> target, bool stretch)
+    {
+        target.Clear();
+        var offset = _capsuleLeft;
+        var width = _capsuleWidth;
+        var r = CornerRadius;
+        var hover = _currentHoverX - offset;
+        var bulge = EffectiveBulge;
+        var strength = MaxBulge > 0 ? Math.Max(0, Math.Min(1, bulge / MaxBulge)) : 0;
+        var mid = offset + (width / 2);
+        var leftShift = stretch && strength > .001 ? MaxSideStretch * Gaussian(0, hover) * strength : 0;
+        var rightShift = stretch && strength > .001 ? MaxSideStretch * Gaussian(width, hover) * strength : 0;
+
+        for (var right = width - r; right > r + .01; right -= TronCubes.Cube)
+        {
+            var left = Math.Max(r, right - TronCubes.Cube);
+            // the mound stands taller and narrower than the glass bulge would: it rises clear of the magnified
+            // icons but keeps its foot under the hovered one and its neighbours
+            var cubes = (bulge * 1.5 * BulgeProfile((((right + left) / 2) - hover) * 1.8)) / TronCubes.Cube;
+            var whole = Math.Floor(cubes);
+            var x0 = offset + left;
+            var x1 = offset + right;
+            if (leftShift > 0 || rightShift > 0)
+            {
+                if (x0 < mid) x0 -= leftShift; else x0 += rightShift;
+                if (x1 < mid) x1 -= leftShift; else x1 += rightShift;
+            }
+
+            target.Add(new TronCubes.Column(x0, RestTop, x1 - x0, whole * TronCubes.Cube, cubes - whole));
+        }
+    }
+
+    // feed the cube mound once per frame: the columns plus the frame time that drives its flow and scatter
+    private void UpdateTronCubes(double dt)
+    {
+        if (GlassSettings.Tron) BuildCubeColumns(_tronColumns, true);
+        else _tronColumns.Clear();
+        SyncTronLayer();
+        _tronCubes.Frame(_tronColumns, _currentHoverX, dt);
+        _tronLayer?.SetRunning(_tronCubes.Busy);
+    }
+
+    private GpuLayerWindow? _tronLayer;
+    private TronGpuScene? _tronScene;
+    private bool _tronGpuFailed;
+
+    // With the GPU setting on, Tron's mound is drawn by a composition layer just under the dock: the icons stay on
+    // top of it and WPF's render thread no longer tessellates thousands of cube faces a frame. Without a device it
+    // stays in WPF for good.
+    private void SyncTronLayer()
+    {
+        bool wanted = GlassSettings.Tron && GlassSettings.GpuVisualizer && !_tronGpuFailed && !_glassPreview && _hwnd != IntPtr.Zero;
+        if (!wanted)
+        {
+            if (_tronLayer is null) return;
+            _tronCubes.Mesh = null;
+            _tronCubes.MeshChanged -= SubmitTron;
+            _tronLayer.Dispose();
+            _tronLayer = null;
+            _tronScene = null;
+            return;
+        }
+
+        if (_tronLayer is null)
+        {
+            try
+            {
+                _tronScene = new TronGpuScene();
+                _tronLayer = new GpuLayerWindow(_tronScene) { Fps = Performance.RefreshRate, OnDemand = true };
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Floe.Gpu] tron layer: {ex.Message}");
+            }
+
+            if (_tronLayer is null || _tronLayer.Handle == IntPtr.Zero)
+            {
+                _tronLayer?.Dispose();
+                _tronLayer = null;
+                _tronScene = null;
+                _tronGpuFailed = true;
+                return;
+            }
+
+            _tronCubes.Mesh = new TronMesh();
+            _tronCubes.MeshChanged += SubmitTron;
+        }
+
+        // the layer covers the dock window, in physical pixels, just under it
+        var scale = _dpi;
+        _tronLayer.Place(new Int32Rect((int)Math.Round(Left * scale), (int)Math.Round(Top * scale),
+            (int)Math.Round(ActualWidth * scale), (int)Math.Round(ActualHeight * scale)), scale, _hwnd);
+    }
+
+    private void SubmitTron()
+    {
+        if (_tronScene is null || _tronCubes.Mesh is not { } mesh) return;
+        var m = _tronCubes.TransformToAncestor(this) is MatrixTransform transform ? transform.Matrix : Matrix.Identity;
+        _tronScene.Submit(mesh, new System.Numerics.Matrix3x2((float)m.M11, (float)m.M12, (float)m.M21, (float)m.M22, (float)m.OffsetX, (float)m.OffsetY));
+        _tronLayer?.RequestFrame();
     }
 
     private void ApplySideStretch(List<Point> points, double offset, double width)

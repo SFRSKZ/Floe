@@ -40,7 +40,10 @@ public partial class DockWindow : Window
     private const double WindowHeight = RestBarHeight + MaxBulge + Headroom + ShadowRoom;
     private const double EdgeMargin = 6;
     private const double MaxSideStretch = 12;
-    private const double CompactScale = 0.62;
+    // the size the dock grows to under the cursor, as picked in the settings
+    private static double FullScale => DockSettings.Scale;
+    // the size the dock rests at with the cursor away: smaller, unless shrinking is turned off
+    private static double CompactScale => (GlassSettings.Shrink ? 0.62 : 1) * FullScale;
     private const double HoverMaxScale = 1.4;
     private const double FalloffRadius = 115;
     private const double GlowRadius = 92;
@@ -48,8 +51,9 @@ public partial class DockWindow : Window
 
     private const double CornerRadius = 22;
     private const double BottomMargin = 8;
-    // the shown dock sits this much lower than the reserved strip, its shadow running off the screen's edge
-    private const double Sink = 8;
+    // the shown dock sits this much lower than the reserved strip, its shadow running off the screen's edge;
+    // a Cyber dock has no shadow to make room for, so it comes down until its top meets the strip's
+    private static double Sink => GlassSettings.Cyber ? 16 : 8;
     private const int TriggerShow = 6;
     private const int TriggerPx = 4;
 
@@ -61,6 +65,10 @@ public partial class DockWindow : Window
     private IconSlot? _dragSlot;
     private Point _dragStart;
     private bool _isDragging;
+    // while an icon is held: the cursor x it follows, and where the others open a gap for it (-1: none)
+    private double _dragX;
+    private double _dragY;
+    private int _dragGap = -1;
     private readonly Dictionary<string, DockItemViewModel> _pinned = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<DockItemViewModel> _pinnedList = new();
     private readonly DispatcherTimer _hideTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
@@ -155,6 +163,7 @@ public partial class DockWindow : Window
     private readonly Path _specular = new() { IsHitTestVisible = false };
     private readonly Rectangle _grain = new() { IsHitTestVisible = false };
     private readonly Path _rim = new() { IsHitTestVisible = false };
+    private readonly TronCubes _tronCubes = new();
     private readonly Ellipse _glow = new() { IsHitTestVisible = false, Width = 220, Height = 86 };
 
     private readonly Ellipse _dropRing = new()
@@ -176,15 +185,23 @@ public partial class DockWindow : Window
     private readonly Canvas _glowLayer = new() { IsHitTestVisible = false };
     private readonly Canvas _clockLayer = new();
     private readonly Image _backdrop = new() { IsHitTestVisible = false, Stretch = Stretch.Fill };
+    private readonly Canvas _backdropHost = new() { IsHitTestVisible = false };
+    private readonly ScaleTransform _backdropUnscale = new(1, 1);
     private WriteableBitmap? _backdropBitmap;
-    private BackdropCapture? _backdropCapture;
+    private IDisposable? _backdropCapture;
+    // the live GPU capture hands over frames it already blurred
+    private bool _gpuBackdrop;
     private readonly StackPanel _clock = new();
     private readonly TextBlock _clockTime = new();
     private readonly TextBlock _clockDate = new();
     private readonly Rectangle _clockDivider = new();
+    private readonly SolidColorBrush _lineBrush = new(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF));
     private PreviewWindow? _preview;
+    private IconSlot? _previewSlot;
     private HwndSource? _source;
     private IntPtr _trayIcon;
+    private DockEdge _lastDockEdge = DockEdge.Bottom;
+    private DockEdge? _orientedEdge;
 
     private readonly DispatcherTimer _clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private Color _currentGlowColor = Colors.White;
@@ -206,6 +223,7 @@ public partial class DockWindow : Window
         FontFamily = new FontFamily("Segoe UI"),
     };
 
+    private FontFamily _clockFont = new("Segoe UI");
     private double _windowWidth = 200;
     private double _capsuleWidth = 160;
     private double _capsuleLeft = 20;
@@ -228,7 +246,7 @@ public partial class DockWindow : Window
     private double _shapeWidth = double.NaN;
     private double _shapeScale = double.NaN;
     private int _shapeCount = -1;
-    private RadialMenuWindow? _radial;
+    private IconMenuWindow? _iconMenu;
 
     public bool AutoHide { get; set; }
 
@@ -251,29 +269,35 @@ public partial class DockWindow : Window
     public DockWindow()
     {
         InitializeComponent();
+        Title = Product.Name;
+        // the settings are read again further down; the window kind has to be known before it is shown
+        GlassSettings.Load();
+        DwmDock = WantsDwmDock();
+        if (DwmDock) AllowsTransparency = false;
 
         Root.RenderTransformOrigin = new Point(0.5, 1.0);
         Root.RenderTransform = _rootScale;
+        _rootScale.Changed += (_, _) => UpdateBackdropUnscale();
+        _lastDockEdge = DockSettings.Edge;
+        ApplyDockOrientation();
+        DockSettings.Changed += OnDockSettingsChanged;
+        Closed += (_, _) => DockSettings.Changed -= OnDockSettingsChanged;
         AllowDrop = true;
         Root.AllowDrop = true;
         IconLayer.AllowDrop = true;
 
-        var clockFont = FontService.LoadFromFile(
-            @"C:\Users\dev\Documents\Codex\2026-09-09\referenced-chatgpt-conversation-this-is-an\outputs\NothingRoundUI\fonts\Doto-Variable.ttf")
-            ?? FontService.LoadFromFile(
-            @"C:\Users\dev\Documents\Codex\2026-09-09\referenced-chatgpt-conversation-this-is-an\outputs\NothingRoundUI\fonts\Doto.ttf")
-            ?? new FontFamily(FontService.Resolve("Ndot 55", "Ndot-55", "Ndot", "Nothing Font", "NothingFont", "Manrope", "Segoe UI"));
+        _clockFont = new FontFamily(new Uri($"pack://application:,,,/{Product.Exe};component/"), "./Assets/Fonts/#Doto");
 
         var clockGlow = new DropShadowEffect { Color = Colors.White, ShadowDepth = 0, BlurRadius = 10, Opacity = 0.6 };
 
-        _clockTime.FontFamily = clockFont;
+        _clockTime.FontFamily = _clockFont;
         _clockTime.FontSize = 26;
         _clockTime.FontWeight = FontWeights.Bold;
         _clockTime.Foreground = Brushes.White;
         _clockTime.TextAlignment = TextAlignment.Center;
         _clockTime.Effect = clockGlow;
 
-        _clockDate.FontFamily = clockFont;
+        _clockDate.FontFamily = _clockFont;
         _clockDate.FontSize = 14;
         _clockDate.FontWeight = FontWeights.SemiBold;
         _clockDate.Foreground = Brushes.White;
@@ -290,7 +314,7 @@ public partial class DockWindow : Window
 
         _clockDivider.Width = 1;
         _clockDivider.Height = 34;
-        _clockDivider.Fill = new SolidColorBrush(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF));
+        _clockDivider.Fill = _lineBrush;
         _clockDivider.RadiusX = 0.5;
         _clockDivider.RadiusY = 0.5;
 
@@ -351,7 +375,9 @@ public partial class DockWindow : Window
         _backdrop.Height = WindowHeight;
         Canvas.SetLeft(_backdrop, 0);
         Canvas.SetTop(_backdrop, 0);
-        ShapeLayer.Children.Insert(0, _backdrop);
+        _backdrop.RenderTransform = _backdropUnscale;
+        _backdropHost.Children.Add(_backdrop);
+        ShapeLayer.Children.Insert(0, _backdropHost);
 
         _shapeFigure.Segments.Add(_shapeSegment);
         _shapeGeometry.Figures.Add(_shapeFigure);
@@ -360,13 +386,18 @@ public partial class DockWindow : Window
         _sheen.Data = _shapeGeometry;
         _specular.Data = _shapeGeometry;
         _glowLayer.Clip = _shapeGeometry;
-        _backdrop.Clip = _shapeGeometry;
+        _backdropHost.Clip = _shapeGeometry;
 
         ShapeLayer.Children.Add(_outerRim);
         ShapeLayer.Children.Add(_glass);
         ShapeLayer.Children.Add(_rim);
         ShapeLayer.Children.Add(_sheen);
         ShapeLayer.Children.Add(_specular);
+        // more diagnostics: glass hides the whole surface, combine drops the exterior clips, stroke the hairlines
+        if (NoFx.Contains("glass")) ShapeLayer.Visibility = Visibility.Collapsed;
+        if (NoFx.Contains("icons")) IconLayer.Visibility = Visibility.Collapsed;
+        if (NoFx.Contains("combine")) _shadowHost.Clip = _outerRim.Clip = null;
+        if (NoFx.Contains("stroke")) _rim.Data = _outerRim.Data = null;
 
         _grain.Fill = new ImageBrush(MakeNoiseBitmap())
         {
@@ -378,7 +409,9 @@ public partial class DockWindow : Window
         _grain.Opacity = Floe.App.Services.BlurSettings.GrainOpacity;
         _grain.Clip = _shapeGeometry;
         ShapeLayer.Children.Add(_grain);
+        InitializeCyber();
         ShapeLayer.Children.Add(_metalHost);
+        ShapeLayer.Children.Add(_tronCubes);
 
         _glowLayer.Children.Add(_glow);
         _glowLayer.Children.Add(_dropRing);
@@ -475,6 +508,8 @@ public partial class DockWindow : Window
         }
 
         Root.Children.Insert(2, _spectralLayer);
+        if (NoFx.Contains("aura")) _glowLayer.Visibility = _spectralLayer.Visibility = Visibility.Collapsed;
+        if (NoFx.Contains("clock")) _clockLayer.Visibility = Visibility.Collapsed;
 
 
 
@@ -491,6 +526,7 @@ public partial class DockWindow : Window
         LoadPinned();
 
         AuraSettings.Load();
+        if (AuraSettings.ClickSound) ThreadPool.QueueUserWorkItem(_ => ClickSound.Warm());
         GlassSettings.Load();
         ApplyGlassSettings();
         GlassSettings.Changed += OnGlassSettingsChanged;
@@ -519,17 +555,22 @@ public partial class DockWindow : Window
 
             if (BlurBackdrop && !NoFx.Contains("capture"))
             {
-                _backdropCapture = new BackdropCapture(this, PresentBackdrop, () => _renderingHooked || _menuOpen || _visualizerWindow is { PanelBehindDock: true });
+                Func<bool> active = () => _renderingHooked || _menuOpen || _visualizerWindow is { PanelBehindDock: true };
+                // WPF's radius is about three sigmas, the GPU pass takes two, at half the physical resolution
+                var gpu = NoFx.Contains("gpubackdrop") ? null : GpuBackdropCapture.TryCreate(this, PresentBackdrop, active, () => BlurSettings.Radius * _dpi / 3);
+                _gpuBackdrop = gpu is not null;
+                _backdropCapture = gpu ?? (IDisposable)new BackdropCapture(this, PresentBackdrop, active);
             }
 
             InitializeSections();
+            ApplyCyberInk(); // the section glyphs exist only now
 
             _fullscreenTimer.Tick += (_, _) => UpdateFullscreenState();
             _fullscreenTimer.Start();
             _ambientTimer.Start();
 
             _trayIcon = TrayNotification.LoadAppIcon(Environment.ProcessPath ?? string.Empty);
-            TrayNotification.Add(_hwnd, "Floe", _trayIcon);
+            TrayNotification.Add(_hwnd, Product.Name, _trayIcon);
         };
     }
 
@@ -547,6 +588,11 @@ public partial class DockWindow : Window
 
         public Button Button { get; }
 
+        public SolidColorBrush LineBrush { get; } = new(Colors.Black);
+
+        /// <summary>The Cyberpunk card as it reads on the dock, and the grey one for the dark frame.</summary>
+        public (ImageSource OnDock, ImageSource OnFrame)? Card { get; set; }
+
         public Ellipse Dot { get; }
 
         public DockItemViewModel Item { get; }
@@ -558,5 +604,8 @@ public partial class DockWindow : Window
         public ScaleTransform Scale { get; }
 
         public TranslateTransform Translate { get; }
+
+        // eased x offset while another icon is held over the dock, so the gap slides open
+        public double Shift { get; set; }
     }
 }

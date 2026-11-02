@@ -19,7 +19,7 @@ namespace Floe.App.Windows;
 /// </summary>
 public partial class DockWindow
 {
-    private const double MediaWidth = 250;
+    private static double MediaWidth => GlassSettings.Cyber ? 286 : 250;
     private const double WeatherWidth = 84;
     private const double ArtSize = 40;
     private const double MediaButton = 30;
@@ -33,6 +33,14 @@ public partial class DockWindow
     // the cover fills the whole section, a little past the text, up to the dividers and nearly the bar's height
     private static readonly Thickness CoverBleed = new(-(ClockGap / 2) + 2, -8, -(ClockGap / 2) + 2, -8);
     private const double CoverRadius = 12;
+    private readonly Grid _cover = new() { IsHitTestVisible = false };
+    private readonly RectangleGeometry _coverClip = new() { RadiusX = CoverRadius, RadiusY = CoverRadius };
+    private readonly List<UIElement> _coverGlass = new();
+    private readonly List<(Image Image, string Key, double Size)> _mediaGlyphs = new();
+    private readonly StackPanel _mediaText = new() { VerticalAlignment = VerticalAlignment.Center };
+    private readonly Border _mediaTrack = new();
+    private readonly Border _mediaFill = new() { RenderTransformOrigin = new Point(0, 0.5) };
+    private Brush? _coverMelt;
     private readonly TextBlock _mediaTitle = new() { Foreground = Brushes.White, FontSize = 12.5, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly TextBlock _mediaArtist = new() { Foreground = new SolidColorBrush(Color.FromArgb(0xB0, 0xFF, 0xFF, 0xFF)), FontSize = 10.5, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly ScaleTransform _mediaProgress = new(0, 1);
@@ -47,10 +55,12 @@ public partial class DockWindow
 
     private readonly Grid _quickSettings = new() { Width = StartWidth, Height = StartWidth, Background = Brushes.Transparent, Cursor = Cursors.Hand };
     private readonly Rectangle _settingsDivider = new();
+    private readonly BarcodeTag _barcodeTag = new(34) { Visibility = Visibility.Collapsed };
 
     private LiquidDropWindow? _dropWindow;
-    private HologramIntroWindow? _hologramIntroWindow;
-    private bool _introIsHologram;
+    private CubesIntroWindow? _cubesIntroWindow;
+    private bool _introIsCubes;
+    private bool _cubesOutro;
     private double _dropImpact = LiquidDropWindow.ImpactTime;
     private double _dropX;
 
@@ -64,13 +74,17 @@ public partial class DockWindow
     private DateTime _lastPlaying = DateTime.MinValue;
     private bool _mediaRefreshing;
     private bool _mediaPlaying;
+    // the text box can hold a scrambled title for a moment, this is the real one
+    private string _mediaTrackTitle = string.Empty;
+    // the app that plays, so a click on the cover can bring it forward
+    private string? _mediaSource;
     private double _restContent;
 
     /// <summary>Width of everything after the icons, with now playing grown to <paramref name="media"/>.</summary>
     private static double TrailWidth(double media) =>
-        ClockGap + ((MediaWidth + ClockGap) * media) + WeatherWidth + ClockGap + ClockWidth + StartGap + StartWidth + ClockPad;
+        ClockGap + ((MediaWidth + ClockGap) * media) + WeatherWidth + TrayWidth + ClockGap + ClockWidth + StartGap + StartWidth + ClockPad;
 
-    private bool SectionsSettled => _dropTime < 0 && Math.Abs(_mediaReveal - _mediaTarget) < 0.002 && Math.Abs(_mediaRevealVel) < 0.01;
+    private bool SectionsSettled => _dropTime < 0 && !_cubesOutro && Math.Abs(_mediaReveal - _mediaTarget) < 0.002 && Math.Abs(_mediaRevealVel) < 0.01;
 
     private void InitializeSections()
     {
@@ -79,10 +93,12 @@ public partial class DockWindow
             divider.Width = 1;
             divider.Height = 34;
             divider.RadiusX = divider.RadiusY = 0.5;
-            divider.Fill = _clockDivider.Fill;
+            divider.Fill = _lineBrush;
             divider.IsHitTestVisible = false;
             _clockLayer.Children.Add(divider);
         }
+
+        _clockLayer.Children.Add(_barcodeTag);
 
         BuildMedia();
         BuildWeather();
@@ -90,6 +106,7 @@ public partial class DockWindow
         _clockLayer.Children.Add(_media);
         _clockLayer.Children.Add(_weather);
         _clockLayer.Children.Add(_quickSettings);
+        InitializeTray();
 
         _mediaTimer.Tick += async (_, _) => await PollMediaAsync();
         _mediaTimer.Start();
@@ -100,11 +117,12 @@ public partial class DockWindow
             _mediaTimer.Stop();
             _weatherTimer.Stop();
             _dropWindow?.Close();
-            _hologramIntroWindow?.Close();
+            _cubesIntroWindow?.Close();
         };
 
         _ = RefreshMediaAsync();
         _ = RefreshWeatherAsync();
+        GlassSettings.WeatherCityChanged += () => _ = RefreshWeatherAsync();
     }
 
     private void BuildMedia()
@@ -114,36 +132,39 @@ public partial class DockWindow
         _media.Children.Add(BuildCover());
 
         var progress = new Grid { Height = 2, Margin = new Thickness(0, 4, 0, 0) };
-        progress.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)), CornerRadius = new CornerRadius(1) });
-        progress.Children.Add(new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF)),
-            CornerRadius = new CornerRadius(1),
-            RenderTransformOrigin = new Point(0, 0.5),
-            RenderTransform = _mediaProgress,
-        });
+        _mediaFill.RenderTransform = _mediaProgress;
+        progress.Children.Add(_mediaTrack);
+        progress.Children.Add(_mediaFill);
 
-        var text = new StackPanel { Margin = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
-        text.Children.Add(_mediaTitle);
-        text.Children.Add(_mediaArtist);
-        text.Children.Add(progress);
-        Grid.SetColumn(text, 0);
-        _media.Children.Add(text);
+        _mediaText.Children.Add(_mediaTitle);
+        _mediaText.Children.Add(_mediaArtist);
+        _mediaText.Children.Add(progress);
+        Grid.SetColumn(_mediaText, 0);
+        _media.Children.Add(_mediaText);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        buttons.Children.Add(GlyphButton(Glyph("previous", 20), MediaButton, () => _ = MediaService.PreviousAsync()));
-        _playGlyph.Source = DotMatrixIcons.Render("play", 22, GlyphColor, DpiScale);
+        buttons.Children.Add(GlyphButton(MediaGlyph("previous", 20), MediaButton, () => _ = MediaService.PreviousAsync()));
+        _playGlyph.Source = MediaGlyphSource("play", 22);
         buttons.Children.Add(GlyphButton(_playGlyph, MediaButton, () => _ = TogglePlayAsync()));
-        buttons.Children.Add(GlyphButton(Glyph("next", 20), MediaButton, () => _ = MediaService.NextAsync()));
+        buttons.Children.Add(GlyphButton(MediaGlyph("next", 20), MediaButton, () => _ = MediaService.NextAsync()));
         Grid.SetColumn(buttons, 1);
         _media.Children.Add(buttons);
+
+        // the cover and the titles open the player; the buttons handle their own clicks first
+        _media.Background = Brushes.Transparent;
+        _media.Cursor = Cursors.Hand;
+        _media.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            BringPlayerForward(_mediaSource);
+        };
     }
 
     // The album cover as the section's backdrop: it melts into the glass at both ends, darkens under the text and
     // buttons so they stay readable, and carries the same soft sheen as the glass on top.
     private Grid BuildCover()
     {
-        var cover = new Grid { Margin = CoverBleed, IsHitTestVisible = false };
+        var cover = _cover;
         Grid.SetColumnSpan(cover, 2);
         cover.Children.Add(_mediaArtBehind);
         cover.Children.Add(_mediaArt);
@@ -153,14 +174,15 @@ public partial class DockWindow
         shade.GradientStops.Add(new GradientStop(Color.FromArgb(0x5C, 0, 0, 0), 0.45));
         shade.GradientStops.Add(new GradientStop(Color.FromArgb(0x90, 0, 0, 0), 1));
         shade.Freeze();
-        cover.Children.Add(new Border { Background = shade });
+        _coverGlass.Add(new Border { Background = shade });
 
         var sheen = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
         sheen.GradientStops.Add(new GradientStop(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF), 0));
         sheen.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0xFF, 0xFF, 0xFF), 0.5));
         sheen.GradientStops.Add(new GradientStop(Color.FromArgb(0x1A, 0, 0, 0), 1));
         sheen.Freeze();
-        cover.Children.Add(new Border { Background = sheen });
+        _coverGlass.Add(new Border { Background = sheen });
+        foreach (var glass in _coverGlass) cover.Children.Add(glass);
 
         var melt = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
         melt.GradientStops.Add(new GradientStop(Colors.Transparent, 0));
@@ -168,11 +190,8 @@ public partial class DockWindow
         melt.GradientStops.Add(new GradientStop(Colors.White, 0.9));
         melt.GradientStops.Add(new GradientStop(Colors.Transparent, 1));
         melt.Freeze();
-        cover.OpacityMask = melt;
-
-        var clip = new RectangleGeometry { RadiusX = CoverRadius, RadiusY = CoverRadius };
-        cover.Clip = clip;
-        cover.SizeChanged += (_, e) => clip.Rect = new Rect(e.NewSize);
+        _coverMelt = melt;
+        cover.SizeChanged += (_, e) => _coverClip.Rect = new Rect(e.NewSize);
         return cover;
     }
 
@@ -181,6 +200,13 @@ public partial class DockWindow
     {
         _mediaArtBehind.Source = _mediaArt.Source;
         _mediaArt.Source = artwork;
+        if (GlassSettings.Cyber)
+        {
+            // the block swap is a cyber effect: nothing of it plays while the dock is dozed
+            if (!FxAsleep) PlayCoverSwap();
+            return;
+        }
+
         _mediaArt.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(450))
         {
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
@@ -200,8 +226,9 @@ public partial class DockWindow
     private void BuildSettings()
     {
         var glyph = Glyph("settings", StartGlyph);
+        _inkGlyphs.Add((glyph, "settings", StartGlyph));
         glyph.Opacity = 0.82;
-        _quickSettings.ToolTip = "Hızlı ayarlar";
+        _quickSettings.ToolTip = Loc.T("Hızlı ayarlar");
         _quickSettings.RenderTransformOrigin = new Point(0.5, 0.5);
         var scale = new ScaleTransform(1, 1);
         _quickSettings.RenderTransform = scale;
@@ -285,15 +312,18 @@ public partial class DockWindow
             if (media is not null && !string.IsNullOrWhiteSpace(media.Title))
             {
                 // the poll runs every second - only touch what actually changed
-                if (_mediaTitle.Text != media.Title)
+                if (_mediaTrackTitle != media.Title)
                 {
-                    _mediaTitle.Text = media.Title;
+                    _mediaTitle.Text = _mediaTrackTitle = media.Title;
+                    if (GlassSettings.Cyber) DecodeTitle(media.Title);
                 }
 
                 if (_mediaArtist.Text != media.Artist)
                 {
                     _mediaArtist.Text = media.Artist;
                 }
+
+                _mediaSource = media.Source;
 
                 // MediaService hands back the same frozen bitmap for the same track
                 if (!ReferenceEquals(_mediaArt.Source, media.Artwork))
@@ -311,12 +341,13 @@ public partial class DockWindow
             if (playing != _mediaPlaying)
             {
                 _mediaPlaying = playing;
-                _playGlyph.Source = DotMatrixIcons.Render(playing ? "pause" : "play", 22, GlyphColor, DpiScale);
+                _playGlyph.Source = MediaGlyphSource(playing ? "pause" : "play", 22);
             }
 
             if (playing)
             {
                 _lastPlaying = DateTime.Now;
+                CancelCoverOut();
                 if (_mediaTarget == 0 && _dropTime < 0)
                 {
                     StartDrop();
@@ -325,8 +356,16 @@ public partial class DockWindow
             else if (_mediaTarget > 0 && (media is null || DateTime.Now - _lastPlaying > MediaLinger))
             {
                 // a closed player leaves at once; a short pause from the dock itself should not
-                _mediaTarget = 0;
-                EnsureAnimation();
+                if (GlassSettings.Cyber && !FxAsleep && IsVisible && _shown && _mediaReveal >= 0.3)
+                {
+                    PlayCoverOut();
+                }
+                else
+                {
+                    _mediaTarget = 0;
+                    StartCubesOutro();
+                    EnsureAnimation();
+                }
             }
         }
         catch (Exception ex)
@@ -343,6 +382,7 @@ public partial class DockWindow
     {
         try
         {
+            _weatherPlace.Text = WeatherService.Place;
             var weather = await WeatherService.GetAsync();
             if (weather is null)
             {
@@ -351,7 +391,8 @@ public partial class DockWindow
 
             _weatherTemp.Text = $"{Math.Round(weather.Temperature)}°";
             _weatherPlace.Text = weather.Location;
-            _weatherIcon.Source = DotMatrixIcons.Render(weather.Condition, 30, Colors.White, DpiScale);
+            _weatherCondition = weather.Condition;
+            _weatherIcon.Source = WeatherGlyph(weather.Condition);
         }
         catch (Exception ex)
         {
@@ -368,12 +409,22 @@ public partial class DockWindow
             return;
         }
 
-        _introIsHologram = GlassSettings.Intro == NowPlayingIntro.Hologram;
-        _dropImpact = _introIsHologram ? HologramIntroWindow.ImpactTime : LiquidDropWindow.ImpactTime;
-        if (_introIsHologram)
+        if (GlassSettings.Cyber)
         {
-            _hologramIntroWindow ??= new HologramIntroWindow(!NoFx.Contains("exclude"));
-            _hologramIntroWindow.Start(RimOnScreen(), _mediaArt.Source);
+            _mediaTarget = 1;
+            // the cover wipe is a cyber effect: nothing of it plays while the dock is dozed
+            if (!FxAsleep) PlayCoverIn();
+            EnsureAnimation();
+            return;
+        }
+
+        _introIsCubes = GlassSettings.Intro is NowPlayingIntro.Cubes or NowPlayingIntro.Dust;
+        _dropImpact = _introIsCubes ? CubesIntroWindow.ImpactTime : LiquidDropWindow.ImpactTime;
+        if (_introIsCubes)
+        {
+            _cubesOutro = false;
+            _cubesIntroWindow ??= new CubesIntroWindow(!NoFx.Contains("exclude"));
+            _cubesIntroWindow.Start(SlotOnScreen(), _mediaArt.Source, _mediaPlaying, SlotScale(), GlassSettings.Intro == NowPlayingIntro.Dust);
         }
         else
         {
@@ -393,6 +444,38 @@ public partial class DockWindow
         return new Point(p.X / DpiScale, p.Y / DpiScale);
     }
 
+    /// <summary>Where the cubes build the section: the middle of the now-playing slot, in screen DIP.</summary>
+    private Point SlotOnScreen()
+    {
+        // _dropX centres the gap with its divider; the section itself sits half a divider gap to the left
+        var p = _clockLayer.PointToScreen(new Point(_dropX - (ClockGap * Math.Max(0, _mediaReveal) / 2), RestTop + (RestBarHeight / 2)));
+        return new Point(p.X / DpiScale, p.Y / DpiScale);
+    }
+
+    /// <summary>How large the sections are drawn on screen in DIP per layout DIP: below 1 while the dock is shrunk.</summary>
+    private double SlotScale()
+    {
+        var a = _clockLayer.PointToScreen(new Point(0, 0));
+        var b = _clockLayer.PointToScreen(new Point(100, 0));
+        var scale = (b.X - a.X) / (100 * DpiScale);
+        return scale > 0.1 && scale < 4 ? scale : 1;
+    }
+
+    /// <summary>With the cubes or dust intro the section breaks back into cubes or dust that scatter as it closes.</summary>
+    private void StartCubesOutro()
+    {
+        if (GlassSettings.Intro is not (NowPlayingIntro.Cubes or NowPlayingIntro.Dust) || !IsVisible || !_shown || _mediaReveal < 0.3)
+        {
+            return;
+        }
+
+        _dropTime = -1;
+        _introIsCubes = true;
+        _cubesIntroWindow ??= new CubesIntroWindow(!NoFx.Contains("exclude"));
+        _cubesIntroWindow.StartOutro(SlotOnScreen(), _mediaArt.Source, _mediaPlaying, SlotScale(), GlassSettings.Intro == NowPlayingIntro.Dust);
+        _cubesOutro = true;
+    }
+
     /// <summary>Advances the drop and the now-playing width; called from the dock's frame loop.</summary>
     private void AnimateSections(double dt)
     {
@@ -405,8 +488,8 @@ public partial class DockWindow
                 _mediaTarget = 1;
             }
 
-            var advanced = _introIsHologram
-                ? _hologramIntroWindow?.Advance(dt, RimOnScreen().X) ?? false
+            var advanced = _introIsCubes
+                ? _cubesIntroWindow?.Advance(dt, SlotOnScreen(), SlotScale()) ?? false
                 : _dropWindow?.Advance(dt, RimOnScreen().X) ?? false;
             if (!advanced)
             {
@@ -414,16 +497,31 @@ public partial class DockWindow
             }
         }
 
+        if (_cubesOutro)
+        {
+            _cubesOutro = _cubesIntroWindow?.Advance(dt, SlotOnScreen(), SlotScale()) ?? false;
+        }
+
         if (_metalEffect is not null)
         {
             // the metal rim lights up where the drop lands and the glints run off along it
             var age = _dropTime - _dropImpact;
-            _metalEffect.FlashAge = _dropTime >= 0 && age >= 0 ? age : -1;
+            _metalEffect.FlashAge = _dropTime >= 0 && age >= 0 && !_introIsCubes ? age : -1;
             _metalEffect.FlashX = _dropX - _capsuleLeft;
         }
 
         // a soft spring: the opening overshoots a touch, like liquid settling
-        _mediaReveal = Math.Max(0, Spring(_mediaReveal, ref _mediaRevealVel, _mediaTarget, dt, 150, 17));
+        if (GlassSettings.Cyber)
+        {
+            // the cyber themes slide open at a flat rate and stop dead
+            _mediaRevealVel = 0;
+            _mediaReveal += Math.Clamp(_mediaTarget - _mediaReveal, -dt / CoverSlide, dt / CoverSlide);
+        }
+        else
+        {
+            _mediaReveal = Math.Max(0, Spring(_mediaReveal, ref _mediaRevealVel, _mediaTarget, dt, 150, 17));
+        }
+
         if (SectionsSettled)
         {
             _mediaReveal = _mediaTarget;
@@ -440,7 +538,8 @@ public partial class DockWindow
         var reveal = Math.Max(0, _mediaReveal);
         var lineTop = RestTop + ((RestBarHeight - _sectionDivider.Height) / 2);
 
-        Canvas.SetLeft(_sectionDivider, x + (ClockGap / 2));
+        _sectionsX = x + (ClockGap / 2);
+        Canvas.SetLeft(_sectionDivider, _sectionsX);
         Canvas.SetTop(_sectionDivider, lineTop);
         x += ClockGap;
 
@@ -448,7 +547,9 @@ public partial class DockWindow
         var mediaSpan = (MediaWidth + ClockGap) * reveal;
         Canvas.SetLeft(_media, x + ((mediaSpan - ClockGap * reveal - MediaWidth) / 2));
         Canvas.SetTop(_media, RestTop + ((RestBarHeight - ArtSize) / 2));
-        _media.Opacity = Math.Clamp((reveal - 0.55) / 0.4, 0, 1);
+        // while the cubes stand in for the section the real one stays hidden under them
+        var veil = _introIsCubes && _cubesIntroWindow is not null ? _cubesIntroWindow.ContentVeil : 1;
+        _media.Opacity = GlassSettings.Cyber ? (reveal > 0.5 && !_coverGone ? 1 : 0) : Math.Clamp((reveal - 0.55) / 0.4, 0, 1) * veil;
         _media.IsHitTestVisible = reveal > 0.9;
         _media.Visibility = reveal > 0.01 ? Visibility.Visible : Visibility.Collapsed;
         x += mediaSpan;
@@ -462,15 +563,23 @@ public partial class DockWindow
         Canvas.SetTop(_weather, RestTop + ((RestBarHeight - _weather.Height) / 2));
         x += WeatherWidth;
 
-        Canvas.SetLeft(_clockDivider, x + (ClockGap / 2));
-        Canvas.SetTop(_clockDivider, lineTop);
+        // the ^ for the background apps sits before the clock, as Windows has it
+        Canvas.SetLeft(_tray, x);
+        Canvas.SetTop(_tray, RestTop + ((RestBarHeight - StartWidth) / 2));
+        x += TrayWidth;
+
+        _clockX = x + (ClockGap / 2);
+        Canvas.SetLeft(_clockDivider, _clockX - ((_clockDivider.Width - 1) / 2));
+        Canvas.SetTop(_clockDivider, RestTop + ((RestBarHeight - _clockDivider.Height) / 2));
         x += ClockGap;
         Canvas.SetLeft(_clock, x);
         Canvas.SetTop(_clock, RestTop + 6);
         x += ClockWidth;
 
-        Canvas.SetLeft(_settingsDivider, x + (StartGap / 2));
+        Canvas.SetLeft(_settingsDivider, x + (StartGap / 2) - ((_settingsDivider.Width - 1) / 2));
         Canvas.SetTop(_settingsDivider, lineTop);
+        Canvas.SetLeft(_barcodeTag, x + (StartGap / 2) - (_barcodeTag.Width / 2));
+        Canvas.SetTop(_barcodeTag, lineTop);
         x += StartGap;
         Canvas.SetLeft(_quickSettings, x);
         Canvas.SetTop(_quickSettings, RestTop + ((RestBarHeight - StartWidth) / 2));

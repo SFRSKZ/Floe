@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -8,6 +9,7 @@ using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using Floe.App.Effects.Cyber;
 using Floe.App.Effects.Glass;
 using Floe.App.Effects.MetalRim;
 using Floe.App.Services;
@@ -28,16 +30,18 @@ public sealed class GlassPanel : Grid
     private static readonly string NoFx = Environment.GetEnvironmentVariable("FLOE_NOFX") ?? "";
 
     /// <summary>Extra shade over the dock's tint: text needs more contrast than icons do.</summary>
-    private static readonly Brush ReadingShade = Frozen(new SolidColorBrush(Color.FromArgb(0x8C, 0x08, 0x09, 0x0C)));
+    private static readonly Brush ReadingShadeBrush = Frozen(new SolidColorBrush(Color.FromArgb(0x8C, 0x08, 0x09, 0x0C)));
 
     private readonly GlassBackdrop _backdrop = new();
     private readonly Rectangle _tint = new() { Fill = DockWindow.BuildGlassBrush(), IsHitTestVisible = false };
-    private readonly Rectangle _shade = new() { Fill = ReadingShade, IsHitTestVisible = false };
+    private readonly Rectangle _shade = new() { Fill = ReadingShadeBrush, IsHitTestVisible = false };
     private readonly Rectangle _sheen = new() { Fill = Frozen(DockWindow.BuildSheenBrush()), IsHitTestVisible = false };
     private readonly Rectangle _grain = new() { IsHitTestVisible = false };
     private readonly Rectangle _hairline = new() { Stroke = DockWindow.BuildRimBrush(), StrokeThickness = 1, IsHitTestVisible = false };
     private readonly Border _metalSurface = new() { Background = Brushes.Transparent, IsHitTestVisible = false };
     private readonly RectangleGeometry _clip = new();
+    // the menu's own margin leaves room for only a thin bar
+    private readonly ItemPlate _cyberEdge = new() { Bar = 4 };
     private MetalRimEffect? _metal;
 
     public GlassPanel()
@@ -63,15 +67,17 @@ public sealed class GlassPanel : Grid
             Children.Insert(2, _shade);
             Children.Insert(3, _sheen);
             Children.Insert(4, _grain);
+            Children.Insert(5, _cyberEdge);
             Children.Add(_hairline);
             Children.Add(_metalSurface);
             ApplyRim();
+            ApplySurface();
             GlassSettings.Changed += OnGlassSettingsChanged;
         };
         Unloaded += (_, _) =>
         {
             GlassSettings.Changed -= OnGlassSettingsChanged;
-            foreach (var layer in new UIElement[] { _backdrop, _tint, _shade, _sheen, _grain, _hairline, _metalSurface })
+            foreach (var layer in new UIElement[] { _backdrop, _tint, _shade, _sheen, _grain, _hairline, _metalSurface, _cyberEdge })
             {
                 Children.Remove(layer);
             }
@@ -86,6 +92,13 @@ public sealed class GlassPanel : Grid
                 _metal.CursorY = Math.Clamp(p.Y / ActualHeight, 0, 1);
             }
         };
+    }
+
+    /// <summary>How much of the extra reading shade lies over the tint, 0..1; lighter lets more of the glass show.</summary>
+    public double ReadingShade
+    {
+        get => _shade.Opacity;
+        set => _shade.Opacity = value;
     }
 
     public double CornerRadius
@@ -122,13 +135,26 @@ public sealed class GlassPanel : Grid
         _tint.Fill = DockWindow.BuildGlassBrush();
         _hairline.Stroke = DockWindow.BuildRimBrush();
         ApplyRim();
+        ApplySurface();
+    }
+
+    // a cyber theme has no glass: the item frame stands in for all of it
+    private void ApplySurface()
+    {
+        bool cyber = GlassSettings.Cyber;
+        var glass = cyber ? Visibility.Collapsed : Visibility.Visible;
+        _backdrop.Visibility = _tint.Visibility = _shade.Visibility = _sheen.Visibility = _grain.Visibility = _hairline.Visibility = glass;
+        _cyberEdge.Visibility = cyber ? Visibility.Visible : Visibility.Collapsed;
+        TextElement.SetFontFamily(this, CyberLook.UiFont);
+        _cyberEdge.InvalidateVisual();
     }
 
     private void ApplyRim()
     {
         _metal = GlassSettings.Rim switch
         {
-            not RimStyle.Plain when GlassSettings.Mordor => MetalRimEffect.ApplyPreset("ember", true),
+            _ when GlassSettings.Tron => MetalRimEffect.ApplyPreset("tron", true),
+            _ when GlassSettings.Cyber => null,
             RimStyle.MetalSilver => MetalRimEffect.ApplyPreset("silver", true),
             RimStyle.MetalGold => MetalRimEffect.ApplyPreset("gold", true),
             RimStyle.MetalChromatic => MetalRimEffect.ApplyPreset("chromatic", true),

@@ -48,16 +48,52 @@ public partial class DockWindow
             return;
         }
 
-        var position = e.GetPosition(this);
+        var position = e.GetPosition(Root);
+        if (!IsOverHoverArea(position))
+        {
+            if (_targetBulge != 0 || _hoveredIndex != -1)
+            {
+                LeaveHover();
+            }
+            return;
+        }
+
         _targetHoverX = Math.Min(_windowWidth, Math.Max(0, position.X));
         _targetBulge = MaxBulge;
-        _targetDockScale = 1;
+        _targetDockScale = FullScale;
         SetIconsDimmed(false);
         EnsureAnimation();
         UpdateHoveredIcon();
     }
 
     private void Window_MouseLeave(object sender, MouseEventArgs e)
+    {
+        LeaveHover();
+    }
+
+    private bool IsOverHoverArea(Point position)
+    {
+        var active = _targetBulge > 0;
+        var margin = (active ? 12.0 : 6.0) / _dockScale;
+        var left = _capsuleLeft - margin;
+        var right = _capsuleLeft + _capsuleWidth + margin;
+        var top = RestTop;
+        if (active)
+        {
+            top = Math.Max(0, RestTop - (EffectiveBulge * BulgeProfile(position.X - _currentHoverX)));
+            foreach (var slot in _slots)
+            {
+                var bounds = slot.Button.TransformToAncestor(Root).TransformBounds(new Rect(slot.Button.RenderSize));
+                bounds.Inflate(margin, margin);
+                if (bounds.Contains(position)) return true;
+            }
+        }
+
+        return position.X >= left && position.X <= right
+            && position.Y >= top - margin && position.Y <= RestTop + RestBarHeight + margin;
+    }
+
+    private void LeaveHover()
     {
         if (_menuOpen)
         {
@@ -106,7 +142,7 @@ public partial class DockWindow
         HidePreview();
         _tooltipTimer.Stop();
 
-        if (index >= 0 && _radial?.IsVisible != true)
+        if (index >= 0 && _iconMenu?.IsVisible != true)
         {
             _tooltipTimer.Start();
         }
@@ -148,23 +184,25 @@ public partial class DockWindow
             _preview.MouseLeave += (_, _) => StartPreviewHideTimer();
             _preview.WindowActivated += HidePreview;
             _preview.SourcesGone += HidePreview;
+            _preview.SourcesChanged += () =>
+            {
+                if (_previewSlot is { } shown) PlacePopover(_preview, DockAnchor(shown.Center), SettingsWindow.GetWorkArea(this));
+            };
             _previewHideTimer.Tick += (_, _) => FinishPreviewHide();
         }
 
         _previewHideTimer.Stop();
+        _previewSlot = slot;
         _preview.Show();
         _preview.ShowFor(slot.Item.Windows);
 
-        var left = ToScreenX(slot.Center) - (_preview.Width / 2);
-        left = Math.Max(8, Math.Min(left, SystemParameters.PrimaryScreenWidth - _preview.Width - 8));
-        _preview.Left = left;
-        _preview.Top = Top + RestTop - _preview.Height - 10;
+        PlacePopover(_preview, DockAnchor(slot.Center), SettingsWindow.GetWorkArea(this));
     }
 
     private void ShowTooltip()
     {
         _tooltipTimer.Stop();
-        if (_hoveredIndex < 0 || _hoveredIndex >= _slots.Count || _radial?.IsVisible == true)
+        if (_hoveredIndex < 0 || _hoveredIndex >= _slots.Count || _iconMenu?.IsVisible == true || _dragSlot is not null)
         {
             return;
         }
@@ -176,6 +214,8 @@ public partial class DockWindow
             ShowPreview(slot);
             return;
         }
+
+        if (GlassSettings.Cyber) return; // the scan card names it
 
         _tooltipText.Text = slot.Item.Name;
         _tooltip.PlacementTarget = slot.Button;
@@ -190,6 +230,18 @@ public partial class DockWindow
         });
     }
 
+    /// <summary>The benchmark's cursor: hovers window x as a mouse move would, without the tooltip.</summary>
+    internal void BenchHover(double x)
+    {
+        _targetHoverX = Math.Min(_windowWidth, Math.Max(0, x));
+        _targetBulge = MaxBulge;
+        _targetDockScale = FullScale;
+        SetIconsDimmed(false);
+        EnsureAnimation();
+    }
+
+    internal double BenchWidth => _windowWidth;
+
     public void PreviewHover(double capsuleX)
     {
         _dockScale = _targetDockScale = 1;
@@ -201,6 +253,13 @@ public partial class DockWindow
         UpdateCapsule(scales);
         ApplyLayout(scales);
         UpdateShape();
+        // --cube-time=S plays the Tron cube mound for S seconds, so a still shows it flowing and scattering
+        var cubeTime = Environment.GetCommandLineArgs().FirstOrDefault(a => a.StartsWith("--cube-time=", StringComparison.OrdinalIgnoreCase))?["--cube-time=".Length..];
+        if (double.TryParse(cubeTime, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var seconds))
+        {
+            for (var t = 0.0; t < seconds; t += 1.0 / 60) UpdateTronCubes(1.0 / 60);
+        }
+
         _hoveredIndex = FindHoveredIndex();
         if (_hoveredIndex >= 0)
         {
@@ -214,6 +273,8 @@ public partial class DockWindow
     {
         _activeProcess = processName;
         UpdateAura();
+        _lockMark.Settle();
+        UpdateLayout(); // the still render is taken before the next layout pass would place the lock
         Log($"preview aura idx={_activeIndex} effect={AuraSettings.Effect}");
     }
 

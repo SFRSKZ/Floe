@@ -9,11 +9,14 @@ namespace Floe.Core.Services;
 public static class LegacyMigration
 {
     private const string OldName = "MacDock";
-    private const string NewName = "Floe";
+    private const string NewName = Product.Folder;
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
     public static void Run(string? exePath)
     {
+        // CP77 is a second dock, not the renamed MacDock: it starts from its own settings
+        if (Product.Cp77) return;
+
         CopySettings();
         CopyPreferences();
         // A test build in %TEMP% does not register autostart, so it must not remove the old entry either.

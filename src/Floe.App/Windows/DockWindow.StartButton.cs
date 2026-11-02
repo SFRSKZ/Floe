@@ -25,19 +25,30 @@ public partial class DockWindow
     private readonly Rectangle _startDivider = new() { Width = 1, Height = 34, RadiusX = 0.5, RadiusY = 0.5, IsHitTestVisible = false };
     private readonly ScaleTransform _startScale = new(1, 1);
 
+    private readonly DesktopSlabGlyph _startSlab = new(StartWidth);
+
     private void InitializeStartButton()
     {
-        _start.ToolTip = "Masaüstünü göster";
+        _start.ToolTip = Loc.T("Masaüstünü göster");
         _start.RenderTransformOrigin = new Point(0.5, 0.5);
         _start.RenderTransform = _startScale;
         _start.Children.Add(_startGlyph);
+        _start.Children.Add(_startSlab);
         _start.MouseLeftButtonUp += (_, _) => DesktopController.ShowDesktop();
-        _start.MouseEnter += (_, _) => AnimateStart(1.12, 1);
-        _start.MouseLeave += (_, _) => AnimateStart(1, 0.82);
+        _start.MouseEnter += (_, _) =>
+        {
+            AnimateStart(1.12, 1);
+            _startSlab.Peek(true);
+        };
+        _start.MouseLeave += (_, _) =>
+        {
+            AnimateStart(1, 0.82);
+            _startSlab.Peek(false);
+        };
         _startGlyph.Opacity = 0.82;
         RenderOptions.SetBitmapScalingMode(_startGlyph, BitmapScalingMode.HighQuality);
 
-        _startDivider.Fill = _clockDivider.Fill;
+        _startDivider.Fill = _lineBrush;
         _clockLayer.Children.Add(_start);
         _clockLayer.Children.Add(_startDivider);
 
@@ -52,7 +63,18 @@ public partial class DockWindow
     private void UpdateStartGlyph()
     {
         var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
-        _startGlyph.Source = DotMatrixIcons.Render("desktop", StartGlyph, DesktopButtonSettings.Color, dpi);
+        bool cyber = GlassSettings.Cyber;
+        _startSlab.Visibility = cyber ? Visibility.Visible : Visibility.Collapsed;
+        _startGlyph.Visibility = cyber ? Visibility.Collapsed : Visibility.Visible;
+        if (cyber)
+        {
+            var look = CyberLook.Current;
+            _startSlab.Paint(StartGlyphColor, CyberLook.Readable(look.Accent, look.Body), look.Body);
+            return;
+        }
+
+        _startGlyph.Source = DotMatrixIcons.Render("desktop", StartGlyph, StartGlyphColor, dpi);
+        _startGlyph.Opacity = 0.82;
     }
 
     private void AnimateStart(double scale, double opacity)

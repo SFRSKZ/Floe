@@ -18,6 +18,9 @@ public sealed class SpectrumFrame
     /// <summary>Overall loudness 0..1 against the recent loudest; 0 in silence.</summary>
     public float Level { get; set; }
 
+    /// <summary>Stereo balance, -1 (all left) .. 1 (all right), smoothed.</summary>
+    public float Balance { get; set; }
+
     /// <summary>Onsets since the last read: a kick in the lows, a snare in the mids, a hat in the highs; 0 or its strength 0..1.</summary>
     public float Kick { get; set; }
     public float Snare { get; set; }
@@ -68,6 +71,9 @@ public sealed class AudioSpectrum : IDisposable
     private readonly double[] _sinceOnset = { 1, 1, 1 };
     private int _fluxAt;
     private long _lastReceived;
+    // where each band starts and ends in the FFT bins, for the rate and band count they were worked out for
+    private int[] _bandFrom = Array.Empty<int>(), _bandTo = Array.Empty<int>();
+    private int _bandRate;
     private readonly float[] _scope = new float[SpectrumFrame.WaveLength * 2];
     private float _wavePeak;
 
@@ -94,22 +100,40 @@ public sealed class AudioSpectrum : IDisposable
             for (int i = 0; i < _scope.Length; i++) _scope[i] = _ring[(scopeStart + i) % Ring];
             rate = _sampleRate;
             received = _received;
+            float energy = _leftEnergy + _rightEnergy;
+            if (energy > 1e-6f)
+            {
+                float balance = (_rightEnergy - _leftEnergy) / energy;
+                frame.Balance += (balance - frame.Balance) * (float)Math.Min(1, dt * 6);
+            }
+            else
+            {
+                frame.Balance -= frame.Balance * (float)Math.Min(1, dt * 2);
+            }
+
+            _leftEnergy = _rightEnergy = 0;
         }
 
         // nothing new arrived: loopback sends no packets while nothing plays
         bool silent = received == _lastReceived;
         _lastReceived = received;
-        Array.Clear(_im);
-        if (silent) Array.Clear(_re);
-        Fft(_re, _im);
-
         int bins = FftSize / 2;
         float total = 0;
-        for (int k = 1; k < bins; k++)
+        if (silent)
         {
-            float m = MathF.Sqrt((_re[k] * _re[k]) + (_im[k] * _im[k]));
-            _magnitude[k] = m;
-            total += m;
+            // the transform of silence is silence: no FFT for it
+            Array.Clear(_magnitude);
+        }
+        else
+        {
+            Array.Clear(_im);
+            Fft(_re, _im);
+            for (int k = 1; k < bins; k++)
+            {
+                float m = MathF.Sqrt((_re[k] * _re[k]) + (_im[k] * _im[k]));
+                _magnitude[k] = m;
+                total += m;
+            }
         }
 
         float hzPerBin = rate / (float)FftSize;
@@ -121,14 +145,25 @@ public sealed class AudioSpectrum : IDisposable
             Array.Fill(_average, float.NaN);
         }
 
+        if (_bandFrom.Length != bands.Length || _bandRate != rate)
+        {
+            _bandFrom = new int[bands.Length];
+            _bandTo = new int[bands.Length];
+            _bandRate = rate;
+            for (int b = 0; b < bands.Length; b++)
+            {
+                float lo = MinHz * MathF.Pow(MaxHz / MinHz, b / (float)bands.Length);
+                float hi = MinHz * MathF.Pow(MaxHz / MinHz, (b + 1) / (float)bands.Length);
+                _bandFrom[b] = Math.Clamp((int)(lo / hzPerBin), 1, bins - 1);
+                _bandTo[b] = Math.Clamp((int)MathF.Ceiling(hi / hzPerBin), _bandFrom[b] + 1, bins);
+            }
+        }
+
         _reads++;
         for (int b = 0; b < bands.Length; b++)
         {
-            float lo = MinHz * MathF.Pow(MaxHz / MinHz, b / (float)bands.Length);
-            float hi = MinHz * MathF.Pow(MaxHz / MinHz, (b + 1) / (float)bands.Length);
-            int k0 = Math.Clamp((int)(lo / hzPerBin), 1, bins - 1), k1 = Math.Clamp((int)MathF.Ceiling(hi / hzPerBin), k0 + 1, bins);
             float sum = 0;
-            for (int k = k0; k < k1; k++) sum = Math.Max(sum, _magnitude[k]);
+            for (int k = _bandFrom[b]; k < _bandTo[b]; k++) sum = Math.Max(sum, _magnitude[k]);
             bands[b] = Normalise(b, 20 * MathF.Log10(sum + 1e-6f), dt, silent);
         }
 
@@ -374,6 +409,8 @@ public sealed class AudioSpectrum : IDisposable
         return now != id;
     }
 
+    private float _leftEnergy, _rightEnergy;
+
     private unsafe void Push(IntPtr data, int frames, int channels, bool isFloat, bool silent)
     {
         lock (_gate)
@@ -385,7 +422,11 @@ public sealed class AudioSpectrum : IDisposable
                 {
                     for (int c = 0; c < channels; c++)
                     {
-                        mono += isFloat ? ((float*)data)[(f * channels) + c] : ((short*)data)[(f * channels) + c] / 32768f;
+                        float sample = isFloat ? ((float*)data)[(f * channels) + c] : ((short*)data)[(f * channels) + c] / 32768f;
+                        mono += sample;
+                        // the first two channels are left and right
+                        if (c == 0) _leftEnergy += sample * sample;
+                        else if (c == 1) _rightEnergy += sample * sample;
                     }
 
                     mono /= channels;

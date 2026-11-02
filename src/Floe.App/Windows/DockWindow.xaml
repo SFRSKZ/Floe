@@ -33,7 +33,6 @@
 
         <Style x:Key="GlassMenuItem" TargetType="MenuItem">
             <Setter Property="Foreground" Value="#F2FFFFFF" />
-            <Setter Property="FontFamily" Value="Segoe UI" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="Template">
                 <Setter.Value>

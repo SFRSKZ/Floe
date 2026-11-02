@@ -1,14 +1,17 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Floe</AssemblyName>
+    <AssemblyName Condition="'$(FloeProduct)' == 'CP77'">FloeCP77</AssemblyName>
+    <!-- the Cyberpunk dock wears its own icon; the plain build stays icon-less like before -->
+    <ApplicationIcon Condition="'$(FloeProduct)' == 'CP77'">Assets\cp77.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,9 +19,17 @@
     <EmbeddedResource Include="Effects\MetalRim\MetalRim.hlsl" LogicalName="Floe.MetalRim.hlsl" />
     <EmbeddedResource Include="Effects\ActiveIcon\ActiveIcon.hlsl" LogicalName="Floe.ActiveIcon.hlsl" />
     <EmbeddedResource Include="Effects\ActiveIcon\ClickGlass.hlsl" LogicalName="Floe.ClickGlass.hlsl" />
+    <EmbeddedResource Include="Effects\ActiveIcon\ClickPaint.hlsl" LogicalName="Floe.ClickPaint.hlsl" />
     <EmbeddedResource Include="Effects\Chromatic\Chromatic.hlsl" LogicalName="Floe.Chromatic.hlsl" />
     <EmbeddedResource Include="Effects\Glass\DropLens.hlsl" LogicalName="Floe.DropLens.hlsl" />
     <EmbeddedResource Include="Effects\Glass\DozeGhost.hlsl" LogicalName="Floe.DozeGhost.hlsl" />
+    <EmbeddedResource Include="Effects\Glass\LiquidGlass.hlsl" LogicalName="Floe.LiquidGlass.hlsl" />
+    <EmbeddedResource Include="Effects\Visualizer\LedScreen.hlsl" LogicalName="Floe.LedScreen.hlsl" />
+    <Resource Include="Assets\Fonts\*.ttf" />
+    <Resource Include="Assets\ContourIcons\*.png" />
+    <Resource Include="Assets\ContourIcons\names.csv" />
+    <Resource Include="Assets\CardIcons\*.png" />
+    <Resource Include="Assets\CardIcons\names.csv" />
   </ItemGroup>
 
   <ItemGroup>

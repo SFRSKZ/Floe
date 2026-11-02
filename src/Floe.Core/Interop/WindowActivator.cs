@@ -5,6 +5,7 @@ namespace Floe.Core.Interop;
 public static class WindowActivator
 {
     private const int SwRestore = 9;
+    private const int SwMinimize = 6;
     private const byte VkMenu = 0x12;
     private const uint KeyEventKeyUp = 0x0002;
 
@@ -31,6 +32,45 @@ public static class WindowActivator
 
     [DllImport("user32.dll")]
     private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extraInfo);
+
+    /// <summary>
+    /// The foreground window when it belongs to the same app as one of <paramref name="windows"/> (same window, or
+    /// same process), else zero.
+    /// </summary>
+    public static IntPtr ForegroundAmong(IReadOnlyList<IntPtr> windows)
+    {
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero || windows.Count == 0)
+        {
+            return IntPtr.Zero;
+        }
+
+        if (windows.Contains(foreground))
+        {
+            return foreground;
+        }
+
+        GetWindowThreadProcessId(foreground, out var foregroundProcess);
+        foreach (var window in windows)
+        {
+            GetWindowThreadProcessId(window, out var process);
+            if (process != 0 && process == foregroundProcess)
+            {
+                return foreground;
+            }
+        }
+
+        return IntPtr.Zero;
+    }
+
+    /// <summary>Minimises <paramref name="hwnd"/>, handing the foreground to the window under it.</summary>
+    public static void Minimize(IntPtr hwnd)
+    {
+        if (hwnd != IntPtr.Zero)
+        {
+            ShowWindow(hwnd, SwMinimize);
+        }
+    }
 
     public static bool Activate(IntPtr hwnd)
     {

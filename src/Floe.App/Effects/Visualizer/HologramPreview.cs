@@ -78,7 +78,8 @@ public static class HologramPreview
                 Width = Width,
                 Height = Height,
                 Capsule = capsule,
-                DebugLevel = level
+                DebugLevel = level,
+                DebugTime = 1.5
             };
             stage.Children.Add(hologram);
 

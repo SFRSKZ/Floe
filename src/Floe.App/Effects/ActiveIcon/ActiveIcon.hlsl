@@ -44,34 +44,31 @@ float4 main(float2 uv : TEXCOORD0) : COLOR0
         return float4(icon.rgb * (1 - alpha) + neon, saturate(icon.a * (1 - alpha) + alpha));
     }
 
-    // a breathing glass band over the edge that refracts the icon with a little dispersion
-    float d0 = -4.0;
-    float d1 = 4.5 + 1.2 * sin(Time * 1.6 + sin(a * 2.0 + Time) * 0.8);
-    float t = (d - d0) / (d1 - d0);
-    float ring = smoothstep(-0.04, 0.04, t) * smoothstep(1.04, 0.96, t) * k;
-    float c = 2 * t - 1;
-    // a soft lens profile: steep edges scatter the dispersed samples into speckles
-    float h = sqrt(max(1 - c * c, 0.2));
-    float slope = clamp(-c / h, -2, 2) * ring;
-    float2 off = g * slope * 2.5 * px;
-    float4 r0 = tex2D(Input, uv - off);
-    float4 r1 = tex2D(Input, uv - off * 1.12);
-    float4 r2 = tex2D(Input, uv - off * 1.24);
-    float4 lens = float4(r0.r, r1.g, r2.b, r1.a);
-    lens += float4(0.05, 0.055, 0.065, 0.10) * (1 - lens.a);
-    lens.rgb = lens.rgb * 1.06 + 0.03 * lens.a;
+    // the click's glass rings, carried on: light ripples run out from the icon's edge and come back, again
+    // and again. They only light the space around the icon; the icon itself is never bent or covered.
+    float2 key = normalize(float2(-0.486, -0.874));
+    float lit = pow(saturate(0.5 + 0.5 * dot(g, key)), 5.0);
+    float fill = pow(saturate(0.5 + 0.5 * dot(g, float2(0.8, 0.6))), 5.0);
+    float waves = 0;
+    [unroll] for (int i = 0; i < 3; i++)
+    {
+        // each ripple swings out and back on its own beat, the outer ones later and fainter
+        float swing = 0.5 - 0.5 * cos(Time * 1.7 - i * 0.95);
+        float at = 1.6 + i * 2.3 + swing * 2.6;
+        float x = (d - at - 0.12 * sin(a * 3.0 + Time * 1.3)) / (0.32 + 0.08 * i);
+        waves += exp(-x * x) * pow(0.62, i) * (0.55 + 0.45 * swing);
+    }
 
-    float2 light = normalize(float2(-0.6, -0.8));
-    float lit = max(dot(g, light), 0);
-    float shade = max(dot(-g, light), 0);
-    float qo = (t - 0.85) / 0.08;
-    float qi = (t - 0.15) / 0.08;
-    float rim = lit * lit * exp(-qo * qo) + shade * shade * exp(-qi * qi) * 0.6;
-    lens += saturate(rim * 1.1);
+    // outside the icon only, fading out before the edge of the room the effect may draw in
+    float room = 0.5 * total - max(abs(p.x), abs(p.y));
+    float outside = smoothstep(0.2, 1.4, d) * smoothstep(0.0, 3.0, room) * k;
+    float3 tint = lerp(float3(0.65, 0.80, 0.94), lerp(ColorA.rgb, ColorB.rgb, 0.5 + 0.5 * sin(a + Time * 0.8)), 0.4);
+    float3 glow = (tint * (0.35 + lit * 0.9 + fill * 0.35) + float3(1, 1, 1) * lit * 0.25) * waves * outside * 0.6;
+    float alpha = saturate(max(glow.r, max(glow.g, glow.b)));
+    // inside the icon the click's own glass drop keeps going (DockWindow.ClickGlass); this effect only
+    // lights the space around it
+    float4 inner = icon;
 
-    float4 o = lerp(icon, lens, ring);
-    float edge = exp(-abs(d - d1) * 2.4) * 0.25 * k;
-    o.rgb += edge;
-    o.a = saturate(o.a + edge);
-    return o;
+    // premultiplied: the light adds over whatever is behind
+    return float4(inner.rgb * (1 - alpha * (1 - inner.a)) + glow * (1 - inner.a), saturate(inner.a + alpha * (1 - inner.a)));
 }

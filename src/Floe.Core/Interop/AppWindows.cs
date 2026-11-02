@@ -11,8 +11,10 @@ public static class AppWindows
     private const int GwlExStyle = -20;
     private const uint GwOwner = 4;
     private const long WsExToolWindow = 0x00000080;
+    private const long WsExAppWindow = 0x00040000;
     private const uint ProcessQueryLimitedInformation = 0x1000;
     private const int DwmwaCloaked = 14;
+    private const uint WmClose = 0x0010;
 
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
@@ -24,6 +26,9 @@ public static class AppWindows
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetWindow(IntPtr hWnd, uint cmd);
+
+    [DllImport("user32.dll")]
+    private static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
@@ -52,6 +57,11 @@ public static class AppWindows
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GetProcessTimes(IntPtr handle, out FileTime creation, out FileTime exit, out FileTime kernel, out FileTime user);
 
+    /// <summary>Asks a window to close, as its own close button would; the app may still ask to save or refuse.</summary>
+    public static void RequestClose(IntPtr hwnd) => PostMessage(hwnd, WmClose, IntPtr.Zero, IntPtr.Zero);
+
+    public static bool IsShown(IntPtr hwnd) => IsWindowVisible(hwnd);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct FileTime
     {
@@ -68,8 +78,6 @@ public static class AppWindows
         "WorkerW",
         "Shell_TrayWnd",
         "Shell_SecondaryTrayWnd",
-        "Windows.UI.Core.CoreWindow",
-        "ApplicationFrameWindow",
     };
 
     public static IReadOnlyList<AppWindow> Enumerate(int selfProcessId)
@@ -79,13 +87,14 @@ public static class AppWindows
 
         EnumWindows((hWnd, _) =>
         {
-            if (!IsWindowVisible(hWnd) || GetWindow(hWnd, GwOwner) != IntPtr.Zero || GetWindowTextLength(hWnd) == 0)
+            if (!IsWindowVisible(hWnd) || GetWindowTextLength(hWnd) == 0)
             {
                 return true;
             }
 
             var exStyle = GetWindowLongPtr(hWnd, GwlExStyle).ToInt64();
-            if ((exStyle & WsExToolWindow) != 0)
+            if ((exStyle & WsExToolWindow) != 0
+                || (GetWindow(hWnd, GwOwner) != IntPtr.Zero && (exStyle & WsExAppWindow) == 0))
             {
                 return true;
             }
@@ -108,12 +117,15 @@ public static class AppWindows
             }
 
             var path = GetCachedPath(processId, paths);
-            if (string.IsNullOrEmpty(path))
+            var processName = string.IsNullOrEmpty(path)
+                ? GetProcessName(processId)
+                : Path.GetFileNameWithoutExtension(path);
+            if (string.IsNullOrEmpty(processName))
             {
                 return true;
             }
 
-            result.Add(new AppWindow(hWnd, GetTitle(hWnd), path, Path.GetFileNameWithoutExtension(path)));
+            result.Add(new AppWindow(hWnd, GetTitle(hWnd), path, processName));
             return true;
         }, IntPtr.Zero);
 
@@ -148,6 +160,18 @@ public static class AppWindows
         path = GetProcessPath(processId);
         pass[processId] = path;
         return path;
+    }
+
+    private static string GetProcessName(uint processId)
+    {
+        try
+        {
+            return Process.GetProcessById((int)processId).ProcessName;
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 
     public static string GetProcessPath(uint processId)

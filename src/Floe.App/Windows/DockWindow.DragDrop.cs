@@ -56,11 +56,21 @@ public partial class DockWindow
             }
 
             _isDragging = true;
+            _tooltipTimer.Stop();
+            HidePreview();
         }
 
         e.Handled = true;
-        Canvas.SetLeft(_dragSlot.Button, position.X - (IconBox / 2));
+        _dragX = position.X;
+        _dragY = position.Y;
+        var current = _pinnedList.IndexOf(_dragSlot.Item);
+        var target = ComputeDropIndex(position.X);
+        // pulled down far enough to unpin: no gap, the others close up
+        _dragGap = position.Y > IconBottom + (IconBox * 0.5) || current < 0 ? -1 : target > current ? target - 1 : target;
         Canvas.SetZIndex(_dragSlot.Button, 1000);
+        _dragSlot.Button.Opacity = GlassSettings.Cyber ? 0 : _dragGap < 0 ? 0.45 : 0.9; // the cyber themes carry it in the fx layer
+        SetFxGhost(_dragSlot, e.GetPosition(Root));
+        EnsureAnimation();
     }
 
     private void DragEnd(MouseButtonEventArgs e)
@@ -72,8 +82,11 @@ public partial class DockWindow
 
         var slot = _dragSlot;
         _dragSlot = null;
+        SetFxGhost(null, default);
         slot.Button.ReleaseMouseCapture();
         Canvas.SetZIndex(slot.Button, 0);
+        slot.Button.Opacity = 1;
+        _dragGap = -1;
 
         if (!_isDragging)
         {
@@ -137,7 +150,7 @@ public partial class DockWindow
         if (e.Effects != DragDropEffects.None)
         {
             _targetBulge = MaxBulge;
-            _targetDockScale = 1;
+            _targetDockScale = FullScale;
             EnsureAnimation();
 
             var index = FindIndexAt(e.GetPosition(this).X);
@@ -157,7 +170,7 @@ public partial class DockWindow
         base.OnDragLeave(e);
         _springTimer?.Stop();
         _dropIndex = -1;
-        _dropRing.Visibility = Visibility.Collapsed;
+        UpdateDropRing();
     }
 
     // Spring-loading: holding a dragged file over a running app's icon brings its window
@@ -216,6 +229,13 @@ public partial class DockWindow
 
     private void UpdateDropRing()
     {
+        if (GlassSettings.Cyber)
+        {
+            _dropRing.Visibility = Visibility.Collapsed;
+            MarkCyberSlot(CyberDropSlot);
+            return;
+        }
+
         if (_dropIndex < 0 || _dropIndex >= _slots.Count)
         {
             _dropRing.Visibility = Visibility.Collapsed;
@@ -277,7 +297,7 @@ public partial class DockWindow
         var dropItem = _dropIndex >= 0 && _dropIndex < _slots.Count ? _slots[_dropIndex].Item : null;
         _springTimer?.Stop();
         _dropIndex = -1;
-        _dropRing.Visibility = Visibility.Collapsed;
+        UpdateDropRing();
 
         // dropped on a specific icon: open the files with that app
         if (dropItem is not null && paths.Count > 0)

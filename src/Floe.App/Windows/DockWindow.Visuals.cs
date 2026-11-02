@@ -11,6 +11,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using System.Windows.Media.Media3D;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
@@ -54,15 +55,53 @@ public partial class DockWindow
             StartPoint = new Point(0, 0),
             EndPoint = new Point(0, 1),
         };
-        if (GlassSettings.Mordor)
+        if (GlassSettings.Tron)
         {
-            // black iron, a little rust in it, with the embers below glowing up through the bottom
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xC8, 0x16, 0x10, 0x0E), 0.0));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD2, 0x0E, 0x0A, 0x09), 0.35));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD4, 0x1C, 0x08, 0x04), 0.72));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xDC, 0x6A, 0x18, 0x04), 1.0));
+            // glossy black glass, with the grid's dim light just showing at the bottom
+            var dim = ThemePalette.DimColor;
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xD8, 0x03, 0x05, 0x07), 0.0));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xDA, 0x04, 0x06, 0x09), 0.55));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xDC, dim.R, dim.G, dim.B), 1.0));
             brush.Freeze();
             return brush;
+        }
+
+        if (GlassSettings.Cyber)
+        {
+            var body = new SolidColorBrush(CyberLook.Current.Body);
+            body.Freeze();
+            return body;
+        }
+
+        if (GlassSettings.DockColor is { } tint)
+        {
+            // the chosen colour over the surface: enough of it to read as the dock's colour, the desktop still behind
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xB4, tint.R, tint.G, tint.B), 0.0));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xC4, tint.R, tint.G, tint.B), 1.0));
+            brush.Freeze();
+            return brush;
+        }
+
+        switch (GlassSettings.Surface)
+        {
+            case DockSurface.Mica:
+                // one even, cool dark tint over the blur: no top-to-bottom shading to read as gloss
+                brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x9C, 0x20, 0x21, 0x28), 0.0));
+                brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xA4, 0x1C, 0x1D, 0x24), 1.0));
+                brush.Freeze();
+                return brush;
+            case DockSurface.Frost:
+                brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x42, 0xFF, 0xFF, 0xFF), 0.0));
+                brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x34, 0xFF, 0xFF, 0xFF), 1.0));
+                brush.Freeze();
+                return brush;
+            case DockSurface.Graphite:
+                brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xF0, 0x1D, 0x1E, 0x23), 0.0));
+                brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xF4, 0x19, 0x1A, 0x1F), 1.0));
+                brush.Freeze();
+                return brush;
+            case DockSurface.Floating:
+                return Brushes.Transparent;
         }
 
         brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x52, 0x25, 0x25, 0x25), 0.0));
@@ -92,19 +131,31 @@ public partial class DockWindow
             StartPoint = new Point(0, 0),
             EndPoint = new Point(0, 1),
         };
-        if (GlassSettings.Mordor)
+        if (GlassSettings.Tron)
         {
-            // a hot edge: dull red on top, brighter where the embers below catch it
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x50, 0xFF, 0x7A, 0x30), 0.0));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x26, 0xC8, 0x2A, 0x0A), 0.4));
-            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x60, 0xFF, 0x5A, 0x10), 1.0));
+            // one neon hairline: at its brightest along the top edge, still lit at the bottom
+            var line = ThemePalette.LineColor;
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xE6, line.R, line.G, line.B), 0.0));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x8C, line.R, line.G, line.B), 0.45));
+            brush.GradientStops.Add(new GradientStop(Color.FromArgb(0xB4, line.R, line.G, line.B), 1.0));
             brush.Freeze();
             return brush;
         }
 
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF), 0.0));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF), 0.35));
-        brush.GradientStops.Add(new GradientStop(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF), 1.0));
+        if (GlassSettings.Cyber) return Brushes.Transparent;
+
+        // the calmer surfaces keep only a faint inner line; their edge is the metal outline
+        var (top, middle, bottom) = GlassSettings.Surface switch
+        {
+            DockSurface.Mica => ((byte)0x22, (byte)0x14, (byte)0x0A),
+            DockSurface.Frost => ((byte)0x40, (byte)0x2A, (byte)0x1C),
+            DockSurface.Graphite => ((byte)0x16, (byte)0x0E, (byte)0x08),
+            DockSurface.Floating => ((byte)0x00, (byte)0x00, (byte)0x00),
+            _ => ((byte)0x40, (byte)0x22, (byte)0x14),
+        };
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(top, 0xFF, 0xFF, 0xFF), 0.0));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(middle, 0xFF, 0xFF, 0xFF), 0.35));
+        brush.GradientStops.Add(new GradientStop(Color.FromArgb(bottom, 0xFF, 0xFF, 0xFF), 1.0));
         brush.Freeze();
         return brush;
     }
@@ -119,6 +170,10 @@ public partial class DockWindow
     private readonly Image _metalPreview = new();
     private MetalRimEffect? _metalEffect;
     private RimWarpEffect? _rimWarp;
+    private LiquidGlassEffect? _liquid;
+    private Point4D _liquidCapsule;
+    private Point _liquidSize;
+    private double _liquidHover = double.NaN, _liquidBulge = double.NaN, _liquidPlateau = double.NaN, _liquidSigma = double.NaN, _liquidRadius = double.NaN;
     private bool _glassPreview;
     private RimStyle _appliedRim = (RimStyle)(-1);
     private double _metalTime;
@@ -170,7 +225,12 @@ public partial class DockWindow
         _outerRim.Stroke = new SolidColorBrush(Color.FromArgb(0x30, 0, 0, 0));
         _smallBackdrop.Effect = _smallBlur;
         RenderOptions.SetBitmapScalingMode(_backdrop, BitmapScalingMode.Linear);
-        if (RenderCapability.IsPixelShaderVersionSupported(3, 0) && !NoFx.Contains("vibrancy")) _backdrop.Effect = new VibrancyEffect();
+        if (RenderCapability.IsPixelShaderVersionSupported(3, 0) && !NoFx.Contains("vibrancy"))
+        {
+            // the liquid pass carries the same vibrancy, plus the refracting rim
+            if (!NoFx.Contains("liquid") && LiquidGlassEffect.IsAvailable) _backdrop.Effect = _liquid = new LiquidGlassEffect();
+            else _backdrop.Effect = new VibrancyEffect();
+        }
         _metalHost.Children.Add(_metalSurface);
         _metalHost.Children.Add(_metalPreview);
         Canvas.SetLeft(_metalSurface, 24);
@@ -191,19 +251,47 @@ public partial class DockWindow
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(OnGlassSettingsChanged)); return; }
         ApplyGlassSettings();
+        if (_appliedIconSet != GlassSettings.IconSet)
+        {
+            _appliedIconSet = GlassSettings.IconSet;
+            foreach (var slot in _slots) ApplyCyberIcon(slot);
+        }
+
+        if (!IsMouseOver && !_menuOpen)
+        {
+            _targetDockScale = CompactScale; // shrinking may have been turned on or off
+            EnsureAnimation();
+        }
+        if (_appliedShrink != GlassSettings.Shrink)
+        {
+            _appliedShrink = GlassSettings.Shrink;
+            ApplyAppBarPosition(); // the reserved strip follows the dock's resting size
+        }
         _shapeHover = double.NaN; // bulge style may have changed
         UpdateShape();
     }
 
     private void ApplyGlassSettings()
     {
-        if (_appliedMordor != GlassSettings.Mordor)
+        if (_appliedTheme != GlassSettings.Theme || _appliedSurface != GlassSettings.Surface || _appliedDockColor != GlassSettings.DockColor || _appliedCyberLook != CyberLook.Current || _appliedCut != GlassSettings.CyberCut)
         {
-            _appliedMordor = GlassSettings.Mordor;
+            _appliedTheme = GlassSettings.Theme;
+            _appliedSurface = GlassSettings.Surface;
+            _appliedDockColor = GlassSettings.DockColor;
+            _appliedCyberLook = CyberLook.Current;
+            _appliedCut = GlassSettings.CyberCut;
+            // the Cyber themes need room for the decals, and only a rebuild sizes the window
+            if (_roomForDecals != GlassSettings.Cyber)
+            {
+                _roomForDecals = GlassSettings.Cyber;
+                RebuildIcons();
+            }
+            ApplySurface();
+            ApplyCyberInk();
             _glass.Fill = BuildGlassBrush();
             _rim.Stroke = BuildRimBrush();
-            // the sheen catches the fire's warm light instead of white
-            var sheen = GlassSettings.Mordor ? Color.FromRgb(0xFF, 0xA0, 0x60) : Colors.White;
+            // in Tron the sheen catches the neon line instead of white
+            var sheen = GlassSettings.Tron ? ThemePalette.LineColor : Colors.White;
             foreach (var stop in _sheenBrush.GradientStops) stop.Color = Color.FromArgb(stop.Color.A, sheen.R, sheen.G, sheen.B);
             _spectralItem = null;
             UpdateAura();
@@ -216,17 +304,27 @@ public partial class DockWindow
             var argument = Environment.GetCommandLineArgs().FirstOrDefault(a => a.StartsWith("--renderrim=", StringComparison.OrdinalIgnoreCase));
             if (argument is not null && Enum.TryParse<RimStyle>(argument[12..], true, out var previewStyle)) style = previewStyle;
         }
+        // the loose cubes only exist in Tron, and follow the shape every frame
+        _tronCubes.Visibility = GlassSettings.Tron ? Visibility.Visible : Visibility.Collapsed;
         if (_appliedRim == style) return;
         _appliedRim = style;
         _metalEffect = _appliedRim switch
         {
-            not RimStyle.Plain when GlassSettings.Mordor => MetalRimEffect.ApplyPreset("ember", true),
+            // the metal shader cannot follow cube steps: Tron keeps the plain neon hairline
+            _ when GlassSettings.Tron || GlassSettings.Cyber => null,
             RimStyle.MetalSilver => MetalRimEffect.ApplyPreset("silver", true),
             RimStyle.MetalGold => MetalRimEffect.ApplyPreset("gold", true),
             RimStyle.MetalChromatic => MetalRimEffect.ApplyPreset("chromatic", true),
+            // the newer surfaces always wear a metal outline; "plain" picks the one that suits the surface
+            _ when GlassSettings.Surface == DockSurface.Graphite => GunmetalPreset(),
+            _ when GlassSettings.Surface != DockSurface.Classic => MetalRimEffect.ApplyPreset("silver", true),
             _ => null,
         };
         if (NoFx.Contains("metal") || _metalEffect is { IsAvailable: false } || (!_glassPreview && !RenderCapability.IsPixelShaderVersionSupported(3, 0))) _metalEffect = null;
+        // the stepped neon hairline gets a soft bloom of its own colour
+        _rim.Effect = GlassSettings.Tron && !NoFx.Contains("glow")
+            ? new DropShadowEffect { ShadowDepth = 0, BlurRadius = 8, Color = ThemePalette.LineColor, Opacity = .8, RenderingBias = RenderingBias.Performance }
+            : null;
         _metalHost.Visibility = _metalEffect is null ? Visibility.Collapsed : Visibility.Visible;
         _rim.Visibility = _outerRim.Visibility = _metalEffect is null ? Visibility.Visible : Visibility.Collapsed;
         _metalSurface.Effect = _metalEffect;
@@ -236,6 +334,20 @@ public partial class DockWindow
         {
             _metalEffect.Thickness = 1.8;
             _metalEffect.GlowGain = 0.45;
+            if (!GlassSettings.Tron && GlassSettings.Surface != DockSurface.Classic)
+            {
+                // the metal fades to suit the surface: brightest on light frost, faintest with no plate behind it
+                var (fade, glow, thickness) = GlassSettings.Surface switch
+                {
+                    DockSurface.Mica => (.62, .08, 1.4),
+                    DockSurface.Frost => (.85, .12, 1.4),
+                    DockSurface.Graphite => (.7, .05, 1.3),
+                    _ => (.42, .04, 1.2),
+                };
+                _metalEffect.ShaderOpacity *= fade;
+                _metalEffect.GlowGain = glow;
+                _metalEffect.Thickness = thickness;
+            }
             _rimWarp ??= new RimWarpEffect();
             ResetMetalParams();
         }
@@ -254,6 +366,35 @@ public partial class DockWindow
     }
 
     // Dependency-property writes re-upload pixel-shader constants, so only push parameters that moved.
+    // The backdrop is a picture of the screen behind the window, so it must not shrink with the dock, or the
+    // compact glass shows what lies above it (a dark window edge, say) long after the dock left it. It gets the
+    // root's scale undone round the same origin, and the liquid pass maps the capsule into its pixels.
+    private void UpdateBackdropUnscale()
+    {
+        var scale = Math.Max(0.05, _rootScale.ScaleX);
+        _backdropUnscale.CenterX = _windowWidth / 2;
+        _backdropUnscale.CenterY = WindowHeight;
+        _backdropUnscale.ScaleX = _backdropUnscale.ScaleY = 1 / scale;
+        UpdateLiquidGlass();
+    }
+
+    private void UpdateLiquidGlass()
+    {
+        if (_liquid is null) return;
+        var size = new Point(_windowWidth, WindowHeight);
+        if (_liquidSize != size) { _liquidSize = size; _liquid.Size = size; }
+        // root coordinates into the unscaled backdrop's pixels
+        double scale = _rootScale.ScaleX, centerX = _windowWidth / 2, centerY = WindowHeight;
+        var capsule = new Point4D(centerX + ((_capsuleLeft - centerX) * scale), centerY + ((RestTop - centerY) * scale),
+            Math.Max(1, _capsuleWidth * scale), RestBarHeight * scale);
+        if (_liquidCapsule != capsule) { _liquidCapsule = capsule; _liquid.Capsule = capsule; }
+        if (Changed(ref _liquidHover, centerX + ((_currentHoverX - centerX) * scale))) _liquid.Hover = _liquidHover;
+        if (Changed(ref _liquidBulge, EffectiveBulge * scale)) _liquid.Bulge = _liquidBulge;
+        if (Changed(ref _liquidPlateau, BulgeShape.Plateau * scale)) _liquid.Plateau = _liquidPlateau;
+        if (Changed(ref _liquidSigma, BulgeShape.Sigma * scale)) _liquid.Sigma = _liquidSigma;
+        if (Changed(ref _liquidRadius, CornerRadius * scale)) _liquid.Radius = _liquidRadius;
+    }
+
     private static bool Changed(ref double cache, double value)
     {
         if (cache.Equals(value)) return false;
@@ -276,6 +417,10 @@ public partial class DockWindow
         _rim.StrokeThickness = 2 * pixel; // clipping discards the outer half: a 1px inner hairline
         _outerRim.StrokeThickness = 2 * pixel; // exterior clip discards the inner half
         _shadowClip.Rect = ShadowClipRect();
+        // the loose cubes draw over the whole canvas, in window coordinates
+        _tronCubes.Width = _windowWidth;
+        _tronCubes.Height = WindowHeight;
+        UpdateLiquidGlass();
         if (_metalEffect is null) return;
         var width = Math.Max(1, _capsuleWidth);
         var hover = _currentHoverX - _capsuleLeft;
@@ -339,6 +484,12 @@ public partial class DockWindow
         {
             _backdropBitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgr32, null);
             _smallBackdrop.Source = _backdropBitmap;
+            if (_gpuBackdrop) _backdrop.Source = _backdropBitmap;
+        }
+        if (_gpuBackdrop)
+        {
+            _backdropBitmap.WritePixels(new Int32Rect(0, 0, width, height), pixels, stride, 0);
+            return;
         }
         // Blur in the small visual's coordinate system, then upscale the result.
         if (_smallBackdrop.Width != width || _smallBackdrop.Height != height || _backdropLogicalWidth != _windowWidth)
@@ -385,7 +536,58 @@ public partial class DockWindow
         _shapeHover = double.NaN;
     }
 
-    private bool _appliedMordor;
+    private DockTheme _appliedTheme = (DockTheme)(-1);
+    private DockSurface _appliedSurface = (DockSurface)(-1);
+    private bool _appliedShrink = GlassSettings.Shrink;
+    private DockIconSet _appliedIconSet = GlassSettings.IconSet;
+
+    // brushed dark steel for the graphite card: silver with a cool grey tint and a dimmer highlight
+    private static MetalRimEffect GunmetalPreset()
+    {
+        var effect = MetalRimEffect.ApplyPreset("silver", true);
+        effect.TintColor = Color.FromArgb(0x70, 0x8C, 0x93, 0xA3);
+        effect.HighlightColor = Color.FromRgb(0xC8, 0xCE, 0xD8);
+        return effect;
+    }
+
+    // What the surface does to the layers under the icons: how much of the blurred desktop shows, whether the
+    // sheen catches light, and how far the shadow reaches. The brushes themselves come from Build*Brush.
+    private void ApplySurface()
+    {
+        // a cyber plate is opaque: graphite's settings leave the desktop out from under it
+        var surface = GlassSettings.Cyber ? DockSurface.Graphite : GlassSettings.Tron ? DockSurface.Classic : GlassSettings.Surface;
+        // the vibrancy pass saturates the desktop; the calm surfaces let less of it through
+        _backdrop.Opacity = surface switch
+        {
+            DockSurface.Mica => .75,
+            DockSurface.Frost => .8,
+            DockSurface.Graphite or DockSurface.Floating => 0,
+            _ => 1,
+        };
+        // the clock's white halo is part of the shiny look
+        foreach (var text in new[] { _clockTime, _clockDate })
+        {
+            if (text.Effect is DropShadowEffect halo) halo.Opacity = surface == DockSurface.Classic ? .6 : .15;
+        }
+        _sheen.Opacity = surface switch
+        {
+            DockSurface.Classic => 1,
+            DockSurface.Frost => .6,
+            _ => 0,
+        };
+        _outerRim.Opacity = surface is DockSurface.Floating || GlassSettings.Cyber ? 0 : 1;
+        if (_shadowEffect is not null)
+        {
+            (_shadowEffect.BlurRadius, _shadowEffect.ShadowDepth, _shadowEffect.Opacity) = surface switch
+            {
+                DockSurface.Mica => (40.0, 10.0, .28),
+                DockSurface.Frost => (32.0, 8.0, .18),
+                DockSurface.Graphite => (36.0, 12.0, .42),
+                _ => (24.0, 6.0, .35),
+            };
+        }
+        _shadow.Visibility = surface is DockSurface.Floating ? Visibility.Hidden : Visibility.Visible;
+    }
 
     private void DisposeGlass() => GlassSettings.Changed -= OnGlassSettingsChanged;
 }

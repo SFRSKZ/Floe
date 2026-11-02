@@ -17,6 +17,10 @@ internal sealed class ClickGlassRenderer : IDisposable
         : this(CreateInput(icon, size), (BitmapSource)IconField.For(icon, size, solid: true).ImageSource,
             "Floe.ClickGlass.hlsl", "float Progress", "float Dist") { }
 
+    internal static ClickGlassRenderer Paint(System.Windows.Media.ImageSource icon, int size) =>
+        new(CreateInput(icon, size), (BitmapSource)IconField.For(icon, size, solid: true).ImageSource,
+            "Floe.ClickPaint.hlsl", "float Progress", "float Hash");
+
     internal ClickGlassRenderer(BitmapSource mask, BitmapSource backdrop)
         : this(mask, backdrop, "Floe.DropLens.hlsl", "float2 Box", "float Height") { }
 
@@ -42,7 +46,7 @@ internal sealed class ClickGlassRenderer : IDisposable
             var pixel = CompilePixel(resource, firstConstant, firstFunction);
             Check(Call<CreateShader>(_device, 12)(_device, vertex, (nuint)vertex.Length, IntPtr.Zero, out _vertexShader));
             Check(Call<CreateShader>(_device, 15)(_device, pixel, (nuint)pixel.Length, IntPtr.Zero, out _pixelShader));
-            var buffer = new BufferDescription { ByteWidth = 6 * 16, BindFlags = 4 }; // CONSTANT_BUFFER
+            var buffer = new BufferDescription { ByteWidth = 9 * 16, BindFlags = 4 }; // CONSTANT_BUFFER
             Check(Call<CreateBuffer>(_device, 3)(_device, ref buffer, IntPtr.Zero, out _constants));
             Upload(input, 0);
             Upload(field, 1);
@@ -60,20 +64,21 @@ internal sealed class ClickGlassRenderer : IDisposable
         catch { Dispose(); throw; }
     }
 
-    internal BitmapSource Render(double progress, double tone, double palette = 0, Color? a = null, Color? b = null)
+    internal BitmapSource Render(double progress, double tone, double palette = 0, Color? a = null, Color? b = null, double inward = 0, double screen = 0)
     {
         Color first = a ?? Colors.White, second = b ?? Colors.White;
         return Render(new float[]
         {
             (float)progress, 0, 0, 0, (float)tone, 0, 0, 0, _width, 0, 0, 0, (float)palette, 0, 0, 0,
             first.R / 255f, first.G / 255f, first.B / 255f, 1, second.R / 255f, second.G / 255f, second.B / 255f, 1,
+            (float)inward, 0, 0, 0, 0, 0, 0, 0, (float)screen, 0, 0, 0,
         });
     }
 
     internal BitmapSource Render(float[] constants)
     {
-        if (constants.Length > 24) throw new ArgumentException("At most six float4 constants are supported.", nameof(constants));
-        var packed = new float[24];
+        if (constants.Length > 36) throw new ArgumentException("At most nine float4 constants are supported.", nameof(constants));
+        var packed = new float[36];
         constants.CopyTo(packed, 0);
         Call<Update>(_context, 48)(_context, _constants, 0, IntPtr.Zero, packed, 0, 0);
         Call<Draw>(_context, 13)(_context, 3, 0); // Full-screen triangle from SV_VertexID.

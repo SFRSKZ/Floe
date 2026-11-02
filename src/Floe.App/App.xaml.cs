@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Media;
@@ -15,12 +15,15 @@ public partial class App : Application
     private bool _hideTaskbar;
     private bool _dockRunning;
     private DispatcherTimer? _taskbarTimer;
+    private string[] _startupArgs = Array.Empty<string>();
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         // Before anything reads settings: bring them over from the MacDock days.
         Floe.Core.Services.LegacyMigration.Run(Environment.ProcessPath);
+        Services.DockSettings.Load();
+        _startupArgs = e.Args;
 
         // FLOE_WEAK stands in for a low-end PC: two cores, and with FLOE_WEAK=gpu no GPU either.
         if (Environment.GetEnvironmentVariable("FLOE_WEAK") is { } weak)
@@ -46,8 +49,7 @@ public partial class App : Application
                 // logging must never throw
             }
 
-            // Once the dock is up it replaces the taskbar: dying would leave the user with no
-            // taskbar and no Start menu, so log and keep running. Startup failures and render
+            // Once the dock is up, log and keep it running after an exception. Startup failures and render
             // runs still crash so the process does not linger invisibly.
             args.Handled = _dockRunning;
         };
@@ -62,24 +64,40 @@ public partial class App : Application
             return;
         }
 
+        var gpuBackdropTest = e.Args
+            .FirstOrDefault(a => a.StartsWith("--gpu-backdrop-test=", StringComparison.OrdinalIgnoreCase))?["--gpu-backdrop-test=".Length..];
+        if (gpuBackdropTest is not null)
+        {
+            RunGpuBackdropTest(gpuBackdropTest.Trim('"'));
+            return;
+        }
+
+        // the benchmarks run their own windows and quit when done
+        if (Services.PerfBench.TryStart(e.Args)) return;
         if (Effects.ActiveIcon.ClickGlassPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Visualizer.LedScreenPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Chromatic.ChromaticPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Glass.DropLensPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.MetalRim.MetalRimPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.VisualizerPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.HologramPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Visualizer.SculptedPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.CubePreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.StardustPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.StardustGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
-        if (Effects.Gpu.FluidFireGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.MeltGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.OledGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.LedPassPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.HologramGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.CubeGpuPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.SilkContourPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Floe.App.Windows.SettingsPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.DozeDissolvePreview.TryRender(e.Args)) { Shutdown(); return; }
-        if (Effects.Visualizer.HologramIntroPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Visualizer.CubesIntroPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Derezz.DerezzPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Services.DotMatrixIconsPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.GpuOffscreen.TryRenderTest(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.GpuOffscreen.TryRenderLook(e.Args)) { Shutdown(); return; }
 
         if (TryRenderSettings(e.Args))
         {
@@ -145,31 +163,16 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.FirstOrDefault(a => a.StartsWith("--clicksound", StringComparison.OrdinalIgnoreCase)) is { } soundArg)
+        {
+            // Writes the click voices to a WAV so they can be heard without the dock.
+            var target = soundArg.Contains('=') ? soundArg[(soundArg.IndexOf('=') + 1)..] : System.IO.Path.Combine(System.IO.Path.GetTempPath(), "floe-click.wav");
+            Floe.App.Services.ClickSound.Export(target);
+            Shutdown();
+            return;
+        }
+
         var autoHide = e.Args.Any(a => a.Equals("--autohide", StringComparison.OrdinalIgnoreCase));
-        _hideTaskbar = !e.Args.Any(a => a.Equals("--keep-taskbar", StringComparison.OrdinalIgnoreCase));
-
-        if (_hideTaskbar)
-        {
-            TaskbarController.Hide();
-
-            _taskbarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-            _taskbarTimer.Tick += (_, _) =>
-            {
-                if (_hideTaskbar && !TaskbarController.IsHidden())
-                {
-                    TaskbarController.Hide();
-                }
-            };
-            _taskbarTimer.Start();
-
-            Exit += (_, _) => TaskbarController.Show();
-            AppDomain.CurrentDomain.ProcessExit += (_, _) => TaskbarController.Show();
-        }
-        else
-        {
-            // recover from a previous forced kill that left the taskbar hidden
-            TaskbarController.Show();
-        }
 
         var blurArg = e.Args
             .FirstOrDefault(a => a.StartsWith("--blur=", StringComparison.OrdinalIgnoreCase))?["--blur=".Length..];
@@ -180,6 +183,19 @@ public partial class App : Application
 
         var renderPath = e.Args
             .FirstOrDefault(a => a.StartsWith("--render=", StringComparison.OrdinalIgnoreCase))?["--render=".Length..];
+
+        if (renderPath is null)
+        {
+            ConfigureTaskbarPreference(restoreWhenVisible: true);
+            Services.DockSettings.Changed += OnDockSettingsChanged;
+            Exit += (_, _) =>
+            {
+                _taskbarTimer?.Stop();
+                Services.DockSettings.Changed -= OnDockSettingsChanged;
+                TaskbarController.Show();
+            };
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => TaskbarController.Show();
+        }
 
         if (renderPath is null
             && !e.Args.Any(a => a.Equals("--no-autostart", StringComparison.OrdinalIgnoreCase))
@@ -217,11 +233,46 @@ public partial class App : Application
                     dock.PreviewAura(auraArg);
                 }
 
+                var fxArg = e.Args.FirstOrDefault(a => a.StartsWith("--fx=", StringComparison.OrdinalIgnoreCase))?["--fx=".Length..].Split(':');
+                if (fxArg is { Length: 2 }) dock.PreviewCyberFx(fxArg[0], double.Parse(fxArg[1], System.Globalization.CultureInfo.InvariantCulture));
+
                 var backgroundArg = e.Args
                     .FirstOrDefault(a => a.StartsWith("--renderbg=", StringComparison.OrdinalIgnoreCase))?["--renderbg=".Length..];
                 RenderDock(dock, renderPath, backgroundArg);
                 Shutdown();
             });
+        }
+    }
+
+    private void OnDockSettingsChanged()
+        => ConfigureTaskbarPreference(restoreWhenVisible: true);
+
+    private void ConfigureTaskbarPreference(bool restoreWhenVisible)
+    {
+        var forceVisible = _startupArgs.Any(a => a.Equals("--keep-taskbar", StringComparison.OrdinalIgnoreCase));
+        var forceHidden = _startupArgs.Any(a => a.Equals("--hide-taskbar", StringComparison.OrdinalIgnoreCase));
+        _hideTaskbar = !forceVisible && (forceHidden || Services.DockSettings.HideWindowsTaskbar);
+
+        if (_hideTaskbar)
+        {
+            TaskbarController.Hide();
+            _taskbarTimer ??= new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+            _taskbarTimer.Tick -= EnforceTaskbarPreference;
+            _taskbarTimer.Tick += EnforceTaskbarPreference;
+            _taskbarTimer.Start();
+        }
+        else
+        {
+            _taskbarTimer?.Stop();
+            if (restoreWhenVisible) TaskbarController.Show();
+        }
+    }
+
+    private void EnforceTaskbarPreference(object? sender, EventArgs e)
+    {
+        if (_hideTaskbar && !TaskbarController.IsHidden())
+        {
+            TaskbarController.Hide();
         }
     }
 
@@ -236,6 +287,7 @@ public partial class App : Application
 
         try
         {
+            Floe.App.Services.GlassSettings.Load();
             var window = new SettingsWindow();
             window.Show();
             window.UpdateLayout();
@@ -279,6 +331,89 @@ public partial class App : Application
         return true;
     }
 
+    // --gpu-backdrop-test=<png>: runs the live GPU backdrop against a small hidden window, so the
+    // capture can be checked without starting the dock. Writes the first half-res, blurred strip.
+    private static void RunGpuBackdropTest(string path)
+    {
+        var area = SystemParameters.WorkArea;
+        var window = new Window
+        {
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Opacity = 0.01,
+            Width = 800,
+            Height = 120,
+            Left = area.Left + ((area.Width - 800) / 2),
+            Top = area.Bottom - 128,
+        };
+        window.Show();
+
+        byte[]? pixels = null;
+        int width = 0, height = 0, stride = 0;
+        var capture = Services.GpuBackdropCapture.TryCreate(window, (data, w, h, s) =>
+        {
+            pixels = (byte[])data.Clone();
+            width = w;
+            height = h;
+            stride = s;
+        }, null, () => 12);
+
+        void Finish(bool ok)
+        {
+            try
+            {
+                if (ok && pixels is not null)
+                {
+                    var bitmap = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
+                    var encoder = new PngBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                    using var stream = System.IO.File.Create(path);
+                    encoder.Save(stream);
+                    Console.WriteLine($"gpu-backdrop: {width}x{height} ok");
+                }
+                else
+                {
+                    Console.WriteLine("gpu-backdrop: unsupported/timeout");
+                }
+            }
+            catch (Exception)
+            {
+                Console.WriteLine("gpu-backdrop: unsupported/timeout");
+            }
+
+            Console.Out.Flush();
+            capture?.Dispose();
+            window.Close();
+            Current.Shutdown();
+        }
+
+        if (capture is null)
+        {
+            Finish(false);
+            return;
+        }
+
+        // presents arrive through the dispatcher, so the wait has to leave it running
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+        timer.Tick += (_, _) =>
+        {
+            if (pixels is not null)
+            {
+                timer.Stop();
+                Finish(true);
+            }
+            else if (clock.Elapsed > TimeSpan.FromSeconds(5))
+            {
+                timer.Stop();
+                Finish(false);
+            }
+        };
+        timer.Start();
+    }
+
     private static void RenderDock(DockWindow dock, string path, string? backgroundPath)
     {
         var width = (int)Math.Ceiling(dock.Width);
@@ -307,7 +442,7 @@ public partial class App : Application
                 context.DrawRectangle(background, null, new Rect(0, 0, width, height));
             }
 
-            var brush = new VisualBrush(dock.Root)
+            var brush = new VisualBrush(dock.Stage)
             {
                 Stretch = Stretch.None,
                 AlignmentX = AlignmentX.Left,

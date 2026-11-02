@@ -42,6 +42,7 @@ public partial class DockWindow
 
     private void InitializeDoze()
     {
+        InitializeCyberFx();
         if (_glassPreview) return;
         InitializeDerezz();
         _dozeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = AwakePoll };
@@ -115,7 +116,8 @@ public partial class DockWindow
 
     private void SinkBelowVisualizer()
     {
-        if (_dozing && _visualizerWindow is { Showing: true } visualizer)
+        // the cyber sleep plays on the dock itself, so the dock stays on top until it is over
+        if (_dozing && _sleepRun is null && _visualizerWindow is { Showing: true } visualizer)
             WindowStyling.PlaceBelow(_hwnd, visualizer.TopHandle);
     }
 
@@ -129,6 +131,12 @@ public partial class DockWindow
         {
             // no grab, no cube field: a plain fade ends in the same hidden state
             Fade(0);
+            return;
+        }
+
+        if (GlassSettings.Cyber)
+        {
+            CyberSleep();
             return;
         }
 
@@ -176,6 +184,12 @@ public partial class DockWindow
             _dozeHidden = false;
             _dozeFadingOut = false;
             Fade(1);
+            return;
+        }
+
+        if (GlassSettings.Cyber)
+        {
+            CyberWake();
             return;
         }
 

@@ -25,8 +25,11 @@ namespace Floe.App.Windows;
 public partial class DockWindow
 {
 
+    private bool _roomForDecals;
+
     private void RebuildIcons()
     {
+        _roomForDecals = GlassSettings.Cyber;
         _slots.Clear();
         IconLayer.Children.Clear();
         IconLayer.Children.Add(_separator);
@@ -50,15 +53,17 @@ public partial class DockWindow
         _capsuleWidth = LeadX + restContent + TrailWidth(_mediaReveal);
 
         var maxContent = count == 0 ? 0 : (count * IconBox * HoverMaxScale) + ((count - 1) * Spacing) + extra;
-        _windowWidth = LeadX + maxContent + TrailWidth(1) + (2 * EdgeMargin);
+        _windowWidth = LeadX + maxContent + TrailWidth(1) + (2 * EdgeMargin) + (GlassSettings.Cyber ? 2 * DecalRoom : 0);
         _restCapsuleLeft = (_windowWidth - _capsuleWidth) / 2;
         _restCapsuleWidth = _capsuleWidth;
         _capsuleLeft = _restCapsuleLeft;
         _backdrop.Width = _windowWidth;
         _backdrop.Height = WindowHeight;
+        UpdateBackdropUnscale();
 
-        Width = _windowWidth;
-        Height = WindowHeight;
+        ApplyDockOrientation();
+        // a pinned or closed app changes the width; grow or shrink from the middle, not the left edge
+        if (_hwnd != IntPtr.Zero) CenterOnMonitor();
 
         for (var i = 0; i < count; i++)
         {
@@ -88,6 +93,8 @@ public partial class DockWindow
 
             var grid = new Grid { Width = IconBox, Height = IconBox };
             grid.Children.Add(image);
+            // the cyber themes' outline icon, in the app artwork's place; the set leaves a wide margin around its drawings
+            grid.Children.Add(new Rectangle { Margin = new Thickness(-5), Visibility = Visibility.Collapsed });
             grid.Children.Add(dot);
 
             var scale = new ScaleTransform(1, 1);
@@ -113,6 +120,7 @@ public partial class DockWindow
             var slot = new IconSlot(button, dot, item, centerLocal, scale, translate);
             _slots.Add(slot);
             IconLayer.Children.Add(button);
+            ApplyCyberIcon(slot);
 
             if (item.IsPinned)
             {
@@ -187,6 +195,13 @@ public partial class DockWindow
         var startX = _capsuleLeft + LeadX;
         var x = startX;
         var separatorX = double.NaN;
+
+        // a held icon leaves its place and the rest slide over to open a gap where it would land
+        var held = _isDragging ? _dragSlot : null;
+        var heldIndex = held is null ? -1 : _slots.IndexOf(held);
+        var gapWidth = heldIndex < 0 ? 0 : (IconBox * scales[heldIndex]) + Spacing;
+        var ease = Math.Min(1.0, _frameDt * 16);
+        var order = 0;
         for (var i = 0; i < count; i++)
         {
             if (HasSeparator && i == _separatorIndex)
@@ -200,8 +215,25 @@ public partial class DockWindow
             var slot = _slots[i];
 
             slot.Center = center;
-            Canvas.SetLeft(slot.Button, center - (IconBox / 2));
-            Canvas.SetTop(slot.Button, IconBottom - IconBox);
+            var shift = 0.0;
+            if (heldIndex >= 0 && i != heldIndex)
+            {
+                shift = (i > heldIndex ? -gapWidth : 0) + (_dragGap >= 0 && order >= _dragGap ? gapWidth : 0);
+                order++;
+            }
+
+            slot.Shift += (shift - slot.Shift) * ease;
+            if (slot == held)
+            {
+                Canvas.SetLeft(slot.Button, _dragX - (IconBox / 2));
+                // lifted a little off the shelf, and down with the cursor when pulled out to unpin
+                Canvas.SetTop(slot.Button, IconBottom - IconBox - 6 + Math.Clamp(_dragY - (IconBottom - (IconBox / 2)), 0, IconBox));
+            }
+            else
+            {
+                Canvas.SetLeft(slot.Button, center - (IconBox / 2) + slot.Shift);
+                Canvas.SetTop(slot.Button, IconBottom - IconBox);
+            }
 
             slot.Scale.ScaleX = scales[i];
             slot.Scale.ScaleY = scales[i];
@@ -222,6 +254,7 @@ public partial class DockWindow
 
         PositionStartButton();
         PositionSections(startX + total);
+        UpdateCyberHover(scales);
 
         if (_activeIndex >= 0 && _activeIndex < count && _auraGrid.Visibility == Visibility.Visible)
         {
@@ -262,7 +295,22 @@ public partial class DockWindow
 
     private void ActivateItem(DockItemViewModel item)
     {
+        // The click answers first: the sound is mixed on its own stream, so launching an app cannot delay it.
+        var clicked = _slots.FirstOrDefault(s => ReferenceEquals(s.Item, item));
+        var pan = clicked is null || _windowWidth <= 0
+            ? 0
+            : (((clicked.Center / _windowWidth) * 2) - 1) * 0.32;
+        ClickSound.Play(AuraSettings.ClickTone, pan);
+
         PlayClickGlass(item);
+
+        // the app already in front: its icon puts the window away, as the taskbar does
+        if (WindowActivator.ForegroundAmong(item.Windows) is var front && front != IntPtr.Zero)
+        {
+            WindowActivator.Minimize(front);
+            Log($"click {item.Name} -> minimize foreground {front}");
+            return;
+        }
 
         // group: cycle through the windows of the same app
         if (item.Windows.Count > 0)

@@ -11,7 +11,7 @@ public static class PinnedAppsProvider
     };
 
     public static string DefaultConfigPath
-        => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Floe", "pinned.json");
+        => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), Product.Folder, "pinned.json");
 
     public static IReadOnlyList<DockApp> Load(string? configPath = null)
     {
