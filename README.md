@@ -21,6 +21,7 @@ Floe needs Windows 10 version 2004 or later. The setups are not code signed, so 
 - Window previews on hover
 - Media controls, weather and a clock in the dock
 - Live visualizers that react to the music you play
+- WebGL2 visualizer plugins: drop a folder in and pick it in Settings (Tidepool ships with the app)
 - Option to hide the Windows taskbar
 - English and Turkish
 
@@ -38,6 +39,18 @@ Floe needs Windows 10 version 2004 or later. The setups are not code signed, so 
 - **Right-click the dock** for quick actions such as Show Desktop, Task Manager and Quit
 - **Ctrl+Alt+V** toggles veil mode
 
+## Visualizer plugins
+
+The dock's visualizers are pluggable: a plugin is a folder with `manifest.json` and a WebGL2 page, run
+in its own WebView2 process behind the dock's glass. **Tidepool** (Gelgit) is the reference plugin and
+ships in `plugins/tidepool`.
+
+- Authoring guide: [plugins/README.md](plugins/README.md)
+- Design notes and the WebGL2 host: [docs/visualizer-plugins.md](docs/visualizer-plugins.md)
+
+Drop a plugin folder into `%LOCALAPPDATA%\Floe\plugins` (or `plugins` next to `Floe.exe`), then pick it
+under **Settings → Glass → WebGL (plugin)**.
+
 ## Build from source
 
 You need the .NET 8 SDK.
@@ -47,6 +60,8 @@ dotnet build src/Floe.App -c Release
 dotnet build src/Floe.App -c Release -p:FloeProduct=CP77
 dotnet test tests/Floe.Tests -c Release
 ```
+
+The build copies `plugins/` next to the executable, so the preview build has Tidepool out of the box.
 
 ---
 

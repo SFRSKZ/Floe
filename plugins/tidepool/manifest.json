@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "apiVersion": "1.0",
+  "id": "floe.tidepool",
+  "version": "1.0.0",
+  "name": { "en": "Tidepool", "tr": "Gelgit" },
+  "description": {
+    "en": "Liquid-glass tides, silk threads and a waveform thread that follow the music.",
+    "tr": "Müziği izleyen sıvı cam gelgitleri, ipek şeritler ve dalga izi."
+  },
+  "author": "Floe",
+  "license": "MIT",
+  "entry": "index.html",
+  "preview": "preview/preview.html",
+  "capabilities": [
+    "audio.bands",
+    "audio.wave",
+    "audio.onsets",
+    "audio.stereo",
+    "host.palette",
+    "host.dockGeometry",
+    "host.clock"
+  ],
+  "audio": {
+    "bands": 32,
+    "wave": 512,
+    "waveRateHz": 60
+  },
+  "render": {
+    "transparent": true,
+    "frameBudgetMs": 16.6,
+    "minHeight": 48,
+    "maxPixels": 3000000
+  },
+  "options": [
+    {
+      "id": "intensity",
+      "type": "number",
+      "min": 0,
+      "max": 1,
+      "step": 0.05,
+      "default": 0.65,
+      "label": { "en": "Intensity", "tr": "Yoğunluk" }
+    },
+    {
+      "id": "palette",
+      "type": "enum",
+      "values": ["auto", "aurora", "tide", "ember", "mono"],
+      "default": "auto",
+      "label": { "en": "Palette", "tr": "Palet" },
+      "labels": {
+        "auto": { "en": "Floe theme", "tr": "Floe teması" },
+        "aurora": { "en": "Aurora", "tr": "Kuzey ışıkları" },
+        "tide": { "en": "Tide", "tr": "Gelgit" },
+        "ember": { "en": "Ember", "tr": "Kor" },
+        "mono": { "en": "Monochrome", "tr": "Tek renk" }
+      }
+    },
+    {
+      "id": "motion",
+      "type": "enum",
+      "values": ["full", "calm"],
+      "default": "full",
+      "label": { "en": "Motion", "tr": "Hareket" },
+      "labels": {
+        "full": { "en": "Full", "tr": "Tam" },
+        "calm": { "en": "Calm", "tr": "Sakin" }
+      }
+    },
+    {
+      "id": "particles",
+      "type": "bool",
+      "default": true,
+      "label": { "en": "Dust and spray", "tr": "Toz ve serpinti" }
+    },
+    {
+      "id": "quality",
+      "type": "enum",
+      "values": ["auto", "high", "balanced", "low"],
+      "default": "auto",
+      "label": { "en": "Quality", "tr": "Kalite" },
+      "labels": {
+        "auto": { "en": "Automatic", "tr": "Otomatik" },
+        "high": { "en": "High", "tr": "Yüksek" },
+        "balanced": { "en": "Balanced", "tr": "Dengeli" },
+        "low": { "en": "Low", "tr": "Düşük" }
+      }
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -24,6 +24,7 @@ public enum VisualizerStyle
     SilkContour,
     EyeFlame,
     Oled,
+    Plugin,
 }
 
 public enum HologramColor
@@ -88,6 +89,9 @@ public static class GlassSettings
 
     public static VisualizerStyle VisualizerLook { get; private set; } = VisualizerStyle.Glow;
 
+    /// <summary>The visualizer plugin the Plugin look runs; an id from its manifest.</summary>
+    public static string PluginId { get; private set; } = "floe.tidepool";
+
     public static HologramColor HologramTint { get; private set; } = HologramColor.Blue;
 
     public static NowPlayingIntro Intro { get; private set; } = NowPlayingIntro.Drop;
@@ -133,6 +137,7 @@ public static class GlassSettings
             VisualizerLook = model.VisualizerLook == "WraithWind" ? VisualizerStyle.EyeFlame
                 : Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) ? look : VisualizerStyle.Glow;
             HologramTint = Enum.TryParse<HologramColor>(model.HologramTint, true, out var tint) ? tint : HologramColor.Blue;
+            if (!string.IsNullOrWhiteSpace(model.PluginId)) PluginId = model.PluginId!;
             Intro = Enum.TryParse<NowPlayingIntro>(model.Intro, true, out var intro) ? intro : NowPlayingIntro.Drop;
             DustColors = Enum.TryParse<DustPalette>(model.DustColors, true, out var dust) ? dust : DustPalette.Tint;
             if (TryParseColor(model.CustomTint, out var custom)) CustomTint = custom;
@@ -228,6 +233,18 @@ public static class GlassSettings
         }
 
         VisualizerLook = look;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetPlugin(string id)
+    {
+        if (string.Equals(PluginId, id, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        PluginId = id;
         Save();
         Changed?.Invoke();
     }
@@ -343,6 +360,7 @@ public static class GlassSettings
                 Mordor = Mordor,
                 Bulge = Bulge.ToString(),
                 VisualizerLook = VisualizerLook.ToString(),
+                PluginId = PluginId,
                 HologramTint = HologramTint.ToString(),
                 Intro = Intro.ToString(),
                 CubeSize = CubeSize,
@@ -371,6 +389,8 @@ public static class GlassSettings
 
         public string VisualizerLook { get; set; } = nameof(VisualizerStyle.Glow);
 
+        public string? PluginId { get; set; }
+
         public double CubeSize { get; set; } = 17;
 
         public string HologramTint { get; set; } = nameof(HologramColor.Blue);
@@ -384,3 +404,5 @@ public static class GlassSettings
         public string[]? CustomPalette { get; set; }
     }
 }
+
+

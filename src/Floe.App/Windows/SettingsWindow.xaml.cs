@@ -366,6 +366,10 @@ public partial class SettingsWindow : Window
         VisualizerLookEyeFlame.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.EyeFlame);
         VisualizerLookOled.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Oled;
         VisualizerLookOled.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Oled);
+        VisualizerLookPlugin.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Plugin;
+        VisualizerLookPlugin.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Plugin);
+        BuildPluginChoices();
+        PluginFolderButton.Click += (_, _) => VisualizerPlugins.OpenUserFolder();
         CubeSizeSlider.Value = GlassSettings.CubeSize;
         CubeSizeValue.Text = GlassSettings.CubeSize.ToString("0") + " px";
         CubeSizeSlider.ValueChanged += (_, e) =>
@@ -520,6 +524,43 @@ public partial class SettingsWindow : Window
         }
 
         PaletteList.Visibility = paletteActive ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void BuildPluginChoices()
+    {
+        VisualizerPlugins.Reload();
+        PluginChoices.Children.Clear();
+
+        var plugins = VisualizerPlugins.Enabled;
+        if (plugins.Count == 0)
+        {
+            PluginHint.Text = "Henüz eklenti yok: klasöre bir görselleştirici koyun, Floe onu kendisi bulur.";
+            return;
+        }
+
+        foreach (var plugin in plugins)
+        {
+            var radio = new RadioButton
+            {
+                GroupName = "VisualizerPlugin",
+                Style = (Style)FindResource("ModeToggle"),
+                Content = VisualizerPlugins.DisplayName(plugin),
+                Tag = plugin.Id,
+                IsChecked = string.Equals(GlassSettings.PluginId, plugin.Id, StringComparison.OrdinalIgnoreCase),
+                Margin = new Thickness(0, 0, 8, 4),
+            };
+            radio.Checked += (sender, _) =>
+            {
+                if (sender is RadioButton { Tag: string id })
+                {
+                    VisualizerPlugins.Select(id);
+                    GlassSettings.SetVisualizerLook(VisualizerStyle.Plugin);
+                }
+            };
+            PluginChoices.Children.Add(radio);
+        }
+
+        PluginHint.Text = $"{plugins.Count} eklenti bulundu.";
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();

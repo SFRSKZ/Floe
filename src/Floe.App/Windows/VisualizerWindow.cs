@@ -8,6 +8,7 @@ using Floe.App.Effects.Gpu;
 using Floe.App.Effects.Visualizer;
 using Floe.App.Services;
 using Floe.Core.Interop;
+using Floe.Plugins;
 
 namespace Floe.App.Windows;
 
@@ -29,6 +30,10 @@ internal sealed class VisualizerWindow : Window
     private GpuLayerWindow? _gpu;
     private GpuLayerWindow? _flame;
     private GpuLayerWindow? _oled;
+    private WebVisualizerHost? _web;
+    private bool _webFailed;
+    private string? _failedPluginId;
+    private double _webClock;
     private FluidFireGpuScene? _fire;
     private Rect _dockRect;
     private bool _gpuFailed;
@@ -69,7 +74,11 @@ internal sealed class VisualizerWindow : Window
     public IntPtr Handle => _hwnd;
 
     /// <summary>The window the light is drawn in right now: the GPU layer when it carries the look.</summary>
-    public IntPtr TopHandle => _oled is { IsRunning: true } oled ? oled.Handle : _flame is { IsRunning: true } flame ? flame.Handle : _gpu is { IsRunning: true } gpu ? gpu.Handle : _hwnd;
+    public IntPtr TopHandle => _web is { IsRunning: true } web ? web.Handle
+        : _oled is { IsRunning: true } oled ? oled.Handle
+        : _flame is { IsRunning: true } flame ? flame.Handle
+        : _gpu is { IsRunning: true } gpu ? gpu.Handle
+        : _hwnd;
 
     /// <summary>The OLED panel runs under the dock: its glass has to keep up with what moves behind it.</summary>
     public bool PanelBehindDock => _oled is { IsRunning: true };
@@ -86,6 +95,8 @@ internal sealed class VisualizerWindow : Window
         _flame = null;
         _oled?.Dispose();
         _oled = null;
+        _web?.Dispose();
+        _web = null;
         base.OnClosed(e);
     }
 
@@ -124,6 +135,7 @@ internal sealed class VisualizerWindow : Window
 
         _placed = true;
         PlaceGpu();
+        PlaceWeb();
     }
 
     public void PlaceBelowDock(IntPtr dock)
@@ -133,11 +145,19 @@ internal sealed class VisualizerWindow : Window
         _gpu?.PlaceBelowDock(dock);
         _flame?.PlaceBelowDock(dock);
         _oled?.PlaceBelowDock(dock);
+        _web?.PlaceBelowDock(dock);
     }
 
     public void SetRunning(bool running)
     {
         var look = GlassSettings.VisualizerLook;
+        bool web = running && look == VisualizerStyle.Plugin && WebLayer();
+        if (web)
+        {
+            PlaceWeb();
+            ApplyWebAppearance();
+        }
+
         // the eye flame only exists on the GPU; the dust looks move there when the setting asks for it
         bool flame = running && look == VisualizerStyle.EyeFlame && Layer(ref _flame, () => _fire = new FluidFireGpuScene());
         PlaceFire(_bounds);
@@ -152,12 +172,13 @@ internal sealed class VisualizerWindow : Window
 
         _flame?.SetRunning(flame);
         _oled?.SetRunning(oled);
+        _web?.SetRunning(web);
 
-        // without a GPU the eye flame and the OLED panel fall back to stardust
-        if ((look == VisualizerStyle.EyeFlame && !flame) || (look == VisualizerStyle.Oled && !oled)) look = VisualizerStyle.Stardust;
+        // without a GPU (or a working plugin) those looks fall back to stardust
+        if ((look == VisualizerStyle.EyeFlame && running && !flame) || (look == VisualizerStyle.Oled && running && !oled) || (look == VisualizerStyle.Plugin && running && !web)) look = VisualizerStyle.Stardust;
 
         // a GPU layer carries its look by itself; this window only fades out what it drew before
-        running &= !(dust || flame || oled);
+        running &= !(dust || flame || oled || web);
         _running = running;
         _glow.IsActive = running && look == VisualizerStyle.Glow;
         _hologram.IsActive = running && look == VisualizerStyle.Hologram;
@@ -241,6 +262,116 @@ internal sealed class VisualizerWindow : Window
         _oled?.Place(pixels, _scale, _dock);
     }
 
+    /// <summary>Creates the plugin host on first use; a failure falls back to a built-in look.</summary>
+    private bool WebLayer()
+    {
+        var plugin = VisualizerPlugins.Selected;
+        if (plugin is null)
+        {
+            return false;
+        }
+
+        // a plugin that failed to start is retried only when the selection actually changes
+        if (_webFailed && _failedPluginId == plugin.Id)
+        {
+            return false;
+        }
+
+        _webFailed = false;
+        _failedPluginId = null;
+
+        if (_web is not null && _web.PluginId != plugin.Id)
+        {
+            _web.Dispose();
+            _web = null;
+        }
+
+        if (_web is not null)
+        {
+            return true;
+        }
+
+        try
+        {
+            _web = new WebVisualizerHost(plugin);
+            if (_web.Handle == IntPtr.Zero || _web.Failure is not null)
+            {
+                _web.Dispose();
+                _web = null;
+                _webFailed = true;
+                _failedPluginId = plugin.Id;
+                return false;
+            }
+
+            // The strip is meant to be seen through the dock's glass, so it stays in the backdrop
+            // capture (unlike the WPF glow, which would feed its own light back into the blur).
+            WindowAffinity.IncludeInCapture(_web.Handle);
+            if (_dock != IntPtr.Zero)
+            {
+                _web.PlaceBelowDock(_dock);
+            }
+
+            PlaceWeb();
+            ApplyWebAppearance();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Floe.Plugin] host: {ex.Message}");
+            _web?.Dispose();
+            _web = null;
+            _webFailed = true;
+            _failedPluginId = plugin.Id;
+            return false;
+        }
+    }
+
+    private void PlaceWeb()
+    {
+        if (_web is null || _bounds.IsEmpty) return;
+
+        var pixels = new PluginRect(
+            (int)Math.Round(_bounds.Left * _scale),
+            (int)Math.Round(_bounds.Top * _scale),
+            (int)Math.Round(_bounds.Width * _scale),
+            (int)Math.Round(_bounds.Height * _scale));
+
+        PluginRect? dock = null;
+        if (!_dockRect.IsEmpty)
+        {
+            dock = new PluginRect(
+                (int)Math.Round(_dockRect.Left * _scale),
+                (int)Math.Round(_dockRect.Top * _scale),
+                (int)Math.Round(_dockRect.Width * _scale),
+                (int)Math.Round(_dockRect.Height * _scale));
+        }
+
+        _web.Place(pixels, _scale, dock);
+        if (_dock != IntPtr.Zero)
+        {
+            _web.PlaceBelowDock(_dock);
+        }
+
+        // the palette follows the dock's colours while the settings window is open
+        if (_web.IsRunning)
+        {
+            ApplyWebAppearance();
+        }
+    }
+
+    private void ApplyWebAppearance()
+    {
+        if (_web is null) return;
+        var plugin = VisualizerPlugins.Selected;
+        if (plugin is null) return;
+
+        _webClock = Environment.TickCount64 / 1000.0;
+        var primary = Color.FromRgb(0x5C, 0xA8, 0xFF);
+        var (core, second, accent, deep) = VisualizerPlugins.Palette(_webClock, primary);
+        double fps = Performance.VisualizerFps;
+        _web.SetAppearance(core, second, accent, deep, VisualizerPlugins.OptionsJson(plugin), (int)(fps > 0 ? fps : 60));
+    }
+
     private DispatcherTimer CreateHideTimer()
     {
         var timer = new DispatcherTimer(DispatcherPriority.Normal)
@@ -272,3 +403,6 @@ internal sealed class VisualizerWindow : Window
         _silkContour.Capsule = strip;
     }
 }
+
+
+

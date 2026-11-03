@@ -410,7 +410,21 @@
                     <RadioButton x:Name="VisualizerLookSilkContour" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="İpek kontur" />
                     <RadioButton x:Name="VisualizerLookEyeFlame" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Sauron'un gözü" />
                     <RadioButton x:Name="VisualizerLookOled" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="OLED ekran" />
+                    <RadioButton x:Name="VisualizerLookPlugin" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="WebGL (eklenti)" />
                 </WrapPanel>
+
+                <TextBlock Text="WebGL eklentisi" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,10,0,6" />
+                <WrapPanel x:Name="PluginChoices" />
+                <TextBlock x:Name="PluginHint"
+                           Foreground="#66FFFFFF"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Margin="2,4,0,0" />
+                <Button x:Name="PluginFolderButton"
+                        Style="{StaticResource GlassButton}"
+                        Content="Eklenti klasörünü aç"
+                        HorizontalAlignment="Left"
+                        Margin="2,6,0,0" />
 
                 <CheckBox x:Name="GpuVisualizerToggle"
                           Style="{StaticResource GlassToggle}"
