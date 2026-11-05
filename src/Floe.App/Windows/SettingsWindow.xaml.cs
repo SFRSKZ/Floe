@@ -56,7 +56,7 @@ public partial class SettingsWindow : Window
         // the Cyber themes bring their own colours, surface and click, so these would do nothing here
         foreach (var unused in new UIElement[]
         {
-            EffectTitle, EffectRow, ColorModeTitle, ColorModeRow, PaletteList, ClickScreenToggle, ClickPaintToggle, ClickToneRow, ClickPaletteRow,
+            EffectTitle, EffectRow, ColorModeTitle, ColorModeRow, PaletteList, RestGlassToggle, ClickScreenToggle, ClickPaintToggle, ClickToneRow, ClickPaletteRow,
             SurfaceTitle, SurfaceRow, RimTitle, RimRow, BulgeTitle, BulgeRow, IntroTitle, IntroRow, DerezzCellTitle, DerezzCellRow,
         })
         {
@@ -75,6 +75,8 @@ public partial class SettingsWindow : Window
         VisualizerLookCyberSandevistan.Visibility = Visibility.Collapsed;
         VisualizerLookCyberBreach.Visibility = Visibility.Collapsed;
         VisualizerLookCyberCollar.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberPulse.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberRift.Visibility = Visibility.Collapsed;
 #endif
         ApplyChrome();
         GlassSettings.Changed += ApplyChromeOnUi;
@@ -111,6 +113,9 @@ public partial class SettingsWindow : Window
         ClickLight.IsChecked = AuraSettings.ClickTone == ClickTone.Light;
         ClickEffectToggle.Checked += (_, _) => AuraSettings.SetClickEffect(true);
         ClickEffectToggle.Unchecked += (_, _) => AuraSettings.SetClickEffect(false);
+        RestGlassToggle.IsChecked = AuraSettings.RestGlass;
+        RestGlassToggle.Checked += (_, _) => AuraSettings.SetRestGlass(true);
+        RestGlassToggle.Unchecked += (_, _) => AuraSettings.SetRestGlass(false);
         ClickScreenToggle.IsChecked = AuraSettings.ClickScreen;
         ClickScreenToggle.Checked += (_, _) => AuraSettings.SetClickScreen(true);
         ClickScreenToggle.Unchecked += (_, _) => AuraSettings.SetClickScreen(false);
@@ -596,7 +601,8 @@ public partial class SettingsWindow : Window
         VisualizerLookRibbon.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Ribbon;
         VisualizerLookRibbon.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Ribbon);
         foreach (var (toggle, look) in new[] { (VisualizerLookCyberSignal, VisualizerStyle.CyberSignal), (VisualizerLookCyberBlackwall, VisualizerStyle.CyberBlackwall), (VisualizerLookCyberCircuit, VisualizerStyle.CyberCircuit), (VisualizerLookCyberGlyph, VisualizerStyle.CyberGlyph), (VisualizerLookCyberRain, VisualizerStyle.CyberRain), (VisualizerLookCyberSamurai, VisualizerStyle.CyberSamurai),
-            (VisualizerLookCyberBraindance, VisualizerStyle.CyberBraindance), (VisualizerLookCyberSandevistan, VisualizerStyle.CyberSandevistan), (VisualizerLookCyberBreach, VisualizerStyle.CyberBreach), (VisualizerLookCyberCollar, VisualizerStyle.CyberCollar) })
+            (VisualizerLookCyberBraindance, VisualizerStyle.CyberBraindance), (VisualizerLookCyberSandevistan, VisualizerStyle.CyberSandevistan), (VisualizerLookCyberBreach, VisualizerStyle.CyberBreach), (VisualizerLookCyberCollar, VisualizerStyle.CyberCollar),
+            (VisualizerLookCyberPulse, VisualizerStyle.CyberPulse), (VisualizerLookCyberRift, VisualizerStyle.CyberRift) })
         {
             toggle.IsChecked = GlassSettings.VisualizerLook == look;
             toggle.Checked += (_, _) => GlassSettings.SetVisualizerLook(look);

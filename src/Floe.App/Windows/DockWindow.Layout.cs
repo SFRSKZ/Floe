@@ -121,6 +121,7 @@ public partial class DockWindow
             _slots.Add(slot);
             IconLayer.Children.Add(button);
             ApplyCyberIcon(slot);
+            ApplyRestGlass(slot);
 
             if (item.IsPinned)
             {

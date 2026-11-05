@@ -93,6 +93,9 @@ public static class AuraSettings
     /// <summary>The click's glass shows the icon as an LED screen of light dots instead of clear glass.</summary>
     public static bool ClickScreen { get; private set; }
 
+    /// <summary>Every icon at rest sits in the glass a click leaves behind, held still.</summary>
+    public static bool RestGlass { get; private set; } = true;
+
     /// <summary>The click as Van Gogh's brush: swirling impasto strokes of the icon's own colours.</summary>
     public static bool ClickPaint { get; private set; }
 
@@ -131,6 +134,7 @@ public static class AuraSettings
             ClickEffect = model.ClickEffect;
             ClickSound = model.ClickSound;
             ClickScreen = model.ClickScreen;
+            RestGlass = model.RestGlass;
             ClickPaint = model.ClickPaint;
             ClickTone = Enum.TryParse<ClickTone>(model.ClickTone, true, out var tone) && Enum.IsDefined(tone) ? tone : ClickTone.Dark;
             ClickPalette = Enum.TryParse<ClickPalette>(model.ClickPalette, true, out var palette) && Enum.IsDefined(palette) ? palette : ClickPalette.Clear;
@@ -164,6 +168,14 @@ public static class AuraSettings
     {
         if (ClickPaint == enabled) return;
         ClickPaint = enabled;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetRestGlass(bool enabled)
+    {
+        if (RestGlass == enabled) return;
+        RestGlass = enabled;
         Save();
         Changed?.Invoke();
     }
@@ -315,6 +327,7 @@ public static class AuraSettings
                 ClickEffect = ClickEffect,
                 ClickSound = ClickSound,
                 ClickScreen = ClickScreen,
+                RestGlass = RestGlass,
                 ClickPaint = ClickPaint,
                 ClickTone = ClickTone.ToString(),
                 ClickPalette = ClickPalette.ToString(),
@@ -343,6 +356,8 @@ public static class AuraSettings
         public bool ClickSound { get; set; } = true;
 
         public bool ClickScreen { get; set; }
+
+        public bool RestGlass { get; set; } = true;
 
         public bool ClickPaint { get; set; }
 

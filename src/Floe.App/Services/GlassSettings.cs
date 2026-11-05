@@ -75,6 +75,9 @@ public enum VisualizerStyle
     CyberSandevistan,
     CyberBreach,
     CyberCollar,
+    // from the Phantom Liberty video: a heart monitor and a splitting horizon
+    CyberPulse,
+    CyberRift,
 }
 
 /// <summary>A theme dresses the whole dock (glass, rim, glows) and its visualizer in one look.</summary>
@@ -351,7 +354,8 @@ public static class GlassSettings
     }
 
     public static bool IsCyberLook(VisualizerStyle look) => look is VisualizerStyle.CyberSignal or VisualizerStyle.CyberBlackwall or VisualizerStyle.CyberCircuit or VisualizerStyle.CyberGlyph or VisualizerStyle.CyberRain or VisualizerStyle.CyberSamurai
-        or VisualizerStyle.CyberBraindance or VisualizerStyle.CyberSandevistan or VisualizerStyle.CyberBreach or VisualizerStyle.CyberCollar;
+        or VisualizerStyle.CyberBraindance or VisualizerStyle.CyberSandevistan or VisualizerStyle.CyberBreach or VisualizerStyle.CyberCollar
+        or VisualizerStyle.CyberPulse or VisualizerStyle.CyberRift;
 
     internal static void PreviewTheme(DockTheme theme)
     {

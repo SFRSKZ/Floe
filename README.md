@@ -26,7 +26,7 @@ Floe needs Windows 10 version 2004 or later. The setups are not code signed, so 
 
 **Cyberpunk edition**
 
-- 10 cyber visualizers, including Blackwall, Signal Lost, Circuit, Samurai, Breach, Braindance and Sandevistan
+- 12 cyber visualizers, including Blackwall, Signal Lost, Circuit, Samurai, Breach, Braindance, Sandevistan, Pulse and Rift
 - 199 Cyberpunk icon cards, and apps without a card get one made from their own icon
 - 7 colour presets, plus your own colours for the body, accent, strip and ink
 - Hex click effect, click sound, drag and file drop frames, and sleep and wake effects

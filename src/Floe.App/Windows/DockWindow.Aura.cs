@@ -423,6 +423,7 @@ public partial class DockWindow
     {
         // palettes and per-item colours live in the settings: the spectral cache is stale now
         _spectralItem = null;
+        foreach (var slot in _slots) ApplyRestGlass(slot, rebuild: true);
         UpdateAura();
     }
 

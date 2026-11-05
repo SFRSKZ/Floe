@@ -316,6 +316,7 @@ public partial class DockWindow
                 {
                     _mediaTitle.Text = _mediaTrackTitle = media.Title;
                     if (GlassSettings.Cyber) DecodeTitle(media.Title);
+                    else SlideTrackIn();
                 }
 
                 if (_mediaArtist.Text != media.Artist)

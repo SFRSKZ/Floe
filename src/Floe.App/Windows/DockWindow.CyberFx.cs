@@ -262,7 +262,13 @@ public partial class DockWindow
         }
 
         _noticed = item;
-        if (item is null || !GlassSettings.Cyber) return;
+        if (item is null) return;
+        if (!GlassSettings.Cyber)
+        {
+            ShowGlassNotice(item);
+            return;
+        }
+
         var ink = CyberFxLayer.Solid(FxInk);
         var yellow = CyberFxLayer.Solid(CyberLook.Current.Strip);
         var cyan = CyberFxLayer.Solid(FxCyan);

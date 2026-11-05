@@ -6,7 +6,8 @@ namespace Floe.App.Effects.Gpu;
 public static class GpuSceneCatalog
 {
     public static bool Has(VisualizerStyle look) => look is VisualizerStyle.Chladni or VisualizerStyle.Fireflies or VisualizerStyle.Ferrofluid or VisualizerStyle.CyberSignal or VisualizerStyle.CyberBlackwall or VisualizerStyle.CyberCircuit or VisualizerStyle.CyberGlyph or VisualizerStyle.CyberRain or VisualizerStyle.CyberSamurai
-        or VisualizerStyle.CyberBraindance or VisualizerStyle.CyberSandevistan or VisualizerStyle.CyberBreach or VisualizerStyle.CyberCollar;
+        or VisualizerStyle.CyberBraindance or VisualizerStyle.CyberSandevistan or VisualizerStyle.CyberBreach or VisualizerStyle.CyberCollar
+        or VisualizerStyle.CyberPulse or VisualizerStyle.CyberRift;
 
     public static IGpuScene Create(VisualizerStyle look) => look switch
     {
@@ -23,6 +24,8 @@ public static class GpuSceneCatalog
         VisualizerStyle.CyberSandevistan => new SandevistanGpuScene(),
         VisualizerStyle.CyberBreach => new BreachGpuScene(),
         VisualizerStyle.CyberCollar => new CollarGpuScene(),
+        VisualizerStyle.CyberPulse => new PulseGpuScene(),
+        VisualizerStyle.CyberRift => new RiftGpuScene(),
         _ => throw new ArgumentOutOfRangeException(nameof(look)),
     };
 }

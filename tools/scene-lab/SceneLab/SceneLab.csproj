@@ -1,0 +1,57 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Floe SceneLab — the design harness for Floe's GPU visualizer scenes.
+    Renders any IGpuScene offscreen at the strip's real 3840x126 geometry, driven by the mock track or a
+    WAV file analysed by the dock's own spectrum code, so a look can be judged and compared without the dock.
+
+    It links against the already-built app assembly (../src/Floe.App/bin/Release/.../Floe.dll) instead of a
+    ProjectReference: the app is a WinExe whose WPF targets write temp project files, and a snapshot build is
+    cheaper to keep stable than a nested reference build.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>SceneLab</AssemblyName>
+    <RootNamespace>SceneLab</RootNamespace>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <NoWarn>$(NoWarn);NU1900</NoWarn>
+    <!-- two layouts: the workspace lab has the source snapshot next to it, the copy inside the project does not -->
+    <FloeBuild Condition="'$(FloeBuild)' == '' and Exists('..\src\Floe.App\bin\Release\net8.0-windows10.0.22621.0\Floe.dll')">..\src\Floe.App\bin\Release\net8.0-windows10.0.22621.0</FloeBuild>
+    <FloeBuild Condition="'$(FloeBuild)' == ''">..\..\..\src\Floe.App\bin\Release\net8.0-windows10.0.22621.0</FloeBuild>
+  </PropertyGroup>
+
+  <!--
+    SceneFile builds only one scene file, for a designer working on a single look while other scenes in
+    Scenes/ are half-written. Combined with the CLI's artifacts-path option each designer gets a private
+    build, so parallel work cannot break or lock anyone else's build:
+      dotnet build SceneLab.csproj -c Release [artifacts path outside the project] [SceneFile=<mine>]
+  -->
+  <ItemGroup Condition="'$(SceneFile)' != ''">
+    <Compile Remove="Scenes\**\*.cs" />
+    <Compile Include="$(SceneFile)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Floe">
+      <HintPath>$(FloeBuild)\Floe.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Floe.Core">
+      <HintPath>$(FloeBuild)\Floe.Core.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
+    <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
+    <PackageReference Include="Vortice.D3DCompiler" Version="3.8.3" />
+  </ItemGroup>
+
+</Project>

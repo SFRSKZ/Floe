@@ -349,6 +349,8 @@
                 <UniformGrid x:Name="PaletteList" Columns="2" Margin="0,2,-6,0" />
                 <TextBlock Text="Tıklama efekti" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,10,0,6" />
                 <CheckBox x:Name="ClickEffectToggle" Style="{StaticResource GlassToggle}" Content="Cam damla" />
+                <CheckBox x:Name="RestGlassToggle" Style="{StaticResource GlassToggle}" Content="İkonlarda cam plaka" Margin="0,6,0,0"
+                          ToolTip="Tıklamanın bıraktığı cam, her ikonun etrafında hep durur" />
                 <CheckBox x:Name="ClickScreenToggle" Style="{StaticResource GlassToggle}" Content="LED ekran camı" Margin="0,6,0,0"
                           ToolTip="Cam, ikonu nokta nokta bir LED ekran gibi gösterir" />
                 <CheckBox x:Name="ClickPaintToggle" Style="{StaticResource GlassToggle}" Content="Yağlı boya (Van Gogh)" Margin="0,6,0,0"
@@ -549,6 +551,10 @@
                                  ToolTip="ICE kırma: hex kod matrisi, satır-sütun seçim yolu, kilitlenen hücreler ve buffer" />
                     <RadioButton x:Name="VisualizerLookCyberCollar" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Samurai yaka"
                                  ToolTip="Ceketin neon yakası: yumuşak COB tüplerde ışık iki uçtan yukarı, dock'un arkasına tırmanır" />
+                    <RadioButton x:Name="VisualizerLookCyberPulse" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Nabız"
+                                 ToolTip="Kalp monitörü: dock'un iki yanında düz bir çizgi, her vuruşta dışarı koşan bir kalp atışı" />
+                    <RadioButton x:Name="VisualizerLookCyberRift" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Yarık"
+                                 ToolTip="Ufuk yarılır: bas çizgiyi ikiye ayırır, vuruşta kıvılcım sıçrar, snare'de ışık sütunları yanar" />
                     <RadioButton x:Name="VisualizerLookPrism" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Cam prizma" />
                     <RadioButton x:Name="VisualizerLookWheat" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Başak tarlası" />
                     <RadioButton x:Name="VisualizerLookRibbon" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Işık şeridi" />

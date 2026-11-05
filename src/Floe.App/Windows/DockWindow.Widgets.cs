@@ -34,7 +34,11 @@ public partial class DockWindow
             var shown = _clockTime.Text.Length > 0;
             _clockTime.Text = time;
             if (shown && GlassSettings.Cyber && !_dozeHidden && _sleepRun is null && Root.OpacityMask is null) PlayClockSplit();
+            else if (shown && !GlassSettings.Cyber && IsVisible && _shown) RollClock();
         }
+
+        if (GlassSettings.Cyber) ClearGlassSeconds();
+        else if (IsVisible && _shown && !_fullscreenHidden) ShowGlassSeconds(now); // no sweep for a dock off screen
 
         var date = now.ToString("ddd d MMM", Loc.Culture);
         if (_clockDate.Text != date)
