@@ -166,6 +166,7 @@ Katana/Sıvı Krom ve Hologram/Holo Yağmur projeden çıkarıldıktan sonra §6
 | README | "10 cyber visualizers" → **12** (Nabız + Yarık eklendi) |
 | Kurulum dosyaları | Kaynaktan `installer\build-setup.ps1 -Product All -Out work\guncel57` yeniden üretildi (iki ürün de 0 hata/0 uyarı); `work\` kökündeki 11-01 tarihli bayat exe'ler son sürümle değiştirildi. Yayınlanan `FloeCP77.dll` taranarak doğrulandı: `CyberChrome`, `CyberHoloRain`, `ChromeGpuScene`, `HoloRainGpuScene` **yok**; `CyberPulse`, `CyberRift` **var** |
 | Kurulum hash'leri (SHA-256, ilk 16) | `work\FloeSetup.exe` = `79EF78417432BBF7`, `work\FloeCP77Setup.exe` = `8F6FE4B821BF8741` (ikisi de 12:35, ~92 MB) |
+| Eşzamanlı oturum notu | Bu paketleme 12:35 kaynağından yapıldı. Başka bir oturum 12:37–12:38 arası `PulseGpuScene.cs` üzerinde çalışmaya devam etti (commit dışı, `git status`'ta `M`). O değişiklik ship edilecekse kurulum exe'leri bir kez daha yenilenmeli; bu oturum onların diff'ine dokunmadı. |
 | Kayıtlar | `SONUC.md` başlığı/§5/§6 güncellendi, `tools/scene-lab/SONUC.md` kopyası eşitlendi |
 | Versiyon kontrolü | `src/`, `README.md`, `SONUC.md` ve atölye kaynakları tek commit'e alındı; `work/` kanıt ve exe'leri bilinçli olarak commit dışında |
 
