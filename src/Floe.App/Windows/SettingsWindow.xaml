@@ -555,6 +555,8 @@
                                  ToolTip="Kalp monitörü: dock'un iki yanında düz bir çizgi, her vuruşta dışarı koşan bir kalp atışı" />
                     <RadioButton x:Name="VisualizerLookCyberRift" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Yarık"
                                  ToolTip="Ufuk yarılır: bas çizgiyi ikiye ayırır, vuruşta kıvılcım sıçrar, snare'de ışık sütunları yanar" />
+                    <RadioButton x:Name="VisualizerLookCyberBiometric" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Biyometrik dalga"
+                                 ToolTip="Braindance audio layer: 24 bant spektrum + gerçek EKG/osiloskop dalgası; bas genliği, kick QRS sıçraması, sessizlikte flatline" />
                     <RadioButton x:Name="VisualizerLookPrism" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Cam prizma" />
                     <RadioButton x:Name="VisualizerLookWheat" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Başak tarlası" />
                     <RadioButton x:Name="VisualizerLookRibbon" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Işık şeridi" />

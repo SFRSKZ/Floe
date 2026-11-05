@@ -174,3 +174,23 @@ Katana/Sıvı Krom ve Hologram/Holo Yağmur projeden çıkarıldıktan sonra §6
 dinleyip görsel olarak izlemek; otomatik ekran yakalama bu makinede üst üste açık pencereler yüzünden
 dock şeridini izole edemedi. Ayrıca dış çalışma alanındaki `floe-lab/SceneLab/Scenes/Katana.cs`,
 `Hologram.cs` ve `out/` kayıtları bu projenin dışında olduğu için silinmedi; istenirse orası da temizlenir.
+
+## 8. Biyometrik Dalga — yeni sahne (2026-11-05)
+
+Kullanıcı 10 konseptten yalnızca **04 (Trauma Team / EKG)** beğendi; "görsel öğeler internetten
+araştırılıp belirlenseydi" geri bildirimi üzerine kaynak taraması yapıldı
+(`work/cp77-yeni-tasarimlar/ARASTIRMA.md`: CDPR UI Art Bible, HUD renk semantiği, Braindance
+3 katmanı, Breach Protocol, Rajdhani, audio-reactive ilkeleri). Sonuçta **tek** sahne üretildi:
+`CyberBiometric` / "Biyometrik dalga".
+
+- **Yeni:** `src/Floe.App/Effects/Gpu/BiometricWaveGpuScene.cs` — 24 bant spektrum (visual),
+  gerçek osiloskop/EKG dalgası (audio), termal ısı halkaları + LED (thermal); kick = QRS sıçraması,
+  snare = uyarı, bass = genlik + ısı, tiz = ikinci iz; sessizlikte sıfır frame + flatline.
+- Enum/katalog/ayar düğmesi/`#else` gizleme ve README (13 cyber visualizer) güncellendi.
+- **Kanıt:** iki build 0 hata/0 uyarı; testler 35/35;
+  `--render-gpu-look=CyberBiometric;…;30;8` → 30 PNG, HLSL hatası yok (`work/cp77-biyometrik/`);
+  `SceneLab` → **6,7 ms/kare**, drop 0,0268 / sessizlik 0,0009 (**29,7×**),
+  `cinematic tone spread` (`work/cp77-biyometrik-lab/report.txt`); 5 zaman karesi gözle incelendi.
+- Kurulum exe'leri `installer\build-setup.ps1 -Product All` ile yeniden üretildi.
+- **Bilinen araç sınırı:** `tools/scene-lab` `Floe.dll`'e (düz ürün) referans verir; CP77 build'i
+  onu sildiği için lab'ı derlemeden önce `dotnet build Floe.sln -c Release` gerekir.

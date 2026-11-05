@@ -7,7 +7,7 @@ public static class GpuSceneCatalog
 {
     public static bool Has(VisualizerStyle look) => look is VisualizerStyle.Chladni or VisualizerStyle.Fireflies or VisualizerStyle.Ferrofluid or VisualizerStyle.CyberSignal or VisualizerStyle.CyberBlackwall or VisualizerStyle.CyberCircuit or VisualizerStyle.CyberGlyph or VisualizerStyle.CyberRain or VisualizerStyle.CyberSamurai
         or VisualizerStyle.CyberBraindance or VisualizerStyle.CyberSandevistan or VisualizerStyle.CyberBreach or VisualizerStyle.CyberCollar
-        or VisualizerStyle.CyberPulse or VisualizerStyle.CyberRift;
+        or VisualizerStyle.CyberPulse or VisualizerStyle.CyberRift or VisualizerStyle.CyberBiometric;
 
     public static IGpuScene Create(VisualizerStyle look) => look switch
     {
@@ -26,6 +26,7 @@ public static class GpuSceneCatalog
         VisualizerStyle.CyberCollar => new CollarGpuScene(),
         VisualizerStyle.CyberPulse => new PulseGpuScene(),
         VisualizerStyle.CyberRift => new RiftGpuScene(),
+        VisualizerStyle.CyberBiometric => new BiometricWaveGpuScene(),
         _ => throw new ArgumentOutOfRangeException(nameof(look)),
     };
 }

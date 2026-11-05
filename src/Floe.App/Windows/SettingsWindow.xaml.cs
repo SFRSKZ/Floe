@@ -77,6 +77,7 @@ public partial class SettingsWindow : Window
         VisualizerLookCyberCollar.Visibility = Visibility.Collapsed;
         VisualizerLookCyberPulse.Visibility = Visibility.Collapsed;
         VisualizerLookCyberRift.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBiometric.Visibility = Visibility.Collapsed;
 #endif
         ApplyChrome();
         GlassSettings.Changed += ApplyChromeOnUi;
@@ -602,7 +603,8 @@ public partial class SettingsWindow : Window
         VisualizerLookRibbon.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Ribbon);
         foreach (var (toggle, look) in new[] { (VisualizerLookCyberSignal, VisualizerStyle.CyberSignal), (VisualizerLookCyberBlackwall, VisualizerStyle.CyberBlackwall), (VisualizerLookCyberCircuit, VisualizerStyle.CyberCircuit), (VisualizerLookCyberGlyph, VisualizerStyle.CyberGlyph), (VisualizerLookCyberRain, VisualizerStyle.CyberRain), (VisualizerLookCyberSamurai, VisualizerStyle.CyberSamurai),
             (VisualizerLookCyberBraindance, VisualizerStyle.CyberBraindance), (VisualizerLookCyberSandevistan, VisualizerStyle.CyberSandevistan), (VisualizerLookCyberBreach, VisualizerStyle.CyberBreach), (VisualizerLookCyberCollar, VisualizerStyle.CyberCollar),
-            (VisualizerLookCyberPulse, VisualizerStyle.CyberPulse), (VisualizerLookCyberRift, VisualizerStyle.CyberRift) })
+            (VisualizerLookCyberPulse, VisualizerStyle.CyberPulse), (VisualizerLookCyberRift, VisualizerStyle.CyberRift),
+            (VisualizerLookCyberBiometric, VisualizerStyle.CyberBiometric) })
         {
             toggle.IsChecked = GlassSettings.VisualizerLook == look;
             toggle.Checked += (_, _) => GlassSettings.SetVisualizerLook(look);
