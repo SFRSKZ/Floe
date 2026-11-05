@@ -33,6 +33,7 @@ Floe needs Windows 10 version 2004 or later. The setups are not code signed, so 
 
 ## Using it
 
+- **Left-click the leading button** to open the Windows Start menu; **right-click it** to show the desktop
 - **Right-click the clock** to open Settings
 - **Right-click an icon** for its menu, where you can pin it or change its icon
 - **Right-click the dock** for quick actions such as Show Desktop, Task Manager and Quit

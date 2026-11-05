@@ -142,6 +142,15 @@ public partial class DockWindow
     {
         base.OnPreviewMouseRightButtonUp(e);
 
+        // the leading button: right click shows the desktop (its left click opens Start).
+        // Handle it here, before the background menu, because this preview runs before the child's own event.
+        if (_start.IsMouseOver)
+        {
+            DesktopController.ShowDesktop();
+            e.Handled = true;
+            return;
+        }
+
         // a press can still land on the empty room above the bar (a touch, or before the click-through timer
         // caught up): that belongs to the window behind, so no dock menu there
         if (!IsSolidAt(e.GetPosition(this)))

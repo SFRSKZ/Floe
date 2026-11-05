@@ -7,6 +7,8 @@ public static class DesktopController
 {
     private const byte VkLWin = 0x5B;
     private const byte VkD = 0x44;
+    private const byte VkControl = 0x11;
+    private const byte VkEscape = 0x1B;
     private const byte VkVolumeUp = 0xAF;
     private const byte VkVolumeDown = 0xAE;
     private const uint KeyEventKeyUp = 0x0002;
@@ -21,6 +23,18 @@ public static class DesktopController
         keybd_event(VkD, 0, 0, UIntPtr.Zero);
         keybd_event(VkD, 0, KeyEventKeyUp, UIntPtr.Zero);
         keybd_event(VkLWin, 0, KeyEventKeyUp, UIntPtr.Zero);
+    }
+
+    /// <summary>
+    /// Opens the Windows Start menu. Ctrl+Esc is the shell's own Start shortcut: unlike a bare Win tap it
+    /// is not swallowed when a WPF window holds focus, and it works with the taskbar hidden.
+    /// </summary>
+    public static void OpenStartMenu()
+    {
+        keybd_event(VkControl, 0, 0, UIntPtr.Zero);
+        keybd_event(VkEscape, 0, 0, UIntPtr.Zero);
+        keybd_event(VkEscape, 0, KeyEventKeyUp, UIntPtr.Zero);
+        keybd_event(VkControl, 0, KeyEventKeyUp, UIntPtr.Zero);
     }
 
     public const int HotkeyIdVeil = 1;

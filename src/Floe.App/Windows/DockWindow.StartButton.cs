@@ -10,7 +10,11 @@ using Floe.Core.Interop;
 
 namespace Floe.App.Windows;
 
-/// <summary>Show-desktop button at the dock's leading edge, where Windows keeps its Start button.</summary>
+/// <summary>
+/// The leading button where Windows keeps Start. Left click opens the Start menu, right click shows
+/// the desktop. Shared by both products: the plain dock draws a dot-matrix desktop glyph, the
+/// Cyberpunk edition draws the slab glyph.
+/// </summary>
 public partial class DockWindow
 {
     private const double StartWidth = 40;
@@ -29,12 +33,12 @@ public partial class DockWindow
 
     private void InitializeStartButton()
     {
-        _start.ToolTip = Loc.T("Masaüstünü göster");
+        _start.ToolTip = Loc.T("Sol tık: Başlat menüsü | Sağ tık: Masaüstünü göster");
         _start.RenderTransformOrigin = new Point(0.5, 0.5);
         _start.RenderTransform = _startScale;
         _start.Children.Add(_startGlyph);
         _start.Children.Add(_startSlab);
-        _start.MouseLeftButtonUp += (_, _) => DesktopController.ShowDesktop();
+        _start.MouseLeftButtonUp += (_, _) => DesktopController.OpenStartMenu();
         _start.MouseEnter += (_, _) =>
         {
             AnimateStart(1.12, 1);

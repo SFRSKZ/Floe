@@ -177,6 +177,7 @@ public static partial class Loc
         ["Tıklamanın bıraktığı cam, her ikonun etrafında hep durur"] = "The glass a click leaves stays around every icon",
         ["Manyetik sıvı şerit: her frekans bandı sıvıdan diken çıkarır, bas vuruşta dikenler fışkırır"] = "A magnetic liquid strip: each frequency band draws a spike from the fluid, and bass hits make the spikes erupt",
         ["Masaüstünü göster"] = "Show desktop",
+        ["Sol tık: Başlat menüsü | Sağ tık: Masaüstünü göster"] = "Left click: Start menu | Right click: Show desktop",
         ["Mat cam"] = "Matte glass",
         ["Mavi"] = "Blue",
         ["Mor"] = "Violet",
