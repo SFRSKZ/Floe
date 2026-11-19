@@ -4,21 +4,21 @@ using Colors = System.Windows.Media.Colors;
 namespace Floe.App.Effects.Gpu;
 
 /// <summary>
-/// The horizon splits: one line on each side of the dock that the music tears into two shores, widest at the dock and
-/// closed at the ends of the strip. The bands shape the tear along its length, a kick throws a spray of short streaks
-/// out along the upper shore, and a snare lights a few striped shafts that stand on it, with their reflection under
-/// the lower one. Inside the tear the strip goes dark. In silence the shores close back into one line and stay.
-/// Every mark is a hard edged shape with a dark rim; nothing is kept between frames.
+/// Blackwall dimensional rift: the horizon tears open along both wings into two undulating white-hot plasma shores,
+/// framing a volumetric crimson-violet energy chasm strung with vertical harmonic filaments and bordered by electric
+/// cyan chromatic ghosts. Bass and kick violently widen the tear and send a gravitational shockwave outward; snare
+/// discharges sharp electric-cyan arc shafts across both shores. In silence the rift narrows to a poised glowing seam.
 /// </summary>
 public sealed class RiftGpuScene : FeedbackGpuScene
 {
-    private const int ConstantFloats = 52;
-    private static readonly Color Core = Color.FromRgb(0xFF, 0x5A, 0x9A);
-    private static readonly Color Body = Color.FromRgb(0xD8, 0x12, 0x5C);
-    private static readonly Color Deep = Color.FromRgb(0x6A, 0x06, 0x2A);
+    private const int ConstantFloats = 60;
+    private static readonly Color Core = Color.FromRgb(0xFF, 0xEE, 0xF5);
+    private static readonly Color Body = Color.FromRgb(0xFF, 0x1A, 0x6C);
+    private static readonly Color Deep = Color.FromRgb(0x28, 0x04, 0x18);
+    private static readonly Color Ghost = Color.FromRgb(0x20, 0xEC, 0xFF);
 
     private readonly Random _random = new(23);
-    private float _open, _spray, _shaft, _time;
+    private float _open, _spray, _shaft, _time, _kickAge = 9;
     private int _seed = 1;
 
     public RiftGpuScene() : base(ConstantFloats, Shared + FeedbackPs, Shared + ShowPs)
@@ -29,41 +29,62 @@ public sealed class RiftGpuScene : FeedbackGpuScene
     {
         float dt = frame.Dt;
         var audio = frame.Audio;
-        // the tear jumps open on the bass and closes slower, so it breathes with the song
-        _open = Math.Max(_open * MathF.Exp(-dt * 3), Math.Max(audio.Bass * .8f, Beat.Pulse));
-        _spray = Math.Max(_spray * MathF.Exp(-dt * 4), Beat.Hit ? 1 : 0);
-        // a snare lights the shafts; in a song without one every other kick does
+        _kickAge += dt;
+
+        _open = Math.Max(_open * MathF.Exp(-dt * 3.2f), Math.Max(audio.Bass * .85f, Beat.Pulse));
+        if (Beat.Hit && !Beat.Snare)
+        {
+            _kickAge = 0;
+            _spray = 1f;
+        }
+        else
+        {
+            _spray *= MathF.Exp(-dt * 4.2f);
+        }
+
         if (Beat.Snare || (Beat.Hit && _random.Next(2) == 0))
         {
             _seed = (_seed % 997) + 1 + _random.Next(30);
-            _shaft = 1;
+            _shaft = 1f;
         }
 
-        _shaft *= MathF.Exp(-dt * 2.5f);
-        _time += dt;
+        _shaft *= MathF.Exp(-dt * 3.2f);
+
+        if (audio.Level > .015f)
+        {
+            _time = (_time + (dt * (.75f + (2.0f * audio.Level) + (1.2f * _open)))) % 10000;
+        }
     }
 
     protected override void Fill(GpuFrame frame)
     {
         var d = Data;
         var audio = frame.Audio;
+        float step = frame.Dt * 60f;
         d[0] = frame.Width;
         d[1] = frame.Height;
         d[2] = frame.PixelsPerDip;
         d[3] = Math.Clamp(frame.Fade, 0, 1);
-        d[4] = Math.Clamp(frame.DockLeft, .05f, .5f);
-        d[5] = Math.Clamp(frame.DockRight, .5f, .95f);
+        d[4] = Math.Clamp(frame.DockLeft, .05f, .9f);
+        d[5] = Math.Clamp(frame.DockRight, d[4] + .02f, .95f);
         d[6] = audio.Level;
         d[7] = _open;
         d[8] = _spray;
         d[9] = _shaft;
         d[10] = _seed;
         d[11] = _time;
+        d[12] = _kickAge;
+        d[13] = MathF.Pow(.83f, step);
+        d[14] = audio.Bass;
+        d[15] = audio.Treble;
         PutBands(16, frame);
+
         var body = Lead(Body);
-        Put(40, Theme is null ? Core : Mix(body, Colors.White, .45f));
+        Put(40, Theme is null ? Core : Mix(body, Colors.White, .85f));
         Put(44, body);
-        Put(48, Theme is null ? Deep : Mix(Colors.Black, body, .45f));
+        Put(48, Theme is null ? Deep : Mix(Colors.Black, body, .28f));
+        Put(52, Second(Ghost));
+        Put(56, Color.FromRgb(0xFF, 0xA8, 0x30));
     }
 
     private const string Shared = """
@@ -80,169 +101,167 @@ public sealed class RiftGpuScene : FeedbackGpuScene
             float Shaft;
             float Seed;
             float Time;
-            float4 Spare;
+            float KickAge;
+            float Decay;
+            float Bass;
+            float Treble;
             float4 Bands[6];
-            float4 CoreColor;
-            float4 BodyColor;
-            float4 DeepColor;
+            float4 CoreCol;
+            float4 BodyCol;
+            float4 DeepCol;
+            float4 GhostCol;
+            float4 WarmCol;
         };
 
-        """ + ShaderHelpers;
+        """ + ShaderHelpers + """
+
+        float3 AcesTone(float3 x)
+        {
+            return saturate((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14));
+        }
+
+        float WingInfo(float u, out float wingU, out float wingEdge, out float side)
+        {
+            float leftW = max(DockLeft, 0.001);
+            float rightW = max(1.0 - DockRight, 0.001);
+            if (u < DockLeft)
+            {
+                side = -1.0;
+                wingU = saturate((DockLeft - u) / leftW);
+                wingEdge = smoothstep(0.0, 0.032, wingU) * smoothstep(1.0, 0.94, wingU);
+                return 1.0;
+            }
+            if (u > DockRight)
+            {
+                side = 1.0;
+                wingU = saturate((u - DockRight) / rightW);
+                wingEdge = smoothstep(0.0, 0.032, wingU) * smoothstep(1.0, 0.94, wingU);
+                return 1.0;
+            }
+            side = 0.0;
+            wingU = 0.0;
+            wingEdge = 0.0;
+            return 0.0;
+        }
+        """;
 
     private const string FeedbackPs = """
-
         float4 main(float4 position : SV_Position) : SV_Target
         {
-            return 0;
+            float2 uv = position.xy / Size;
+            float wingU, wingEdge, side;
+            if (WingInfo(uv.x, wingU, wingEdge, side) < 0.5)
+            {
+                return float4(0, 0, 0, 0);
+            }
+
+            float active = step(0.015, Level);
+            float4 prev = Last.Sample(Linear, uv);
+            float3 trail = prev.rgb * (active > 0.5 ? Decay : 0.94);
+
+            float y = uv.y;
+            float band = Band(saturate(wingU * 0.92 + 0.04));
+            float topSoft = smoothstep(0.0, 0.16, y);
+
+            // Travelling gravitational shockwave from dock edge on kick
+            float shockPos = KickAge * 1.40;
+            float shockEnv = exp(-KickAge * 3.6);
+            float shock = exp(-pow((wingU - shockPos) * 14.0, 2.0)) * shockEnv;
+
+            // Undulating rift center & spectrum-sculpted opening envelope (widest near dock, tapering outward)
+            float taper = pow(saturate(1.0 - wingU * 0.72), 0.75);
+            float centerY = 0.52
+                + 0.09 * sin(wingU * 9.0 - Time * 1.6 + side * 0.5) * (0.35 + 0.65 * band)
+                + 0.04 * cos(wingU * 19.0 + Time * 2.3) * (0.25 + 0.75 * Treble);
+
+            float halfGap = (0.045 + 0.18 * band + 0.11 * Open + 0.09 * shock) * (0.45 + 0.55 * taper);
+            float topShore = centerY - halfGap;
+            float botShore = centerY + halfGap;
+
+            float dTop = abs(y - topShore);
+            float dBot = abs(y - botShore);
+            float dShore = min(dTop, dBot);
+
+            float insideRift = smoothstep(topShore - 0.015, topShore + 0.025, y)
+                * smoothstep(botShore + 0.015, botShore - 0.025, y);
+
+            // Outer volumetric plasma aurora surrounding the rift
+            float outerAura = exp(-dShore * (5.2 - 1.5 * Open));
+            float3 col = DeepCol.rgb * (0.45 + 0.75 * outerAura);
+            col += BodyCol.rgb * outerAura * (0.22 + 0.42 * band + 0.35 * Open);
+
+            // Inside the dimensional tear: deep dark event-horizon abyss + fine harmonic plasma threads
+            if (insideRift > 0.001)
+            {
+                float normY = saturate((y - topShore) / max(botShore - topShore, 0.01));
+                float filaments = pow(0.5 + 0.5 * sin(wingU * 95.0 - Time * 2.4 + sin(normY * 6.283) * 1.2), 9.0);
+                float coreRibbon = exp(-abs(normY - 0.5) * 11.0);
+
+                float3 voidCol = DeepCol.rgb * 0.18;
+                voidCol += BodyCol.rgb * (coreRibbon * 0.24) * (0.45 + 0.85 * band);
+                voidCol += GhostCol.rgb * filaments * (0.38 + 0.95 * band + 0.75 * shock);
+                voidCol += CoreCol.rgb * coreRibbon * shock * 0.95;
+
+                col = lerp(col, voidCol, insideRift);
+            }
+
+            // Blazing white-hot shore curves + offset electric-cyan chromatic ghost fringes
+            float shoreCore = exp(-dShore * 58.0);
+            float shoreHalo = exp(-dShore * 13.0);
+            float ghostTop = exp(-abs(y - (topShore - 0.028 - 0.015 * Open)) * 42.0);
+            float ghostBot = exp(-abs(y - (botShore + 0.028 + 0.015 * Open)) * 42.0);
+
+            col += BodyCol.rgb * (shoreHalo * 0.65 + shoreCore * 1.45) * (0.65 + 0.75 * band + 0.85 * shock);
+            col += CoreCol.rgb * shoreCore * (0.75 + 1.15 * Open + 1.25 * shock);
+            col += GhostCol.rgb * (ghostTop + ghostBot) * (0.55 + 0.85 * band + 0.95 * Spray);
+
+            // Snare vertical electric plasma arc shafts leaping off the shores
+            float shaftGrid = wingU * 18.0;
+            float shaftId = floor(shaftGrid);
+            float shaftLocal = abs(frac(shaftGrid) - 0.5);
+            float shaftPick = step(0.76, Hash(float2(shaftId, Seed + side * 5.0)));
+            float shaftBeam = exp(-shaftLocal * 36.0) * shaftPick * Shaft * exp(-dShore * 5.5);
+            col += lerp(GhostCol.rgb, CoreCol.rgb, 0.45) * shaftBeam * 2.2;
+
+            col *= wingEdge * topSoft;
+            float3 outCol = active > 0.5 ? max(col, trail * 0.82) : col;
+            float alpha = saturate(max(outerAura * 0.74, max(insideRift * 0.90, max(shoreHalo, shaftBeam))) * wingEdge * topSoft);
+            return float4(outCol, active > 0.5 ? max(alpha, prev.a * 0.76) : alpha);
         }
         """;
 
     private const string ShowPs = """
-
-        // 0 at the dock's edge, 1 at the end of the strip; -1 under the dock
-        float Side(float x)
-        {
-            float u = x / Size.x;
-            if (u <= DockLeft) return (DockLeft - u) / DockLeft;
-            if (u >= DockRight) return (u - DockRight) / (1 - DockRight);
-            return -1;
-        }
-
-        // How far each shore stands from the middle, in pixels: the bands along the tear, the bass for how wide.
-        float Gap(float x)
-        {
-            float side = saturate(Side(x));
-            float near = (1 - side) * (1 - side);
-            float energy = saturate(Band(side * .95) * 1.2);
-            float ripple = .75 + (.25 * sin((side * 31) + (Time * 2)));
-            return (.6 + (30 * Open * near * (.35 + (.65 * energy)) * ripple)) * Dip;
-        }
-
-        // distance from a pixel to the curve y = base + sign * Gap(x), slope corrected
-        float Shore(float2 p, float base, float reach)
-        {
-            float y = base + (reach * Gap(p.x));
-            float slope = reach * (Gap(p.x + 1) - Gap(p.x - 1)) * .5;
-            return abs(p.y - y) / sqrt(1 + (slope * slope));
-        }
-
         float4 main(float4 position : SV_Position) : SV_Target
         {
-            float2 p = position.xy;
-            float side = Side(p.x);
-            if (side < 0) return 0;
-
-            float base = Size.y * .6;
-            float gap = Gap(p.x);
-            float upper = base - gap;
-            float lower = base + (gap * .7);
-            float core = .8 * Dip;
-            float rim = core + max(1, Dip);
-            float up = Shore(p, base, -1);
-            float down = Shore(p, base, .7);
-
-            float3 color = 0;
-            float alpha = 0;
-
-            // inside the tear the strip goes dark, so the split reads over any wallpaper
-            if (p.y > upper && p.y < lower) alpha = .55 * saturate((gap / Dip) - 1);
-
-            float energy = saturate(Band(side * .95) * 1.2);
-            float close = 1 - side;
-
-            // the dust: speckle clouds that hug both shores, thick close the dock and with the bands, stepped in time
-            float speck = max(1, round(Dip));
-            float2 cellAt = floor(p / speck);
-            float overUpper = upper - p.y;
-            float underLower = p.y - lower;
-            float cloud = overUpper > 0 ? overUpper : (underLower > 0 ? underLower * 1.6 : 1e4);
-            float depth = (4 + (14 * energy * close) + (6 * Spray * close)) * Dip;
-            if (cloud < depth)
+            float2 uv = position.xy / Size;
+            float wingU, wingEdge, side;
+            if (WingInfo(uv.x, wingU, wingEdge, side) < 0.5)
             {
-                float chance = (.08 + (.5 * energy * energy) + (.25 * Spray)) * close * (1 - (cloud / depth));
-                float flick = Hash(cellAt + float2(floor(Time * 12), Seed * .1));
-                if (flick < chance)
-                {
-                    color = flick < chance * .25 ? CoreColor.rgb : (overUpper > 0 ? BodyColor.rgb : DeepColor.rgb);
-                    alpha = 1;
-                }
+                return float4(0, 0, 0, 0);
             }
 
-            // the smears: long thin streaks on the rows next to the shores, running out from the dock, faster on a kick
-            float rowStep = max(2, round(1.5 * Dip));
-            float rowUp = floor(overUpper / rowStep);
-            float rowDown = floor(underLower / rowStep);
-            bool onRow = fmod(overUpper > 0 ? overUpper : underLower, rowStep) < max(1, Dip * .7);
-            float rowIndex = overUpper > 0 ? rowUp : -1 - rowDown;
-            if (onRow && ((overUpper > 0 && rowUp < 6) || (underLower > 0 && rowDown < 4)))
-            {
-                float speed = 60 + (220 * Level) + (260 * Spray);
-                float along = ((side * Size.x * .5) / Dip) - (Time * speed * (.7 + (.6 * Hash(float2(rowIndex, 4)))));
-                float span = 40 + (80 * Hash(float2(rowIndex, 6)));
-                float dash = floor(along / span);
-                float part = frac(along / span);
-                float keep = Hash(float2(dash, rowIndex + (Seed * .01)));
-                float dense = (.15 + (.6 * energy) + (.4 * Spray)) * close * (1 - (abs(rowIndex) / 7));
-                float size = .25 + (.6 * Hash(float2(dash, rowIndex + 9)));
-                if (keep < dense && part < size)
-                {
-                    // a smear is brightest at its head, the end that runs outward, in hard steps
-                    float head = floor((1 - (part / size)) * 3) / 3;
-                    float3 hot = lerp(BodyColor.rgb, CoreColor.rgb, head);
-                    color = underLower > 0 ? lerp(DeepColor.rgb, BodyColor.rgb, head) : hot;
-                    alpha = 1;
-                }
-            }
+            float ca = (0.45 + 3.2 * Spray + 2.2 * Shaft) * Dip / Size.x;
+            float4 c0 = Last.Sample(Linear, uv);
+            float r = Last.Sample(Linear, saturate(uv + float2(ca, 0))).r;
+            float b = Last.Sample(Linear, saturate(uv - float2(ca, 0))).b;
+            float3 hdr = float3(r, c0.g, b);
 
-            // the shafts a snare lights: striped, pixel sorted columns on the upper shore, their broken reflection under
-            float slot = floor(p.x / (60 * Dip));
-            float pick = Hash(float2(slot, Seed));
-            float centre = (slot + .2 + (.6 * Hash(float2(slot, Seed + 1)))) * 60 * Dip;
-            float wide = (2 + (5 * Hash(float2(slot, Seed + 2)))) * Dip;
-            float tall = (.5 + (.5 * Hash(float2(slot, Seed + 3)))) * upper * saturate(Shaft * 1.4);
-            bool shaftHere = pick > .45 && abs(p.x - centre) < wide && side < .75;
-            float strand = floor((p.x - centre) / max(1, round(.75 * Dip)));
-            bool stripe = Hash(float2(strand, slot + Seed)) > .3;
-            if (shaftHere && stripe && overUpper > 0 && overUpper < tall)
-            {
-                float block = floor(overUpper / ((2 + (4 * Hash(float2(strand, 7)))) * Dip));
-                float b = Hash(float2(strand, block + Seed));
-                if (b > .15)
-                {
-                    float fall = 1 - (overUpper / tall);
-                    float steps = floor(((b > .7 ? 1 : .7) * (.4 + (.6 * fall))) * 4) / 4;
-                    color = lerp(DeepColor.rgb, b > .9 ? CoreColor.rgb : BodyColor.rgb, steps);
-                    alpha = 1;
-                }
-            }
+            float2 px = float2(Dip / Size.x, Dip / Size.y);
+            float3 bloom = 0;
+            bloom += Last.Sample(Linear, saturate(uv + float2(px.x * 4.0, 0))).rgb * 0.25;
+            bloom += Last.Sample(Linear, saturate(uv - float2(px.x * 4.0, 0))).rgb * 0.25;
+            bloom += Last.Sample(Linear, saturate(uv + float2(0, px.y * 2.5))).rgb * 0.25;
+            bloom += Last.Sample(Linear, saturate(uv - float2(0, px.y * 2.5))).rgb * 0.25;
+            hdr += max(bloom - 0.46, 0.0) * 0.54;
 
-            if (shaftHere && stripe && underLower > 0 && underLower < tall * .45 && fmod(floor(underLower / (2 * Dip)), 2) < 1)
-            {
-                color = DeepColor.rgb;
-                alpha = 1;
-            }
+            float grain = (Hash(floor(position.xy) + floor(Time * 20.0)) - 0.5) * 0.014;
+            float3 graded = AcesTone(pow(max(hdr, 0.0), 1.46) * 1.45) + grain;
 
-            // the two shores, the upper one hot near the dock on a kick
-            if (min(up, down) <= rim && alpha < 1)
-            {
-                color = 0;
-                alpha = max(alpha, .7);
-            }
+            float topSoft = smoothstep(0.0, 0.22, uv.y);
+            float luma = dot(graded, float3(0.299, 0.587, 0.114));
+            float alpha = saturate(max(c0.a * 0.45, smoothstep(0.02, 0.30, luma)) * wingEdge * topSoft) * Fade;
 
-            if (up <= core)
-            {
-                color = lerp(BodyColor.rgb, CoreColor.rgb, saturate((Spray * (1 - side) * 1.5) + (.2 * Level)));
-                alpha = 1;
-            }
-            else if (down <= core)
-            {
-                color = BodyColor.rgb;
-                alpha = 1;
-            }
-
-            // the top melts away, so the strip has no cut line over an empty desktop
-            float top = smoothstep(0, .2, p.y / Size.y);
-            return float4(color * min(alpha, 1), alpha) * Fade * top;
+            return float4(saturate(graded) * alpha, alpha);
         }
         """;
 }

@@ -14,8 +14,10 @@ public partial class DockWindow
     private DispatcherTimer? _visualizerPoll;
     private bool _visualizerPolling;
     private bool _visualizerRunning;
+    private bool _musicPlaying;
     private bool _iconsDimmed;
-    private const double IdleIconOpacity = 0.6;
+    // the icons stay at full strength with the pointer away too (they used to rest at 0.6)
+    private const double IdleIconOpacity = 1;
 
     private void InitializeVisualizer()
     {
@@ -47,9 +49,12 @@ public partial class DockWindow
             {
                 var playing = await VisualizerGlow.ShouldRunAsync();
                 // the OLED panel stays on without music: its robot comes out when nothing plays;
-                // a cyber theme has its own strips, so a Tron look left behind must not keep them lit
+                // a cyber theme shows its subtle standby HUD when no music is playing
                 bool panel = !GlassSettings.Cyber && GlassSettings.VisualizerLook is (VisualizerStyle.Oled or VisualizerStyle.Led);
-                _visualizerRunning = GlassSettings.Visualizer && IsVisible && _shown && !_fullscreenHidden && (playing || panel);
+                bool cyberIdle = GlassSettings.Cyber && GlassSettings.GpuVisualizer;
+                _musicPlaying = playing;
+                _visualizerRunning = GlassSettings.Visualizer && IsVisible && _shown && !_fullscreenHidden && (playing || panel || cyberIdle);
+                LogVisualizerState($"visualizer run={_visualizerRunning} playing={playing} visible={IsVisible} shown={_shown} fullscreen={_fullscreenHidden} look={GlassSettings.VisualizerLook} taskbar={DockSettings.Taskbar}");
                 ApplyVisualizerState();
                 // the catalog's looks read the cover and where the player sits in the dock
                 bool novel = Effects.Gpu.GpuSceneCatalog.Has(GlassSettings.VisualizerLook) && _visualizerRunning;
@@ -74,11 +79,22 @@ public partial class DockWindow
         };
     }
 
+    private string _visualizerLogged = "";
+
+    // the poll asks every 1.5 s; the log only hears when the answer changes
+    private void LogVisualizerState(string state)
+    {
+        if (state == _visualizerLogged) return;
+        _visualizerLogged = state;
+        Log(state);
+    }
+
     private void OnVisualizerSettingChanged()
     {
         Dispatcher.BeginInvoke(() =>
         {
-            _visualizerRunning &= GlassSettings.Visualizer;
+            if (!GlassSettings.Visualizer) _visualizerRunning = false;
+            else if (GlassSettings.Cyber && GlassSettings.GpuVisualizer && IsVisible && _shown && !_fullscreenHidden) _visualizerRunning = true;
             ApplyVisualizerState();
         });
     }
@@ -96,9 +112,20 @@ public partial class DockWindow
             _visualizerWindow.Show();
         }
 
-        // the strip covers the space the dock reserves at the bottom of the monitor
+        if (TaskbarOn)
+        {
+            // the strip lies over the bar, in the free glass between the start button, the icons and the clock
+            PlaceTaskbarVisualizer();
+            _visualizerWindow.SetRunning(_visualizerRunning, idle: GlassSettings.Cyber && !_musicPlaying);
+            PlaceTaskbarVisualizer();
+            PutDockUnderVisualizer();
+            return;
+        }
+
+        // the strip covers the space the dock reserves at the bottom of the monitor: the dock's own floor, so it
+        // stands where the dock does, above a Windows taskbar that shows
         var scale = DockScale;
-        var area = _monitorInfo.Monitor;
+        var area = AppBarBounds;
         var bounds = CapsuleScreenBounds();
         var dockRect = new Rect(bounds.Left / scale, bounds.Top / scale, (bounds.Right - bounds.Left) / scale, (bounds.Bottom - bounds.Top) / scale);
         // the feedback looks fill their whole strip, so they stand above the dock instead of hiding behind it;
@@ -107,15 +134,51 @@ public partial class DockWindow
         void Place(bool tall)
         {
             var height = (RestBarHeight + BottomMargin + (tall ? RestBarHeight * .12 : 0)) * FullScale;
-            _visualizerWindow.Place(new Rect(area.Left / scale, (area.Bottom / scale) - height, (area.Right - area.Left) / scale, height), scale, _hwnd, dockRect);
+            double left = area.Left / scale, top = area.Top / scale, width = (area.Right - area.Left) / scale, length = (area.Bottom - area.Top) / scale;
+            // the strip lies along the dock's edge, as thick as the dock stands off it
+            var strip = DockSettings.Edge switch
+            {
+                Floe.Core.Models.DockEdge.Top => new Rect(left, top, width, height),
+                Floe.Core.Models.DockEdge.Left => new Rect(left, top, height, length),
+                Floe.Core.Models.DockEdge.Right => new Rect((area.Right / scale) - height, top, height, length),
+                _ => new Rect(left, (area.Bottom / scale) - height, width, height),
+            };
+            _visualizerWindow.Place(strip, scale, _hwnd, dockRect);
         }
 
         bool tall = _visualizerWindow.CyberGpuPlaying;
         Place(tall);
-        _visualizerWindow.SetRunning(_visualizerRunning);
+        _visualizerWindow.SetRunning(_visualizerRunning, idle: GlassSettings.Cyber && !_musicPlaying);
         if (_visualizerWindow.CyberGpuPlaying != tall) Place(!tall);
 
         SinkBelowVisualizer();
+    }
+
+    // the GPU looks' dock span as it was last handed over, in the strip's DIPs; empty until one is handed over,
+    // so the first frame after the taskbar goes off is not taken for the span it left behind
+    private Rect _placedGpuDock = Rect.Empty;
+
+    /// <summary>
+    /// Off the taskbar the GPU looks keep the capsule clear: the strip's gap is the dock's own rect there. The icons
+    /// grow while the pointer runs over them, so the span follows the capsule as it stands this frame, the Cyberpunk
+    /// card's frame around the logo included, instead of waiting for the next visualizer poll.
+    /// </summary>
+    private void FollowDockGpu()
+    {
+        if (TaskbarOn || _visualizerWindow is not { Showing: true }) return;
+        static double Q(double v) => Math.Round(v * 2) / 2;
+        var scale = DockScale;
+        var bounds = CapsuleScreenBounds();
+        // a card reaches this far past its icon's box, and grows with it: the hover's largest size is the widest
+        var pay = _slots.Exists(slot => slot.Card is not null) ? CardBleed * HoverMaxScale : 0;
+        var dock = new Rect(
+            Q((bounds.Left / scale) - pay),
+            Q((bounds.Top / scale) - pay),
+            Q(((bounds.Right - bounds.Left) / scale) + (2 * pay)),
+            Q(((bounds.Bottom - bounds.Top) / scale) + (2 * pay)));
+        if (dock == _placedGpuDock) return;
+        _placedGpuDock = dock;
+        _visualizerWindow.SetGpuDock(dock);
     }
 
     // where the player's icon sits along the visualizer strip (0..1); the middle when it is not in the dock
@@ -126,7 +189,17 @@ public partial class DockWindow
         var scale = DockScale;
         var left = area.Left / scale;
         var width = Math.Max(1, (area.Right - area.Left) / scale);
-        return Math.Clamp((ToScreenX(_restCapsuleLeft + slot.CenterLocal) - left) / width, 0, 1);
+        // the taskbar's icons do not stand where the dock's resting row would put them
+        var x = TaskbarOn ? slot.Center : _restCapsuleLeft + slot.CenterLocal;
+        if (DockSettings.Vertical)
+        {
+            // down a side the strip runs along the screen's height, from the top
+            var top = area.Top / scale;
+            var height = Math.Max(1, (area.Bottom - area.Top) / scale);
+            return Math.Clamp((ToScreenDips(x, RestTop + (RestBarHeight / 2)).Y - top) / height, 0, 1);
+        }
+
+        return Math.Clamp((ToScreenX(x) - left) / width, 0, 1);
     }
 
     // the player's name as a process would carry it: Spotify.exe, or SpotifyAB.SpotifyMusic_...!Spotify

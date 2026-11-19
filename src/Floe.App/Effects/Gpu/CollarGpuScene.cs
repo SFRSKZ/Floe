@@ -123,6 +123,7 @@ public sealed class CollarGpuScene : FeedbackGpuScene
         static const float3 Ice = float3(.34, .74, 1);
         static const float3 Deep = float3(.03, .2, .8);
         static const float3 Alarm = float3(1, .16, .24);
+        static const float3 Hot = float3(1, .2, .62);
         static const float3 Hide = float3(.05, .056, .05);
 
         float4 Chip(int tube, bool right, float depth)
@@ -167,9 +168,20 @@ public sealed class CollarGpuScene : FeedbackGpuScene
             float3 color = Hide * (.45 + crease) * fog * lerp(.55, 1, seam);
 
             float4 chip = Chip(tube, right, depth);
-            float spill = (.04 + (sqrt(chip.r) * .7)) * exp(-max(abs(t) - 1, 0) * .7);
-            color += Deep * spill * (.3 + (1.2 * crease)) * fog;
-            color += Ice * spill * spill * .25 * crease;
+            float glow = .04 + saturate(pow(chip.r, .7) * 1.3);
+            // the song's waves run ice blue, a kick's front burns magenta, a snare's turns the tube red
+            float3 hue = lerp(lerp(Ice, Hot, smoothstep(.22, .5, chip.r)), Alarm, chip.g * .7);
+
+            // the leather only catches the light on the ridges of its creases, as hard glints, never as a haze
+            float near = exp(-max(abs(t) - 1, 0) * .55);
+            float ridge = smoothstep(.62, .8, crease);
+            color += Deep * (glow * near * .12 * fog);
+            color += hue * (ridge * glow * glow * near * 1.1 * fog);
+
+            // the stitching between two tubes: a dashed hairline, lit by the tubes beside it
+            float stitch = saturate(1 - (abs(seam) * spacing * scale / max(1, Dip * .6)));
+            float dash = step(.45, frac(depth * 46));
+            color += lerp(Hide * 3, hue, .5) * (stitch * dash * (.25 + (.9 * glow)) * fog);
 
             // the tube's contact shadow, on its lower side only
             if (t > 1) color *= 1 - (.72 * exp(-(t - 1) * 2.4));
@@ -177,19 +189,19 @@ public sealed class CollarGpuScene : FeedbackGpuScene
             if (abs(t) < 1)
             {
                 float round1 = sqrt(1 - (t * t));
-                float3 hue = lerp(Ice, Alarm, chip.g * .6);
-
-                // dark glass round a milky strip: no dots, and a soft core instead of a white one
-                float glow = .07 + (sqrt(chip.r) * .72);
-                float3 inside = Deep * lerp(.5, .1, round1) * fog;
-                inside += lerp(Deep, hue, saturate(glow * 1.6)) * glow * (.4 + (.75 * round1 * round1));
-                inside += float3(.75, .92, 1) * exp(-t * t * 7) * glow * glow * .45;
-                inside += float3(.82, .92, 1) * exp(-pow((t + .58) * 7, 2)) * .16 * fog;
+                // dark glass round the strip, the light a flat band with a hard edge and a white hot filament down its middle
+                float band = smoothstep(.78, .7, abs(t));
+                float core = saturate(1 - (abs(t) / .2));
+                float3 inside = Deep * lerp(.16, .04, round1) * fog;
+                inside += lerp(Deep, hue, saturate(glow * 1.5)) * (band * glow * (.7 + (.5 * round1)));
+                inside += lerp(hue, 1, .8) * (core * glow * 1.6);
+                // the glass's own highlight, a thin line along its upper side
+                inside += float3(.82, .92, 1) * (saturate(1 - (abs(t + .62) / .09)) * .3 * fog);
                 inside *= lerp(.6, 1, fog);
 
                 // a dark line on the edge keeps it sharp against the leather
                 float edge = saturate((1 - abs(t)) * radius);
-                color = lerp(color * .4, inside, edge);
+                color = lerp(color * .35, inside, edge);
             }
 
             // the dock stands in front: it hides the middle and throws its shadow out along the collar

@@ -47,9 +47,39 @@ internal static class Program
             var install = Path.Combine(productRoot, "app");
             var settings = Path.Combine(roaming, FolderName);
 
+            // the new build is unpacked and checked beside the running one; until it is whole nothing is touched
+            InstallFiles.RemoveLeftovers(install);
+            var stage = install + ".new-" + DateTime.Now.ToString("yyyyMMddHHmmss");
+            try
+            {
+                using var payload = typeof(Program).Assembly.GetManifestResourceStream("Floe.zip")
+                    ?? throw new InvalidDataException(Text("Kurulum dosyasının içi boş.", "The installer payload is empty."));
+                InstallFiles.Stage(payload, stage, ExeName, Path.ChangeExtension(ExeName, ".dll"));
+            }
+            catch (Exception ex)
+            {
+                InstallFiles.RemoveTree(stage, attempts: 1);
+                throw new InvalidOperationException(Text("Yeni sürüm açılamadı; kurulu sürüme dokunulmadı.\n", "The new version could not be unpacked; the installed one was left as it was.\n") + ex.Message, ex);
+            }
+
             StopFloe();
             ShowTaskbar();
-            Extract(install);
+            string? previous;
+            try
+            {
+                previous = InstallFiles.Swap(stage, install);
+            }
+            catch (Exception ex)
+            {
+                InstallFiles.RemoveTree(stage, attempts: 1);
+                // the old build is back in place: it runs again as it did before the update
+                var oldExe = Path.Combine(install, ExeName);
+                if (File.Exists(oldExe)) Process.Start(new ProcessStartInfo(oldExe) { UseShellExecute = true, WorkingDirectory = install });
+                throw new InvalidOperationException(Text("Yeni sürüm yerine konamadı; eski sürüm korundu.\n", "The new version could not be put in place; the old one was kept.\n") + ex.Message, ex);
+            }
+
+            // a file still held keeps the old folder until the next update clears it
+            if (previous is not null) InstallFiles.RemoveTree(previous, attempts: 3);
 #if CP77
             // a fresh CP77 dock starts with the plain dock's settings, unless it already has pins of its own
             int moved = CopyFloeSettings(roaming, settings);
@@ -74,27 +104,50 @@ internal static class Program
 
     private static int Uninstall()
     {
-        if (Ask(Text($"{ProductName} kaldırılsın mı? Ayarlar AppData'da bırakılır.", $"Uninstall {ProductName}? Settings will be kept in AppData."), MbOkCancel | MbIconQuestion) != IdOk) return 1;
+        var settings = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), FolderName);
+        if (Ask(Text($"{ProductName} kaldırılsın mı?\n\nAyarlar silinmez, burada kalır:\n{settings}", $"Uninstall {ProductName}?\n\nSettings are not removed; they stay in:\n{settings}"), MbOkCancel | MbIconQuestion) != IdOk) return 1;
 
         try
         {
             var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var root = Path.GetFullPath(Path.Combine(local, FolderName));
-            var expectedParent = Path.GetFullPath(local).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            if (!root.StartsWith(expectedParent, StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(Path.GetFileName(root), FolderName, StringComparison.OrdinalIgnoreCase))
+            string root;
+            try
+            {
+                root = InstallFiles.ProductRoot(local, FolderName);
+            }
+            catch (InvalidOperationException)
             {
                 throw new InvalidOperationException(Text("Kurulum klasörü güvenli değil; hiçbir dosya silinmedi.", "The install folder is not safe; no files were removed."));
             }
 
-            StopFloe();
-            ShowTaskbar();
-            RemoveTemporaryLogs();
-            ScheduleInstallFolderRemoval(root);
+            // only this dock goes: the other product, if it runs, is left running, and so is its hold on the taskbar
+            var otherRuns = StopFloe(onlyThisProduct: true);
+            if (!otherRuns)
+            {
+                ShowTaskbar();
+                RestoreTaskbarAlignment();
+            }
+
             RemoveAutostart();
+
+            // the app's files must really be gone before the uninstaller and its entry go; otherwise both stay so
+            // the uninstall can simply be run again
+            var app = Path.Combine(root, "app");
+            InstallFiles.RemoveLeftovers(app);
+            var left = InstallFiles.RemoveTree(app);
+            if (left.Count > 0)
+            {
+                Ask(Text($"{ProductName} tam kaldırılamadı; {left.Count} dosya silinemedi, örneğin:\n{left[0]}\n\nKaldırıcı ve kaydı yerinde bırakıldı. {ProductName}'u kapatıp (gerekirse bilgisayarı yeniden başlatıp) kaldırmayı yeniden çalıştır.",
+                    $"{ProductName} could not be fully removed; {left.Count} file(s) could not be deleted, e.g.:\n{left[0]}\n\nThe uninstaller and its entry were kept. Close {ProductName} (restart if needed) and run the uninstall again."), MbIconError);
+                return 3;
+            }
+
+            RemoveTemporaryLogs(local);
             RemoveStartMenuShortcuts();
             RemoveUninstallRegistration();
-            Ask(Text($"{ProductName} kaldırılıyor. Ayarlar AppData klasöründe bırakıldı.", $"{ProductName} is being removed. Settings remain in AppData."), MbIconInformation);
+            // only this product's folder is left, holding this uninstaller: it goes once this process has exited
+            ScheduleInstallFolderRemoval(root);
+            Ask(Text($"{ProductName} kaldırıldı.\n\nAyarlar silinmedi, burada duruyor:\n{settings}", $"{ProductName} was removed.\n\nSettings were kept in:\n{settings}"), MbIconInformation);
             return 0;
         }
         catch (Exception ex)
@@ -185,8 +238,15 @@ internal static class Program
         }
     }
 
-    private static void RemoveTemporaryLogs()
+    // the two docks share these temp files: they go only when the other product is not installed
+    private static void RemoveTemporaryLogs(string local)
     {
+#if CP77
+        const string other = "Floe";
+#else
+        const string other = "FloeCP77";
+#endif
+        if (Directory.Exists(Path.Combine(local, other, "app"))) return;
         foreach (var name in new[] { "floe.log", "floe-match.log", "floe-colors.log", "floe-click.wav", "floe-bench.txt" })
         {
             try { File.Delete(Path.Combine(Path.GetTempPath(), name)); }
@@ -209,13 +269,16 @@ internal static class Program
         cleanup.Dispose();
     }
 
-    // Both docks want the same screen edge, so either one running would hold the files; MacDock is the
-    // name builds ran under before the rename.
-    private static void StopFloe()
+    // An install stops both docks: they want the same screen edge, and the one installed is started again. An
+    // uninstall stops only its own (MacDock is the name the plain dock's builds ran under before the rename) and
+    // says whether the other product is still running.
+    private static bool StopFloe(bool onlyThisProduct = false)
     {
-        foreach (var process in Process.GetProcessesByName("Floe")
-                     .Concat(Process.GetProcessesByName("FloeCP77"))
-                     .Concat(Process.GetProcessesByName("MacDock")))
+        var own = Path.GetFileNameWithoutExtension(ExeName);
+        var names = onlyThisProduct
+            ? (own == "Floe" ? new[] { "Floe", "MacDock" } : new[] { own })
+            : new[] { "Floe", "FloeCP77", "MacDock" };
+        foreach (var process in names.SelectMany(Process.GetProcessesByName))
         {
             try
             {
@@ -228,6 +291,12 @@ internal static class Program
                 // already gone, or not ours to stop; the copy below will say if a file is still held
             }
         }
+
+        if (!onlyThisProduct) return false;
+        var other = own == "Floe" ? "FloeCP77" : "Floe";
+        var running = Process.GetProcessesByName(other);
+        foreach (var process in running) process.Dispose();
+        return running.Length > 0;
     }
 
     private const int SwShow = 5;
@@ -253,16 +322,31 @@ internal static class Program
         }
     }
 
-    // a clean folder each time, so files a newer build dropped do not linger
-    private static void Extract(string install)
+    // The dock turns the taskbar's alignment left while it is a taskbar and keeps the value Windows had under its
+    // own key (Floe.Core TaskbarAlignment); a dock that was killed never put it back, so the uninstall does.
+    private static void RestoreTaskbarAlignment()
     {
-        if (Directory.Exists(install)) Directory.Delete(install, recursive: true);
-        Directory.CreateDirectory(install);
-        using var payload = typeof(Program).Assembly.GetManifestResourceStream("Floe.zip")
-            ?? throw new InvalidOperationException(Text("Kurulum dosyasının içi boş.", "The installer payload is empty."));
-        using var zip = new ZipArchive(payload, ZipArchiveMode.Read);
-        zip.ExtractToDirectory(install, overwriteFiles: true);
+        try
+        {
+            var savedName = FolderName + ".TaskbarAlBefore";
+            using var floe = Registry.CurrentUser.OpenSubKey(@"Software\Floe", writable: true);
+            if (floe?.GetValue(savedName) is not int saved) return;
+            using (var explorer = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", writable: true))
+            {
+                explorer.SetValue("TaskbarAl", saved, RegistryValueKind.DWord);
+            }
+
+            floe.DeleteValue(savedName, false);
+            SendMessageTimeout((IntPtr)0xFFFF, 0x001A, IntPtr.Zero, "TraySettings", 0x0002, 500, out _);
+        }
+        catch
+        {
+            // the alignment is the user's to set again; the uninstall itself goes on
+        }
     }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessageTimeout(IntPtr hWnd, int msg, IntPtr wParam, string lParam, int flags, int timeout, out IntPtr result);
 
     // Packaged apps see AppData redirected into Packages\<name>\LocalCache; a Floe started from inside one saved
     // its settings there. The newest copy of each file wins, so settings made since are kept.

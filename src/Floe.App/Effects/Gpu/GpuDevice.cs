@@ -123,6 +123,7 @@ internal sealed class GpuSwapChain : IDisposable
             target?.Dispose();
             composition?.Dispose();
             chain?.Dispose();
+            if (latency != IntPtr.Zero) CloseHandle(latency);
             throw;
         }
     }
@@ -143,5 +144,10 @@ internal sealed class GpuSwapChain : IDisposable
         _target.Dispose();
         _composition.Dispose();
         Chain.Dispose();
+        // the waitable handle is the caller's to close; left open, every rebuilt chain leaked one
+        if (FrameLatency != IntPtr.Zero) CloseHandle(FrameLatency);
     }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr handle);
 }

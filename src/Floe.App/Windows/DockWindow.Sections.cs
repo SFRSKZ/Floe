@@ -19,7 +19,10 @@ namespace Floe.App.Windows;
 /// </summary>
 public partial class DockWindow
 {
-    private static double MediaWidth => GlassSettings.Cyber ? 286 : 250;
+    // the taskbar's buttons are drawn larger, and the card grows by what they take
+    private static double MediaWidth => (GlassSettings.Cyber ? 286 : 250) + (MediaButton * 3 * (MediaButtonScale - 1));
+
+    private static double MediaButtonScale => DockSettings.TaskbarOn ? TaskbarMediaButtonScale : 1;
     private const double WeatherWidth = 84;
     private const double ArtSize = 40;
     private const double MediaButton = 30;
@@ -28,6 +31,8 @@ public partial class DockWindow
 
     private readonly Grid _media = new() { Width = MediaWidth, Height = ArtSize, Opacity = 0 };
     private readonly Image _mediaArt = new() { Stretch = Stretch.UniformToFill };
+    private readonly ColumnDefinition _mediaButtonsColumn = new();
+    private readonly ScaleTransform _mediaButtonsScale = new(1, 1);
     // the cover before a track change, under the new one while that fades in
     private readonly Image _mediaArtBehind = new() { Stretch = Stretch.UniformToFill };
     // the cover fills the whole section, a little past the text, up to the dividers and nearly the bar's height
@@ -45,17 +50,25 @@ public partial class DockWindow
     private readonly TextBlock _mediaArtist = new() { Foreground = new SolidColorBrush(Color.FromArgb(0xB0, 0xFF, 0xFF, 0xFF)), FontSize = 10.5, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly ScaleTransform _mediaProgress = new(0, 1);
     private readonly Image _playGlyph = new() { Width = 22, Height = 22, IsHitTestVisible = false };
-    private readonly Rectangle _mediaDivider = new();
+    private readonly Rectangle _mediaDivider = new() { Width = 1, Height = 34 };
 
     private readonly StackPanel _weather = new() { Orientation = Orientation.Horizontal, Width = WeatherWidth, Height = 40 };
     private readonly Image _weatherIcon = new() { Width = 30, Height = 30, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _weatherTemp = new() { Foreground = Brushes.White, FontSize = 17, FontWeight = FontWeights.SemiBold, Text = "–" };
     private readonly TextBlock _weatherPlace = new() { Foreground = new SolidColorBrush(Color.FromArgb(0xB0, 0xFF, 0xFF, 0xFF)), FontSize = 10, TextTrimming = TextTrimming.CharacterEllipsis, Width = 46 };
-    private readonly Rectangle _sectionDivider = new();
+    private readonly Rectangle _sectionDivider = new() { Width = 1, Height = 34 };
 
     private readonly Grid _quickSettings = new() { Width = StartWidth, Height = StartWidth, Background = Brushes.Transparent, Cursor = Cursors.Hand };
-    private readonly Rectangle _settingsDivider = new();
+    private readonly Rectangle _settingsDivider = new() { Width = 1, Height = 34 };
     private readonly BarcodeTag _barcodeTag = new(34) { Visibility = Visibility.Collapsed };
+
+    private const double DesktopWidth = 34;
+    private const double DesktopGap = 10;
+    private readonly Rectangle _desktopDivider = new() { Width = 1, Height = 34 };
+    private readonly Grid _showDesktop = new() { Width = DesktopWidth, Height = StartWidth, Background = Brushes.Transparent, Cursor = Cursors.Hand };
+    private readonly Image _desktopGlyph = new() { Width = StartGlyph, Height = StartGlyph, IsHitTestVisible = false };
+    private readonly DesktopSlabGlyph _desktopSlab = new(DesktopWidth) { Margin = new Thickness(0, 0, 3, 0) };
+    private readonly Border _desktopEdgeBar = new() { Width = 3, Height = 26, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
 
     private LiquidDropWindow? _dropWindow;
     private CubesIntroWindow? _cubesIntroWindow;
@@ -81,14 +94,16 @@ public partial class DockWindow
     private double _restContent;
 
     /// <summary>Width of everything after the icons, with now playing grown to <paramref name="media"/>.</summary>
-    private static double TrailWidth(double media) =>
-        ClockGap + ((MediaWidth + ClockGap) * media) + WeatherWidth + TrayWidth + ClockGap + ClockWidth + StartGap + StartWidth + ClockPad;
+    private static double TrailWidth(double media) => DockSettings.Vertical
+        // down a side: no song, no weather, and the time alone in a short slot
+        ? ClockGap + TrayWidth + ClockGap + SideClockSlot + StartGap + StartWidth + DesktopGap + DesktopWidth + ClockPad
+        : ClockGap + ((MediaWidth + ClockGap) * media) + WeatherWidth + TrayWidth + ClockGap + ClockWidth + StartGap + StartWidth + DesktopGap + DesktopWidth + ClockPad;
 
-    private bool SectionsSettled => _dropTime < 0 && !_cubesOutro && Math.Abs(_mediaReveal - _mediaTarget) < 0.002 && Math.Abs(_mediaRevealVel) < 0.01;
+    private bool SectionsSettled => _dropTime < 0 && !_cubesOutro && Math.Abs(_mediaReveal - RevealTarget) < 0.002 && Math.Abs(_mediaRevealVel) < 0.01;
 
     private void InitializeSections()
     {
-        foreach (var divider in new[] { _mediaDivider, _sectionDivider, _settingsDivider })
+        foreach (var divider in new[] { _mediaDivider, _sectionDivider, _settingsDivider, _desktopDivider })
         {
             divider.Width = 1;
             divider.Height = 34;
@@ -103,17 +118,23 @@ public partial class DockWindow
         BuildMedia();
         BuildWeather();
         BuildSettings();
+        BuildShowDesktop();
         _clockLayer.Children.Add(_media);
         _clockLayer.Children.Add(_weather);
         _clockLayer.Children.Add(_quickSettings);
+        _clockLayer.Children.Add(_showDesktop);
         InitializeTray();
 
         _mediaTimer.Tick += async (_, _) => await PollMediaAsync();
         _mediaTimer.Start();
         _weatherTimer.Tick += async (_, _) => await RefreshWeatherAsync();
         _weatherTimer.Start();
+        DesktopButtonSettings.Changed += OnDesktopButtonSettingsChanged;
+        DpiChanged += OnDesktopDpiChanged;
         Closed += (_, _) =>
         {
+            DesktopButtonSettings.Changed -= OnDesktopButtonSettingsChanged;
+            DpiChanged -= OnDesktopDpiChanged;
             _mediaTimer.Stop();
             _weatherTimer.Stop();
             _dropWindow?.Close();
@@ -128,7 +149,8 @@ public partial class DockWindow
     private void BuildMedia()
     {
         _media.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        _media.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(MediaButton * 3) });
+        _mediaButtonsColumn.Width = new GridLength(MediaButton * 3 * MediaButtonScale);
+        _media.ColumnDefinitions.Add(_mediaButtonsColumn);
         _media.Children.Add(BuildCover());
 
         var progress = new Grid { Height = 2, Margin = new Thickness(0, 4, 0, 0) };
@@ -142,7 +164,8 @@ public partial class DockWindow
         Grid.SetColumn(_mediaText, 0);
         _media.Children.Add(_mediaText);
 
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, LayoutTransform = _mediaButtonsScale };
+        _mediaButtonsScale.ScaleX = _mediaButtonsScale.ScaleY = MediaButtonScale;
         buttons.Children.Add(GlyphButton(MediaGlyph("previous", 20), MediaButton, () => _ = MediaService.PreviousAsync()));
         _playGlyph.Source = MediaGlyphSource("play", 22);
         buttons.Children.Add(GlyphButton(_playGlyph, MediaButton, () => _ = TogglePlayAsync()));
@@ -240,6 +263,70 @@ public partial class DockWindow
             var center = _quickSettings.PointToScreen(new Point(StartWidth / 2, StartWidth / 2));
             QuickSettings.OpenAt((int)Math.Round(center.X));
         };
+    }
+
+    private void BuildShowDesktop()
+    {
+        _showDesktop.ToolTip = Loc.T("Masaüstünü göster");
+        _showDesktop.RenderTransformOrigin = new Point(0.5, 0.5);
+        var scale = new ScaleTransform(1, 1);
+        _showDesktop.RenderTransform = scale;
+        _desktopGlyph.Opacity = 0.82;
+        RenderOptions.SetBitmapScalingMode(_desktopGlyph, BitmapScalingMode.HighQuality);
+        _showDesktop.Children.Add(_desktopGlyph);
+        _showDesktop.Children.Add(_desktopSlab);
+        _showDesktop.Children.Add(_desktopEdgeBar);
+
+        _showDesktop.MouseEnter += (_, _) =>
+        {
+            var duration = TimeSpan.FromMilliseconds(160);
+            var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.12, duration) { EasingFunction = ease });
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.12, duration) { EasingFunction = ease });
+            _desktopGlyph.BeginAnimation(OpacityProperty, new DoubleAnimation(1, duration) { EasingFunction = ease });
+            _desktopEdgeBar.BeginAnimation(OpacityProperty, new DoubleAnimation(1, duration) { EasingFunction = ease });
+            _desktopSlab.Peek(true);
+        };
+        _showDesktop.MouseLeave += (_, _) =>
+        {
+            var duration = TimeSpan.FromMilliseconds(160);
+            var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1, duration) { EasingFunction = ease });
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, duration) { EasingFunction = ease });
+            _desktopGlyph.BeginAnimation(OpacityProperty, new DoubleAnimation(0.82, duration) { EasingFunction = ease });
+            _desktopEdgeBar.BeginAnimation(OpacityProperty, new DoubleAnimation(0.75, duration) { EasingFunction = ease });
+            _desktopSlab.Peek(false);
+        };
+        _showDesktop.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            DesktopController.ShowDesktop();
+        };
+        UpdateDesktopGlyph();
+    }
+
+    private void OnDesktopButtonSettingsChanged() => Dispatcher.BeginInvoke(UpdateDesktopGlyph);
+
+    private void OnDesktopDpiChanged(object sender, DpiChangedEventArgs e) => UpdateDesktopGlyph();
+
+    private void UpdateDesktopGlyph()
+    {
+        bool cyber = GlassSettings.Cyber;
+        _desktopSlab.Visibility = cyber ? Visibility.Visible : Visibility.Collapsed;
+        _desktopEdgeBar.Visibility = cyber ? Visibility.Visible : Visibility.Collapsed;
+        _desktopGlyph.Visibility = cyber ? Visibility.Collapsed : Visibility.Visible;
+        if (cyber)
+        {
+            var look = CyberLook.Current;
+            var accent = CyberLook.Readable(look.Accent, look.Body);
+            _desktopSlab.Paint(StartGlyphColor, accent, look.Body);
+            _desktopEdgeBar.Background = Effects.Cyber.CyberFxLayer.Solid(accent);
+            _desktopEdgeBar.Opacity = 0.75;
+            return;
+        }
+
+        _desktopGlyph.Source = DotMatrixIcons.Render("desktop", StartGlyph, InkGlyphColor, DpiScale);
+        _desktopGlyph.Opacity = 0.82;
     }
 
     private double DpiScale => VisualTreeHelper.GetDpi(this).DpiScaleX;
@@ -403,7 +490,8 @@ public partial class DockWindow
 
     private void StartDrop()
     {
-        if (!IsVisible || !_shown)
+        // down a side the song is not shown, so nothing flies in to open it
+        if (!IsVisible || !_shown || DockSettings.Vertical)
         {
             _mediaTarget = 1;
             EnsureAnimation();
@@ -458,14 +546,14 @@ public partial class DockWindow
     {
         var a = _clockLayer.PointToScreen(new Point(0, 0));
         var b = _clockLayer.PointToScreen(new Point(100, 0));
-        var scale = (b.X - a.X) / (100 * DpiScale);
+        var scale = (b - a).Length / (100 * DpiScale);
         return scale > 0.1 && scale < 4 ? scale : 1;
     }
 
     /// <summary>With the cubes or dust intro the section breaks back into cubes or dust that scatter as it closes.</summary>
     private void StartCubesOutro()
     {
-        if (GlassSettings.Intro is not (NowPlayingIntro.Cubes or NowPlayingIntro.Dust) || !IsVisible || !_shown || _mediaReveal < 0.3)
+        if (GlassSettings.Intro is not (NowPlayingIntro.Cubes or NowPlayingIntro.Dust) || !IsVisible || !_shown || _mediaReveal < 0.3 || DockSettings.Vertical)
         {
             return;
         }
@@ -516,28 +604,33 @@ public partial class DockWindow
         {
             // the cyber themes slide open at a flat rate and stop dead
             _mediaRevealVel = 0;
-            _mediaReveal += Math.Clamp(_mediaTarget - _mediaReveal, -dt / CoverSlide, dt / CoverSlide);
+            _mediaReveal += Math.Clamp(RevealTarget - _mediaReveal, -dt / CoverSlide, dt / CoverSlide);
         }
         else
         {
-            _mediaReveal = Math.Max(0, Spring(_mediaReveal, ref _mediaRevealVel, _mediaTarget, dt, 150, 17));
+            _mediaReveal = Math.Max(0, Spring(_mediaReveal, ref _mediaRevealVel, RevealTarget, dt, 150, 17));
         }
 
         if (SectionsSettled)
         {
-            _mediaReveal = _mediaTarget;
+            _mediaReveal = RevealTarget;
             _mediaRevealVel = 0;
         }
 
-        _restCapsuleWidth = LeadX + _restContent + TrailWidth(_mediaReveal);
-        _restCapsuleLeft = (_windowWidth - _restCapsuleWidth) / 2;
+        _restCapsuleWidth = TaskbarOn ? _capsuleWidth : LeadX + _restContent + TrailWidth(_mediaReveal);
+        _restCapsuleLeft = TaskbarOn ? _capsuleLeft : (_windowWidth - _restCapsuleWidth) / 2;
     }
 
     /// <summary>Lays the sections out from the end of the icon row.</summary>
     private void PositionSections(double x)
     {
-        var reveal = Math.Max(0, _mediaReveal);
+        var vertical = DockSettings.Vertical;
+        // a side dock has no room across its bar for the song: it stays closed there
+        var reveal = vertical ? 0 : Math.Max(0, _mediaReveal);
         var lineTop = RestTop + ((RestBarHeight - _sectionDivider.Height) / 2);
+        // on the taskbar the group, the song with it, stands against the right edge
+        if (TaskbarOn) x = BarRight - TrailWidth(reveal);
+        _taskbarRightStart = x;
 
         _sectionsX = x + (ClockGap / 2);
         Canvas.SetLeft(_sectionDivider, _sectionsX);
@@ -546,7 +639,8 @@ public partial class DockWindow
 
         // now playing grows from its centre; its content fades in once there is room for it
         var mediaSpan = (MediaWidth + ClockGap) * reveal;
-        Canvas.SetLeft(_media, x + ((mediaSpan - ClockGap * reveal - MediaWidth) / 2));
+        _taskbarMediaLeft = x + ((mediaSpan - ClockGap * reveal - MediaWidth) / 2);
+        Canvas.SetLeft(_media, _taskbarMediaLeft);
         Canvas.SetTop(_media, RestTop + ((RestBarHeight - ArtSize) / 2));
         // while the cubes stand in for the section the real one stays hidden under them
         var veil = _introIsCubes && _cubesIntroWindow is not null ? _cubesIntroWindow.ContentVeil : 1;
@@ -562,7 +656,7 @@ public partial class DockWindow
 
         Canvas.SetLeft(_weather, x);
         Canvas.SetTop(_weather, RestTop + ((RestBarHeight - _weather.Height) / 2));
-        x += WeatherWidth;
+        if (!vertical) x += WeatherWidth;
 
         // the ^ for the background apps sits before the clock, as Windows has it
         Canvas.SetLeft(_tray, x);
@@ -573,9 +667,20 @@ public partial class DockWindow
         Canvas.SetLeft(_clockDivider, _clockX - ((_clockDivider.Width - 1) / 2));
         Canvas.SetTop(_clockDivider, RestTop + ((RestBarHeight - _clockDivider.Height) / 2));
         x += ClockGap;
-        Canvas.SetLeft(_clock, x);
-        Canvas.SetTop(_clock, RestTop + 6);
-        x += ClockWidth;
+        if (vertical)
+        {
+            // the time is turned upright about its middle, so its middle sits in the middle of the short slot
+            var height = _clock.ActualHeight > 0 ? _clock.ActualHeight : 24;
+            Canvas.SetLeft(_clock, x + ((SideClockSlot - SideClockWidth) / 2));
+            Canvas.SetTop(_clock, RestTop + ((RestBarHeight - height) / 2));
+            x += SideClockSlot;
+        }
+        else
+        {
+            Canvas.SetLeft(_clock, x);
+            Canvas.SetTop(_clock, RestTop + 6);
+            x += ClockWidth;
+        }
 
         Canvas.SetLeft(_settingsDivider, x + (StartGap / 2) - ((_settingsDivider.Width - 1) / 2));
         Canvas.SetTop(_settingsDivider, lineTop);
@@ -584,5 +689,12 @@ public partial class DockWindow
         x += StartGap;
         Canvas.SetLeft(_quickSettings, x);
         Canvas.SetTop(_quickSettings, RestTop + ((RestBarHeight - StartWidth) / 2));
+        x += StartWidth;
+
+        Canvas.SetLeft(_desktopDivider, x + (DesktopGap / 2) - ((_desktopDivider.Width - 1) / 2));
+        Canvas.SetTop(_desktopDivider, lineTop);
+        x += DesktopGap;
+        Canvas.SetLeft(_showDesktop, x);
+        Canvas.SetTop(_showDesktop, RestTop + ((RestBarHeight - StartWidth) / 2));
     }
 }

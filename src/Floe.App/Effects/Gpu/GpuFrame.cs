@@ -51,6 +51,9 @@ public sealed class GpuFrame
     public float DockLeft { get; set; } = 0.37f;
     public float DockRight { get; set; } = 0.63f;
 
+    /// <summary>Spans of the strip (0..1 pairs) the layer clears after drawing, so a scene can keep its figures out of them.</summary>
+    public float[] Clear { get; set; } = Array.Empty<float>();
+
     /// <summary>Stereo balance of the music, -1 (all left) .. 1 (all right).</summary>
     public float Balance { get; set; }
 }

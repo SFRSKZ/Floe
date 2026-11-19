@@ -30,6 +30,7 @@ public partial class DockWindow
     private Image? _fxImage;
     private AuroraWindow? _aurora;
     private bool _auraPaused;
+    private bool _visualizerStoppedByHide;
     private DockItemViewModel? _spectralItem;
     private ImageSource? _spectralIcon;
     private double _spectralIntensity = -1;
@@ -42,6 +43,24 @@ public partial class DockWindow
         SetGlassLoopVisible(visible);
         if (visible && AuraSettings.Effect == AuraEffect.Aurora && _activeIndex >= 0) _aurora?.Begin();
         else _aurora?.End();
+
+        // the visualizer goes with the dock at once instead of playing alone until the next poll; it comes back
+        // with the dock as it was, and the poll then follows the music again
+        if (!visible && _visualizerRunning)
+        {
+            _visualizerRunning = false;
+            _visualizerStoppedByHide = true;
+            ApplyVisualizerState();
+        }
+        else if (visible && _visualizerStoppedByHide)
+        {
+            _visualizerStoppedByHide = false;
+            if (GlassSettings.Visualizer)
+            {
+                _visualizerRunning = true;
+                ApplyVisualizerState();
+            }
+        }
 
         if (visible)
         {
@@ -104,7 +123,8 @@ public partial class DockWindow
         var middle = new Point(icon.ActualWidth / 2, icon.ActualHeight / 2);
         var center = icon.PointToScreen(middle);
         var edge = icon.PointToScreen(new Point(middle.X + 10, middle.Y));
-        return (new Point(center.X / DpiScale, center.Y / DpiScale), (edge.X - center.X) / DpiScale / 10);
+        // a length, not an x: on a side edge the icon's own x runs down the screen
+        return (new Point(center.X / DpiScale, center.Y / DpiScale), (edge - center).Length / DpiScale / 10);
     }
 
     /// <summary>Puts the neon / liquid glass effect on one icon image, or takes it off (null).</summary>
@@ -125,6 +145,7 @@ public partial class DockWindow
         }
 
         _activeFx ??= new ActiveIconEffect(IconBox);
+        _activeFx.Study = IconLab.StudyFor(AuraSettings.Effect);
         var colors = AuraSettings.GetColors(item);
         _activeFx.Mode = AuraSettings.Effect == AuraEffect.Glass ? (double)ActiveIconMode.Glass : (double)ActiveIconMode.Neon;
         if (colors.Length > 0)
@@ -191,7 +212,7 @@ public partial class DockWindow
             {
                 var candidate = _slots[i].Item;
                 if (candidate.IsRunning
-                    && AppMatcher.Matches(candidate.Name, candidate.ProcessName, candidate.App.Target, _activeProcess, _activeTitle, _activePath))
+                    && AppMatcher.Matches(candidate, _activeProcess, _activePath, _activeAppId))
                 {
                     _activeIndex = i;
                     break;
@@ -249,7 +270,8 @@ public partial class DockWindow
 
         SetAurora(false);
 
-        if (AuraSettings.Effect is AuraEffect.Neon or AuraEffect.Glass && ActiveIconEffect.IsAvailable)
+        if ((AuraSettings.Effect is AuraEffect.Neon or AuraEffect.Glass && ActiveIconEffect.IsAvailable)
+            || (IconLab.StudyFor(AuraSettings.Effect) is { } study && ActiveIconEffect.IsStudyAvailable(study)))
         {
             _auraGrid.Visibility = Visibility.Collapsed;
             SetSpectralVisible(false);

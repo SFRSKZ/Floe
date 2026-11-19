@@ -36,6 +36,13 @@ public enum AuraEffect
     Neon,
     Glass,
     Aurora,
+    // film studies drawn by ActiveIconEffect with an IconLab shader (see IconLab.StudyFor)
+    Rain,
+    LightCycle,
+    Gargantua,
+    Logogram,
+    CodeRain,
+    OneRing,
 }
 
 public sealed class AuraPalette
@@ -99,6 +106,9 @@ public static class AuraSettings
     /// <summary>The click as Van Gogh's brush: swirling impasto strokes of the icon's own colours.</summary>
     public static bool ClickPaint { get; private set; }
 
+    /// <summary>The click knocks the icon apart into cubes that tumble out and lock back in.</summary>
+    public static bool ClickCubes { get; private set; }
+
     public static ClickTone ClickTone { get; private set; } = ClickTone.Dark;
 
     public static ClickPalette ClickPalette { get; private set; } = ClickPalette.Clear;
@@ -136,6 +146,7 @@ public static class AuraSettings
             ClickScreen = model.ClickScreen;
             RestGlass = model.RestGlass;
             ClickPaint = model.ClickPaint;
+            ClickCubes = model.ClickCubes;
             ClickTone = Enum.TryParse<ClickTone>(model.ClickTone, true, out var tone) && Enum.IsDefined(tone) ? tone : ClickTone.Dark;
             ClickPalette = Enum.TryParse<ClickPalette>(model.ClickPalette, true, out var palette) && Enum.IsDefined(palette) ? palette : ClickPalette.Clear;
             ClickSpeed = model.ClickSpeed <= 0 ? 1.0 : Math.Clamp(model.ClickSpeed, 0.5, 2.0);
@@ -160,6 +171,14 @@ public static class AuraSettings
     {
         if (ClickEffect == enabled) return;
         ClickEffect = enabled;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetClickCubes(bool enabled)
+    {
+        if (ClickCubes == enabled) return;
+        ClickCubes = enabled;
         Save();
         Changed?.Invoke();
     }
@@ -329,6 +348,7 @@ public static class AuraSettings
                 ClickScreen = ClickScreen,
                 RestGlass = RestGlass,
                 ClickPaint = ClickPaint,
+                ClickCubes = ClickCubes,
                 ClickTone = ClickTone.ToString(),
                 ClickPalette = ClickPalette.ToString(),
                 ClickSpeed = ClickSpeed,
@@ -360,6 +380,8 @@ public static class AuraSettings
         public bool RestGlass { get; set; } = true;
 
         public bool ClickPaint { get; set; }
+
+        public bool ClickCubes { get; set; }
 
         public string ClickTone { get; set; } = nameof(global::Floe.App.Services.ClickTone.Dark);
 

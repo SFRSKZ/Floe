@@ -38,6 +38,16 @@ public enum AppLanguage
     English,
 }
 
+/// <summary>How the desktop's strand curtain moves from one camera shot to the next.</summary>
+public enum StrandMotion
+{
+    Glide,
+    Focus,
+    Flight,
+    Dive,
+    FocusFlight,
+}
+
 public enum VisualizerStyle
 {
     Glow,
@@ -63,6 +73,8 @@ public enum VisualizerStyle
     GlassRain,
     Murmuration,
     StereoField,
+    // retired; the name stays so an old settings file still reads, and lands on the default look
+    Swirl,
     // the cyber themes' own hard edged strips (see Effects/Visualizer/CyberVisualizer)
     CyberSignal,
     CyberBlackwall,
@@ -80,6 +92,28 @@ public enum VisualizerStyle
     CyberRift,
     // Braindance audio layer: Trauma Team's ECG driven by the real 24-band analyser
     CyberBiometric,
+    // from the net-dive gameplay video: hanging data pyramids and the dive down a data corridor
+    CyberZiggurat,
+    CyberNetdive,
+    // Codex's CP77 material studies, made into GPU scenes
+    CyberMercury,
+    CyberEngram,
+    CyberRedline,
+    CyberKiroshi,
+    // the chrome jaw: two rows of metal teeth out of the dock's edges, one band per tooth
+    CyberJaws,
+    // 10 curated CP77 diegetic & VFX visualizers (GDC Blackwall, Arasaka OS, Braindance, Apogee, Canto, Night City, Trauma, Chrome, FLIR, Monowire)
+    CyberBlackwallCinder,
+    CyberArasakaOs,
+    CyberBraindanceSuite,
+    CyberApogee,
+    CyberCantoDaemon,
+    CyberNightCity,
+    CyberTraumaTeam,
+    CyberLiquidChrome,
+    CyberDogtownFlir,
+    CyberMonowire,
+    CyberStrands,
 }
 
 /// <summary>A theme dresses the whole dock (glass, rim, glows) and its visualizer in one look.</summary>
@@ -188,6 +222,14 @@ public static class GlassSettings
 
     public static bool SignalEqualizer { get; private set; }
 
+    /// <summary>The strand curtain plays behind the desktop icons of the primary monitor.</summary>
+    public static bool StrandWallpaper { get; private set; }
+
+    public static StrandMotion StrandWallpaperMotion { get; private set; }
+
+    /// <summary>0 lets the camera go round the shots; 1 to 4 keeps it on that one.</summary>
+    public static int StrandWallpaperAngle { get; private set; }
+
     public static DockTheme Theme { get; private set; }
 
     /// <summary>Either Tron theme: black glass edged in neon light lines, with the OLED panel lit in the same colour.</summary>
@@ -285,6 +327,9 @@ public static class GlassSettings
             GlyphNegative = model.GlyphNegative;
             VisualizerThemeColours = model.VisualizerThemeColours;
             SignalEqualizer = model.SignalEqualizer;
+            StrandWallpaper = model.StrandWallpaper;
+            StrandWallpaperAngle = Math.Clamp(model.StrandWallpaperAngle, 0, 4);
+            StrandWallpaperMotion = Enum.TryParse<StrandMotion>(model.StrandWallpaperMotion, true, out var strandMotion) ? strandMotion : StrandMotion.Glide;
             // looks taken off the picker (and "Lamella", the old metal wave) fall back to the stardust
             VisualizerLook = Enum.TryParse<VisualizerStyle>(model.VisualizerLook, true, out var look) && !IsRetired(look)
                 ? look
@@ -347,17 +392,34 @@ public static class GlassSettings
     {
 #if CP77
         Theme = DockTheme.CyberHud; // the only theme it has; a removed one lands here too
-        if (!IsCyberLook(VisualizerLook)) VisualizerLook = VisualizerStyle.CyberBlackwall;
+        if (!IsCyberLook(VisualizerLook) || IsDroppedCyberLook(VisualizerLook)) VisualizerLook = VisualizerStyle.CyberBlackwall; // a retired look lands here too
         GpuVisualizer = true; // its looks only exist on the GPU
 #else
         if (Theme == DockTheme.CyberHud) Theme = DockTheme.None;
-        if (IsCyberLook(VisualizerLook)) VisualizerLook = VisualizerStyle.Stardust;
+        if (IsCyberLook(VisualizerLook) || IsRetiredLook(VisualizerLook)) VisualizerLook = VisualizerStyle.Stardust;
 #endif
     }
 
+    /// <summary>Looks that were taken out; their names only remain so old settings files load.</summary>
+    /// <summary>Cyber looks taken off the picker; whoever had one gets Blackwall.</summary>
+    public static bool IsDroppedCyberLook(VisualizerStyle look) => look is VisualizerStyle.CyberRift or VisualizerStyle.CyberZiggurat
+        or VisualizerStyle.CyberJaws or VisualizerStyle.CyberNightCity or VisualizerStyle.CyberApogee
+        or VisualizerStyle.CyberLiquidChrome or VisualizerStyle.CyberTraumaTeam;
+
+    public static bool IsRetiredLook(VisualizerStyle look) =>
+        look is VisualizerStyle.Swirl or VisualizerStyle.CyberBraindance or VisualizerStyle.CyberBiometric
+            or VisualizerStyle.CyberMercury or VisualizerStyle.CyberEngram or VisualizerStyle.CyberKiroshi;
+
     public static bool IsCyberLook(VisualizerStyle look) => look is VisualizerStyle.CyberSignal or VisualizerStyle.CyberBlackwall or VisualizerStyle.CyberCircuit or VisualizerStyle.CyberGlyph or VisualizerStyle.CyberRain or VisualizerStyle.CyberSamurai
-        or VisualizerStyle.CyberBraindance or VisualizerStyle.CyberSandevistan or VisualizerStyle.CyberBreach or VisualizerStyle.CyberCollar
-        or VisualizerStyle.CyberPulse or VisualizerStyle.CyberRift or VisualizerStyle.CyberBiometric;
+        or VisualizerStyle.CyberSandevistan or VisualizerStyle.CyberBreach or VisualizerStyle.CyberCollar
+        or VisualizerStyle.CyberPulse or VisualizerStyle.CyberRift
+        or VisualizerStyle.CyberZiggurat or VisualizerStyle.CyberNetdive
+        or VisualizerStyle.CyberRedline
+        or VisualizerStyle.CyberJaws
+        or VisualizerStyle.CyberBlackwallCinder or VisualizerStyle.CyberArasakaOs or VisualizerStyle.CyberBraindanceSuite
+        or VisualizerStyle.CyberApogee or VisualizerStyle.CyberCantoDaemon or VisualizerStyle.CyberNightCity
+        or VisualizerStyle.CyberTraumaTeam or VisualizerStyle.CyberLiquidChrome or VisualizerStyle.CyberDogtownFlir
+        or VisualizerStyle.CyberMonowire or VisualizerStyle.CyberStrands;
 
     internal static void PreviewTheme(DockTheme theme)
     {
@@ -414,6 +476,43 @@ public static class GlassSettings
         }
 
         VisualizerThemeColours = enabled;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetStrandWallpaperAngle(int angle)
+    {
+        angle = Math.Clamp(angle, 0, 4);
+        if (StrandWallpaperAngle == angle)
+        {
+            return;
+        }
+
+        StrandWallpaperAngle = angle;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetStrandWallpaperMotion(StrandMotion motion)
+    {
+        if (StrandWallpaperMotion == motion)
+        {
+            return;
+        }
+
+        StrandWallpaperMotion = motion;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetStrandWallpaper(bool enabled)
+    {
+        if (StrandWallpaper == enabled)
+        {
+            return;
+        }
+
+        StrandWallpaper = enabled;
         Save();
         Changed?.Invoke();
     }
@@ -763,6 +862,9 @@ public static class GlassSettings
                 GlyphNegative = GlyphNegative,
                 VisualizerThemeColours = VisualizerThemeColours,
                 SignalEqualizer = SignalEqualizer,
+                StrandWallpaper = StrandWallpaper,
+                StrandWallpaperMotion = StrandWallpaperMotion.ToString(),
+                StrandWallpaperAngle = StrandWallpaperAngle,
                 VisualizerLook = VisualizerLook.ToString(),
                 HologramTint = HologramTint.ToString(),
                 Intro = Intro.ToString(),
@@ -848,6 +950,12 @@ public static class GlassSettings
         public bool VisualizerThemeColours { get; set; }
 
         public bool SignalEqualizer { get; set; }
+
+        public bool StrandWallpaper { get; set; }
+
+        public string StrandWallpaperMotion { get; set; } = nameof(StrandMotion.Glide);
+
+        public int StrandWallpaperAngle { get; set; }
 
         public string VisualizerLook { get; set; } = nameof(VisualizerStyle.Stardust);
 

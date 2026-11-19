@@ -196,6 +196,8 @@ public partial class DockWindow
             var cursorY = IsMouseOver ? Math.Clamp((Mouse.GetPosition(Root).Y - RestTop) / RestBarHeight, 0, 1) : 0;
             if (Changed(ref _metalCursorY, cursorY)) _metalEffect.CursorY = cursorY;
         }
+        // the taskbar neither swells nor magnifies under the cursor
+        if (TaskbarOn) _targetBulge = _currentBulge = _bulgeVel = 0;
         _currentHoverX = Spring(_currentHoverX, ref _hoverVel, _targetHoverX, dt);
         _currentBulge = Spring(_currentBulge, ref _bulgeVel, _targetBulge, dt);
         _dockScale = Spring(_dockScale, ref _dockScaleVel, _targetDockScale, dt, 180, 24);
@@ -218,10 +220,12 @@ public partial class DockWindow
             && Math.Abs(_bulgeVel) < 4
             && Math.Abs(_dockScale - _targetDockScale) < 0.002
             && Math.Abs(_dockScaleVel) < 0.02
-            && scales.All(s => Math.Abs(s - 1) < 0.0015)
             && SectionsSettled
-            && !_isDragging
-            && _slots.All(s => Math.Abs(s.Shift) < 0.3);
+            && !_isDragging;
+        for (var i = 0; settled && i < scales.Length; i++)
+        {
+            settled = Math.Abs(scales[i] - 1) < 0.0015 && Math.Abs(_slots[i].Shift) < 0.3;
+        }
 
         if (settled)
         {
@@ -387,7 +391,7 @@ public partial class DockWindow
     {
         var offset = _capsuleLeft;
         var width = _capsuleWidth;
-        var r = CornerRadius;
+        var r = TaskbarOn ? 0 : CornerRadius;
         _shapePoints.Clear();
         var points = _shapePoints;
 
@@ -425,7 +429,7 @@ public partial class DockWindow
         target.Clear();
         var offset = _capsuleLeft;
         var width = _capsuleWidth;
-        var r = CornerRadius;
+        var r = TaskbarOn ? 0 : CornerRadius;
         var hover = _currentHoverX - offset;
         var bulge = EffectiveBulge;
         var strength = MaxBulge > 0 ? Math.Max(0, Math.Min(1, bulge / MaxBulge)) : 0;

@@ -36,6 +36,7 @@ public static class CyberIcons
 
         ["adjustments-horizontal"] = new[] { "M14 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0", "M4 6l8 0", "M16 6l4 0", "M8 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0", "M4 12l2 0", "M10 12l10 0", "M17 18m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0", "M4 18l11 0", "M19 18l1 0" },
         ["chevron-up"] = new[] { "M6 15l6 -6l6 6" },
+        ["floe-start"] = new[] { "M4 5l6 -1v7h-6z", "M12 3.7l8 -1.2v8.5h-8z", "M4 13h6v7l-6 -1z", "M12 13h8v8.5l-8 -1.2z" },
     };
 
     /// <summary>One of the icons by its Tabler name.</summary>

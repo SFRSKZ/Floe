@@ -41,9 +41,9 @@ public partial class DockWindow : Window
     private const double EdgeMargin = 6;
     private const double MaxSideStretch = 12;
     // the size the dock grows to under the cursor, as picked in the settings
-    private static double FullScale => DockSettings.Scale;
+    private static double FullScale => DockSettings.TaskbarOn ? TaskbarScale : DockSettings.Scale;
     // the size the dock rests at with the cursor away: smaller, unless shrinking is turned off
-    private static double CompactScale => (GlassSettings.Shrink ? 0.62 : 1) * FullScale;
+    private static double CompactScale => DockSettings.TaskbarOn ? TaskbarScale : (GlassSettings.Shrink ? 0.62 : 1) * FullScale;
     private const double HoverMaxScale = 1.4;
     private const double FalloffRadius = 115;
     private const double GlowRadius = 92;
@@ -78,9 +78,11 @@ public partial class DockWindow : Window
     private string _pendingForeground = string.Empty;
     private string _pendingTitle = string.Empty;
     private string _pendingPath = string.Empty;
+    private string _pendingAppId = string.Empty;
     private readonly DispatcherTimer _runningDebounce = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private readonly DispatcherTimer _fullscreenTimer = new() { Interval = TimeSpan.FromMilliseconds(1000) };
     private bool _fullscreenHidden;
+    private bool _trayHidden;
     private bool _appbarFullscreen;
     private AppBar? _appBar;
     private IntPtr _monitor;
@@ -132,6 +134,7 @@ public partial class DockWindow : Window
     private string _activeProcess = string.Empty;
     private string _activeTitle = string.Empty;
     private string _activePath = string.Empty;
+    private string _activeAppId = string.Empty;
     private int _activeIndex = -1;
     private int _separatorIndex = -1;
     private readonly Rectangle _separator = new()
@@ -291,7 +294,7 @@ public partial class DockWindow : Window
         var clockGlow = new DropShadowEffect { Color = Colors.White, ShadowDepth = 0, BlurRadius = 10, Opacity = 0.6 };
 
         _clockTime.FontFamily = _clockFont;
-        _clockTime.FontSize = 26;
+        _clockTime.FontSize = ClockTimeSize(false);
         _clockTime.FontWeight = FontWeights.Bold;
         _clockTime.Foreground = Brushes.White;
         _clockTime.TextAlignment = TextAlignment.Center;
@@ -306,7 +309,7 @@ public partial class DockWindow : Window
         _clockDate.Margin = new Thickness(0, 2, 0, 0);
         _clockDate.Effect = (DropShadowEffect)clockGlow.Clone();
 
-        _clock.Width = ClockWidth;
+        _clock.Width = DockSettings.Vertical ? SideClockWidth : ClockWidth;
         _clock.Children.Add(_clockTime);
         _clock.Children.Add(_clockDate);
         _clock.Cursor = Cursors.Hand;
@@ -335,13 +338,16 @@ public partial class DockWindow : Window
         _runningDebounce.Tick += (_, _) =>
         {
             _runningDebounce.Stop();
-            RefreshRunning();
+            if (IsVisible) RefreshRunning();
         };
 
         _foregroundHook = new EventHooks.Hook(EventHooks.EventSystemForeground, EventHooks.EventSystemForeground, _ => UpdateForeground());
         _windowHook = new EventHooks.Hook(EventHooks.EventObjectCreate, EventHooks.EventObjectDestroy, _ => ScheduleRunningRefresh());
         _alertHook = new EventHooks.Hook(EventHooks.EventSystemAlert, EventHooks.EventSystemAlert, OnSystemAlert);
-        _ambientTimer.Tick += (_, _) => UpdateAmbient();
+        _ambientTimer.Tick += (_, _) =>
+        {
+            if (IsVisible && _shown) UpdateAmbient();
+        };
         _dockScale = CompactScale;
         _rootScale.ScaleX = CompactScale;
         _rootScale.ScaleY = CompactScale;
@@ -371,11 +377,13 @@ public partial class DockWindow : Window
         _glow.Fill = _glowBrush;
         _glow.Visibility = Visibility.Collapsed;
         InitializeGlass();
-        _backdrop.Width = _windowWidth;
-        _backdrop.Height = WindowHeight;
         Canvas.SetLeft(_backdrop, 0);
         Canvas.SetTop(_backdrop, 0);
-        _backdrop.RenderTransform = _backdropUnscale;
+        var backdropTransform = new TransformGroup();
+        backdropTransform.Children.Add(_backdropTurn);
+        backdropTransform.Children.Add(_backdropUnscale);
+        _backdrop.RenderTransform = backdropTransform;
+        ApplyBackdropTurn();
         _backdropHost.Children.Add(_backdrop);
         ShapeLayer.Children.Insert(0, _backdropHost);
 
@@ -449,6 +457,7 @@ public partial class DockWindow : Window
                 Effect = effect,
             };
             RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
+            MakeUpright(image);
             _auraImages[k] = image;
             _auraGrid.Children.Add(image);
         }
@@ -532,12 +541,18 @@ public partial class DockWindow : Window
         GlassSettings.Changed += OnGlassSettingsChanged;
         InitializeVisualizer();
         InitializeDoze();
+        StrandWallpaperHost.Start();
         Closed += (_, _) => DisposeGlass();
+        Closed += (_, _) => StrandWallpaperHost.Stop();
         AuraSettings.Changed += OnAuraSettingsChanged;
         DesktopButtonSettings.Load();
 
         _hideTimer.Tick += HideTimer_Tick;
-        _runningTimer.Tick += (_, _) => RefreshRunning();
+        // nobody sees the dock behind a full-screen app or once the tray put it away: the window list waits
+        _runningTimer.Tick += (_, _) =>
+        {
+            if (IsVisible) RefreshRunning();
+        };
         _tooltipTimer.Tick += (_, _) => ShowTooltip();
 
         Loaded += (_, _) =>
@@ -545,7 +560,7 @@ public partial class DockWindow : Window
             Reposition();
             PrepareGlassPreview();
             UpdateShape();
-            if (AutoHide)
+            if (AutoHideOn)
             {
                 _hideTimer.Start();
             }
@@ -594,6 +609,11 @@ public partial class DockWindow : Window
         public (ImageSource OnDock, ImageSource OnFrame)? Card { get; set; }
 
         public Ellipse Dot { get; }
+
+        /// <summary>The copies of the icon behind it, one more for each window past the first.</summary>
+        public Rectangle[] Stack { get; init; } = Array.Empty<Rectangle>();
+
+        public Rectangle? Flyer { get; init; }
 
         public DockItemViewModel Item { get; }
 

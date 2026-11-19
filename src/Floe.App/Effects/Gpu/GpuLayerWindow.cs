@@ -28,6 +28,7 @@ internal sealed class GpuLayerWindow : IDisposable
     private static readonly MediaColor BasePrimary = MediaColor.FromRgb(0x5C, 0xA8, 0xFF);
 
     private readonly IGpuScene _scene;
+    private readonly bool _needAudio;
     private readonly Thread _thread;
     private readonly AutoResetEvent _wake = new(false);
     private readonly ManualResetEvent _ready = new(false);
@@ -69,6 +70,16 @@ internal sealed class GpuLayerWindow : IDisposable
     private GpuSwapChain? _swapChain;
     private ID3D11RenderTargetView? _renderTarget;
     private LedScreenPass? _ledPass;
+    // the strip on another edge than the bottom: the scene draws it foot down, this pass turns it onto the edge
+    private EdgeTurnPass? _turnPass;
+    private bool _turnUnavailable;
+    private ClearFeatherPass? _featherPass;
+    private bool _featherUnavailable;
+
+    // how far the light thins out before a cleared span, in DIP
+    private const double ClearFeatherDip = 40;
+    private int _edge;
+    private int _appliedEdge;
     private bool _ledUnavailable;
     private AudioSpectrum? _audio;
     private readonly AudioCalm _calm = new();
@@ -91,9 +102,10 @@ internal sealed class GpuLayerWindow : IDisposable
     /// Leaves the layer in screen captures, so the dock's glass shows it through its blur; by default the
     /// light stays out of the dock's backdrop.
     /// </param>
-    public GpuLayerWindow(IGpuScene scene, bool capturable = false)
+    public GpuLayerWindow(IGpuScene scene, bool capturable = false, bool needAudio = true)
     {
         _scene = scene ?? throw new ArgumentNullException(nameof(scene));
+        _needAudio = needAudio;
         _wndProc = WindowProc;
         _className = "FloeGpuLayer_" + Guid.NewGuid().ToString("N");
         _thread = new Thread(RenderThread) { IsBackground = true, Name = "FloeGpuLayer" };
@@ -131,7 +143,10 @@ internal sealed class GpuLayerWindow : IDisposable
 
     private volatile bool _frameRequested;
 
-    public bool IsRunning => _runningWanted && !_disposed;
+    public bool IsRunning => _runningWanted && !_disposed && !Halted;
+
+    /// <summary>The layer stopped on an error it could not recover from; it draws nothing until it is rebuilt.</summary>
+    public bool Halted => Volatile.Read(ref _halted);
 
     /// <summary>The dust wave look of the stardust scene; copied into <see cref="GpuFrame.Wave"/>.</summary>
     public bool Wave
@@ -155,6 +170,76 @@ internal sealed class GpuLayerWindow : IDisposable
     {
         Volatile.Write(ref _dockLeft, left);
         Volatile.Write(ref _dockRight, right);
+    }
+
+    /// <summary>
+    /// Spans along the strip (0..1, left and right) wiped back to transparent after every frame: on the taskbar the
+    /// strip lies over the bar, and the icons, the start button and the clock must stay readable under it.
+    /// </summary>
+    public void SetClear(float[] spans) => Volatile.Write(ref _clearSpans, spans);
+
+    /// <summary>The screen edge the strip lies on: 0 bottom, 1 top, 2 left, 3 right (Floe.Core.Models.DockEdge).</summary>
+    public void SetEdge(int edge)
+    {
+        if (Volatile.Read(ref _edge) == edge) return;
+        Volatile.Write(ref _edge, edge);
+        _wake.Set();
+    }
+
+    // the scenes always draw a horizontal strip: down a side it is the window's height long
+    private int SceneWidth => _appliedEdge >= 2 ? _height : _width;
+
+    private int SceneHeight => _appliedEdge >= 2 ? _width : _height;
+
+    private float[] _clearSpans = Array.Empty<float>();
+    private ID3D11DeviceContext1? _context1;
+    private bool _clearUnavailable;
+    // the spans in pixels, worked out again only when the spans or the strip's size change
+    private Vortice.RawRect[] _clearRects = Array.Empty<Vortice.RawRect>();
+    private float[]? _clearRectsFor;
+    private int _clearRectsWidth, _clearRectsHeight;
+
+    private void ClearSpans()
+    {
+        var spans = Volatile.Read(ref _clearSpans);
+        if (spans.Length < 2 || _context is null || _renderTarget is null) return;
+
+        // soft ends where the pass is there; the hard clear below is the fallback
+        if (!_featherUnavailable && spans.Length / 2 <= ClearFeatherPass.MaxSpans)
+        {
+            _featherPass ??= CreateFeatherPass();
+            if (_featherPass is not null)
+            {
+                _featherPass.Apply(_context, _renderTarget, _width, _height, spans, (float)(ClearFeatherDip * _ppd));
+                return;
+            }
+        }
+
+        if (_clearUnavailable) return;
+        _context1 ??= _context.QueryInterfaceOrNull<ID3D11DeviceContext1>();
+        if (_context1 is null)
+        {
+            _clearUnavailable = true;
+            return;
+        }
+
+        if (!ReferenceEquals(spans, _clearRectsFor) || _clearRectsWidth != _width || _clearRectsHeight != _height)
+        {
+            var rects = new List<Vortice.RawRect>(spans.Length / 2);
+            for (int i = 0; i + 1 < spans.Length; i += 2)
+            {
+                int left = (int)MathF.Floor(Math.Clamp(spans[i], 0, 1) * _width);
+                int right = (int)MathF.Ceiling(Math.Clamp(spans[i + 1], 0, 1) * _width);
+                if (right > left) rects.Add(new Vortice.RawRect(left, 0, right, _height));
+            }
+
+            _clearRects = rects.ToArray();
+            _clearRectsFor = spans;
+            _clearRectsWidth = _width;
+            _clearRectsHeight = _height;
+        }
+
+        if (_clearRects.Length > 0) _context1.ClearView(_renderTarget, new Color4(0, 0, 0, 0), _clearRects);
     }
 
     /// <summary>Where the playing app's icon sits along the strip, 0..1.</summary>
@@ -261,6 +346,8 @@ internal sealed class GpuLayerWindow : IDisposable
         }
         catch (Exception ex)
         {
+            // a half-built layer must not look running: halted, it is rebuilt or given up by its owner
+            _halted = true;
             Log(ex);
         }
         finally
@@ -268,12 +355,15 @@ internal sealed class GpuLayerWindow : IDisposable
             _ready.Set();
         }
 
-        if (_hwnd != IntPtr.Zero && _device is not null)
+        if (_hwnd != IntPtr.Zero && _device is not null && !_halted)
         {
             try { RenderLoop(); }
             catch (Exception ex) { Log(ex); }
         }
 
+        // Dispose ends the loop without the fade-out that releases the audio, so the capture stops here
+        try { _audio?.Dispose(); } catch (Exception ex) { Log(ex); }
+        _audio = null;
         try { _scene.ReleaseDevice(); } catch (Exception ex) { Log(ex); }
         ReleaseDevice();
         if (_hwnd != IntPtr.Zero)
@@ -357,7 +447,7 @@ internal sealed class GpuLayerWindow : IDisposable
         _active = true;
         _fade = 0;
         _lastFrameSeconds = clock.Elapsed.TotalSeconds;
-        _audio ??= new AudioSpectrum();
+        if (_needAudio) _audio ??= new AudioSpectrum();
     }
 
     private void StopRendering()
@@ -496,9 +586,15 @@ internal sealed class GpuLayerWindow : IDisposable
         _renderTarget = null;
         _swapChain.Resize(_width, _height);
         CreateTarget();
-        _scene.Resize(_width, _height);
-        _ledPass?.Resize(_width, _height);
+        ResizeScene();
         _lastPresent = 0;
+    }
+
+    private void ResizeScene()
+    {
+        _scene.Resize(SceneWidth, SceneHeight);
+        _ledPass?.Resize(SceneWidth, SceneHeight);
+        _turnPass?.Resize(SceneWidth, SceneHeight);
     }
 
     private void DrawFrame(float dt)
@@ -508,8 +604,15 @@ internal sealed class GpuLayerWindow : IDisposable
         _frame.Dt = dt;
         _frame.Time = (float)_time;
         _frame.Fade = (float)Math.Clamp(_fade, 0, 1);
-        _frame.Width = _width;
-        _frame.Height = _height;
+        int edge = Volatile.Read(ref _edge);
+        if (edge != _appliedEdge)
+        {
+            _appliedEdge = edge;
+            ResizeScene();
+        }
+
+        _frame.Width = SceneWidth;
+        _frame.Height = SceneHeight;
         _frame.PixelsPerDip = (float)_ppd;
         _frame.Performance = Performance.Level;
         _frame.Wave = _waveRequested;
@@ -522,6 +625,7 @@ internal sealed class GpuLayerWindow : IDisposable
         _frame.SourceX = SourceX;
         _frame.DockLeft = Volatile.Read(ref _dockLeft);
         _frame.DockRight = Volatile.Read(ref _dockRight);
+        _frame.Clear = Volatile.Read(ref _clearSpans);
 
         VisualizerPalette.Fill(_paletteR, _paletteG, _paletteB, _time, BasePrimary);
         for (int i = 0; i < GpuFrame.PaletteSize; i++)
@@ -530,6 +634,19 @@ internal sealed class GpuLayerWindow : IDisposable
         }
 
         _context.ClearRenderTargetView(_renderTarget, new Color4(0, 0, 0, 0));
+        var output = _renderTarget;
+        bool turning = false;
+        if (_appliedEdge != 0 && !_turnUnavailable)
+        {
+            _turnPass ??= CreateTurnPass();
+            if (_turnPass?.SceneTarget is { } strip)
+            {
+                output = strip;
+                turning = true;
+                _context.ClearRenderTargetView(output, new Color4(0, 0, 0, 0));
+            }
+        }
+
         if (_led && !_ledUnavailable)
         {
             // The scene draws into the pass's own picture, then the pass turns that into the LED grid; a failed
@@ -540,17 +657,21 @@ internal sealed class GpuLayerWindow : IDisposable
             {
                 _context.ClearRenderTargetView(sceneTarget, new Color4(0, 0, 0, 0));
                 _scene.Render(_context, sceneTarget, _frame);
-                _ledPass.Apply(_context, _renderTarget, _width, _height, (float)_ppd, (float)_time);
+                _ledPass.Apply(_context, output, SceneWidth, SceneHeight, (float)_ppd, (float)_time);
             }
             else
             {
-                _scene.Render(_context, _renderTarget, _frame);
+                _scene.Render(_context, output, _frame);
             }
         }
         else
         {
-            _scene.Render(_context, _renderTarget, _frame);
+            _scene.Render(_context, output, _frame);
         }
+
+        // the cleared spans are the taskbar's, which lies on the bottom edge only
+        if (turning) _turnPass!.Apply(_context, _renderTarget, _width, _height, _appliedEdge);
+        else ClearSpans();
 
         // Pace from the start of the present: Present(1) itself waits for the monitor's vblank, so the
         // interval has to cover that wait or 30 fps would come out as 20.
@@ -578,7 +699,7 @@ internal sealed class GpuLayerWindow : IDisposable
         _swapChain = GpuSwapChain.Create(_device, _hwnd, _width, _height);
         CreateTarget();
         _scene.Initialize(_device);
-        _scene.Resize(_width, _height);
+        _scene.Resize(SceneWidth, SceneHeight);
     }
 
     private void CreateTarget()
@@ -597,7 +718,7 @@ internal sealed class GpuLayerWindow : IDisposable
         {
             pass = new LedScreenPass();
             pass.Initialize(_device);
-            pass.Resize(_width, _height);
+            pass.Resize(SceneWidth, SceneHeight);
             return pass;
         }
         catch (Exception ex)
@@ -605,6 +726,47 @@ internal sealed class GpuLayerWindow : IDisposable
             pass?.Dispose();
             _ledUnavailable = true;
             Debug.WriteLine($"[Floe.Gpu] led pass: {ex.Message}");
+            return null;
+        }
+    }
+
+    private ClearFeatherPass? CreateFeatherPass()
+    {
+        if (_device is null) return null;
+        ClearFeatherPass? pass = null;
+        try
+        {
+            pass = new ClearFeatherPass();
+            pass.Initialize(_device);
+            return pass;
+        }
+        catch (Exception ex)
+        {
+            pass?.Dispose();
+            // the spans are then cleared with hard ends rather than not at all
+            _featherUnavailable = true;
+            Debug.WriteLine($"[Floe.Gpu] feather pass: {ex.Message}");
+            return null;
+        }
+    }
+
+    private EdgeTurnPass? CreateTurnPass()
+    {
+        if (_device is null) return null;
+        EdgeTurnPass? pass = null;
+        try
+        {
+            pass = new EdgeTurnPass();
+            pass.Initialize(_device);
+            pass.Resize(SceneWidth, SceneHeight);
+            return pass;
+        }
+        catch (Exception ex)
+        {
+            pass?.Dispose();
+            // the strip then plays unturned rather than not at all
+            _turnUnavailable = true;
+            Debug.WriteLine($"[Floe.Gpu] edge pass: {ex.Message}");
             return null;
         }
     }
@@ -618,7 +780,7 @@ internal sealed class GpuLayerWindow : IDisposable
         _swapChain = GpuSwapChain.Create(_device, _hwnd, _width, _height);
         CreateTarget();
         _scene.Initialize(_device);
-        _scene.Resize(_width, _height);
+        _scene.Resize(SceneWidth, SceneHeight);
         _lastPresent = 0;
         Debug.WriteLine("[Floe.Gpu] device lost; recreated");
     }
@@ -627,12 +789,20 @@ internal sealed class GpuLayerWindow : IDisposable
     {
         _ledPass?.Dispose();
         _ledPass = null;
+        _turnPass?.Dispose();
+        _turnPass = null;
+        _turnUnavailable = false;
+        _featherPass?.Dispose();
+        _featherPass = null;
+        _featherUnavailable = false;
         // a new device may compile the pass fine even if the last one could not
         _ledUnavailable = false;
         _renderTarget?.Dispose();
         _renderTarget = null;
         _swapChain?.Dispose();
         _swapChain = null;
+        _context1?.Dispose();
+        _context1 = null;
         _context?.Dispose();
         _context = null;
         _device?.Dispose();

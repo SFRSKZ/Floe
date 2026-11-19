@@ -111,7 +111,8 @@ public partial class DockWindow
         _dozing = false;
         _dozeTimer!.Interval = AwakePoll;
         Rezz();
-        _visualizerWindow?.PlaceBelowDock(_hwnd);
+        if (TaskbarOn) PutDockUnderVisualizer();
+        else _visualizerWindow?.PlaceBelowDock(_hwnd);
     }
 
     private void SinkBelowVisualizer()
@@ -123,11 +124,15 @@ public partial class DockWindow
 
     private Rect CapsuleRect() => new(_capsuleLeft, RestTop, _capsuleWidth, RestBarHeight);
 
+    // The cube field is grabbed and drawn upright: a turned dock (top, left, right) would come out mirrored or with a
+    // negative size, so it fades like the light mode does.
+    private static bool DozeAsFade => Performance.DerezzAsFade || DockSettings.Edge != Floe.Core.Models.DockEdge.Bottom;
+
     // The dock breaks into falling cubes and is gone where each one leaves.
     // The dock is excluded from screen capture, so it is revealed for a few frames before the grab.
     private async void Derezz()
     {
-        if (Performance.DerezzAsFade)
+        if (DozeAsFade)
         {
             // no grab, no cube field: a plain fade ends in the same hidden state
             Fade(0);
@@ -177,7 +182,7 @@ public partial class DockWindow
             return;
         }
 
-        if (Performance.DerezzAsFade)
+        if (DozeAsFade)
         {
             // fade back in, whether the fade out finished or is still running
             if (!_dozeHidden && !_dozeFadingOut) return;

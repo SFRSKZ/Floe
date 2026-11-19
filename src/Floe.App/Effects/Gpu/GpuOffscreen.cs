@@ -36,10 +36,14 @@ public static class GpuOffscreen
     /// Initialises <paramref name="scene"/>, renders <paramref name="frames"/> frames and writes
     /// f000.png … to <paramref name="dir"/>. <paramref name="prepare"/> may fill Audio or flip Wave.
     /// </summary>
-    public static void RenderFrames(IGpuScene scene, int width, int height, float pixelsPerDip, int frames, Action<GpuFrame, int>? prepare, string dir)
+    public static void RenderFrames(IGpuScene scene, int width, int height, float pixelsPerDip, int frames, Action<GpuFrame, int>? prepare, string dir, int edge = 0)
     {
         width = Math.Max(1, width);
         height = Math.Max(1, height);
+        // the scene draws the bottom strip; on another edge (1 top, 2 left, 3 right) the picture is turned onto it
+        // through the same pass the live strip uses
+        int sceneWidth = width, sceneHeight = height;
+        if (edge >= 2) (width, height) = (height, width);
         frames = Math.Max(0, frames);
         Directory.CreateDirectory(dir);
 
@@ -76,7 +80,13 @@ public static class GpuOffscreen
                 ResourceOptionFlags.None));
 
             scene.Initialize(device);
-            scene.Resize(width, height);
+            scene.Resize(sceneWidth, sceneHeight);
+            using var turn = edge != 0 ? new EdgeTurnPass() : null;
+            // --clear=a,b,...: the spans the taskbar keeps clear, cut as the live layer cuts them
+            using var feather = edge == 0 && _lookClear is { Length: >= 2 } ? new ClearFeatherPass() : null;
+            feather?.Initialize(device);
+            turn?.Initialize(device);
+            turn?.Resize(sceneWidth, sceneHeight);
 
             for (int index = 0; index < frames; index++)
             {
@@ -84,8 +94,8 @@ public static class GpuOffscreen
                 frame.Dt = 1f / 30f;
                 frame.Time = time;
                 frame.Fade = 1;
-                frame.Width = width;
-                frame.Height = height;
+                frame.Width = sceneWidth;
+                frame.Height = sceneHeight;
                 frame.PixelsPerDip = pixelsPerDip;
                 frame.Performance = Performance.Level;
                 frame.Wave = false;
@@ -99,7 +109,18 @@ public static class GpuOffscreen
                 prepare?.Invoke(frame, index);
 
                 context.ClearRenderTargetView(target, new Color4(0, 0, 0, 0));
-                scene.Render(context, target, frame);
+                if (turn?.SceneTarget is { } strip)
+                {
+                    context.ClearRenderTargetView(strip, new Color4(0, 0, 0, 0));
+                    scene.Render(context, strip, frame);
+                    turn.Apply(context, target, width, height, edge);
+                }
+                else
+                {
+                    scene.Render(context, target, frame);
+                    if (feather is not null) feather.Apply(context, target, width, height, _lookClear!, (float)(40 * pixelsPerDip));
+                }
+
                 context.CopyResource(staging, targetTexture);
 
                 var pixels = ReadPixels(context, staging, width, height);
@@ -147,8 +168,21 @@ public static class GpuOffscreen
     /// judged without the dock. <paramref name="dir"/> is optional, as are the frame count and the
     /// start time in seconds (default 30 frames from t=8, the drop).
     /// </summary>
+    // --edge=top|left|right with --render-gpu-look: the strip turned onto that edge, as the live layer does
+    private static int LookEdge(string[] args)
+        => args.FirstOrDefault(a => a.StartsWith("--edge=", StringComparison.OrdinalIgnoreCase)) is { } arg
+            && Enum.TryParse<Floe.Core.Models.DockEdge>(arg["--edge=".Length..], true, out var edge) ? (int)edge : 0;
+
+    private static float[]? _lookClear;
+
     public static bool TryRenderLook(string[] args)
     {
+        if (args.FirstOrDefault(a => a.StartsWith("--clear=", StringComparison.OrdinalIgnoreCase)) is { } clearArg)
+        {
+            _lookClear = clearArg["--clear=".Length..].Split(',')
+                .Select(v => float.Parse(v, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        }
+
         const string option = "--render-gpu-look=";
         var argument = args.FirstOrDefault(a => a.StartsWith(option, StringComparison.OrdinalIgnoreCase));
         if (argument is null) return false;
@@ -191,10 +225,21 @@ public static class GpuOffscreen
                 // diagnostics only
             }
 
-            RenderFrames(scene, 3840, 126, 1.5f, frames, (frame, index) => MockFrame(frame, start + (index / 30f)), folder);
+            // optional strip size and dock gap, so a look can be judged at the taskbar's 48 DIP:
+            // ;width;height;pixelsPerDip;dockLeft;dockRight
+            static float Part(string[] p, int i, float fallback) => p.Length > i
+                && float.TryParse(p[i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
+            int width = (int)Part(parts, 4, 3840), height = (int)Part(parts, 5, 126);
+            float ppd = Part(parts, 6, 1.5f), dockLeft = Part(parts, 7, .37f), dockRight = Part(parts, 8, .63f);
+            RenderFrames(scene, width, height, ppd, frames, (frame, index) =>
+            {
+                MockFrame(frame, start + (index / 30f));
+                frame.DockLeft = dockLeft;
+                frame.DockRight = dockRight;
+            }, folder, LookEdge(args));
             File.WriteAllText(
                 Path.Combine(folder, "render-info.txt"),
-                $"{look}: 3840x126 at 1.5 px/dip, {frames} frames from t={start:0.00}s of the 16 s mock track, "
+                $"{look}: {width}x{height} at {ppd} px/dip, dock {dockLeft}..{dockRight}, {frames} frames from t={start:0.00}s of the 16 s mock track, "
                 + "composited over #0B0E14.\n");
         }
         catch (Exception ex)

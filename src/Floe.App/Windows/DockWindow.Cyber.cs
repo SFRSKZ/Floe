@@ -202,7 +202,7 @@ public partial class DockWindow
 
         var body = cyber ? CyberLook.Font : FontFamily;
         _clockTime.FontFamily = _clockDate.FontFamily = cyber ? CyberLook.Font : _clockFont;
-        _clockTime.FontSize = cyber ? 31 : 26;
+        _clockTime.FontSize = ClockTimeSize(cyber);
         _clockDate.FontSize = cyber ? 15 : 14;
         _clockDate.Opacity = cyber ? 1 : 0.9;
         _weatherTemp.FontSize = cyber ? 20 : 17;
@@ -267,6 +267,7 @@ public partial class DockWindow
         if (_weatherCondition is not null) _weatherIcon.Source = WeatherGlyph(_weatherCondition);
         ApplyCyberMedia();
         UpdateStartGlyph();
+        UpdateDesktopGlyph();
         foreach (var slot in _slots) ApplyCyberIcon(slot);
     }
 
@@ -287,6 +288,7 @@ public partial class DockWindow
         slot.LineBrush.Color = CyberLook.Current.Ink;
         line.Fill = slot.LineBrush;
         line.OpacityMask = mask;
+        UpdateStack(slot);
     }
 
     private static ImageBrush? ContourMask(DockItemViewModel item)
@@ -330,6 +332,7 @@ public partial class DockWindow
         Brush Tone(byte alpha) => CyberFxLayer.Solid(Color.FromArgb(alpha, ink.R, ink.G, ink.B));
 
         _media.Width = MediaWidth;
+        ApplyTaskbarMedia();
         _cover.Margin = cyber ? new Thickness(0, -8, 0, -8) : CoverBleed;
         _cover.HorizontalAlignment = cyber ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
         _cover.Width = cyber ? CoverSquare : double.NaN;

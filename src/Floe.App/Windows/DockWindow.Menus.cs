@@ -134,6 +134,7 @@ public partial class DockWindow
             var hwnd = e.Delta < 0 ? slot.Item.PreviousWindow() : slot.Item.NextWindow();
 
             WindowActivator.Activate(hwnd);
+            ShuffleStack(slot, forward: e.Delta >= 0);
             e.Handled = true;
         }
     }
@@ -141,15 +142,6 @@ public partial class DockWindow
     protected override void OnPreviewMouseRightButtonUp(MouseButtonEventArgs e)
     {
         base.OnPreviewMouseRightButtonUp(e);
-
-        // the leading button: right click shows the desktop (its left click opens Start).
-        // Handle it here, before the background menu, because this preview runs before the child's own event.
-        if (_start.IsMouseOver)
-        {
-            DesktopController.ShowDesktop();
-            e.Handled = true;
-            return;
-        }
 
         // a press can still land on the empty room above the bar (a touch, or before the click-through timer
         // caught up): that belongs to the window behind, so no dock menu there
@@ -264,7 +256,7 @@ public partial class DockWindow
         window.Show();
         window.UpdateLayout();
         var work = SettingsWindow.GetWorkArea(this);
-        PlacePopover(window, DockAnchor(Canvas.GetLeft(_clock) + (ClockWidth / 2)), work, 12);
+        PlacePopover(window, DockAnchor(Canvas.GetLeft(_clock) + (_clock.Width / 2)), work, 12);
         window.Activate();
     }
 

@@ -50,7 +50,7 @@ public partial class SettingsWindow
     private Button? _studioReset;
 
     /// <summary>Opens on the studio, for the dock's menu.</summary>
-    public void ShowStudio() => TabGlass.IsChecked = true;
+    public void ShowStudio() => TabLook.IsChecked = true;
 
     private CyberLook StudioLook => CyberLook.For(_studioBody, _studioAccent, _studioStrip, _studioInk);
 

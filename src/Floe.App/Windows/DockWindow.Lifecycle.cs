@@ -62,7 +62,7 @@ public partial class DockWindow
             _ => UpdateFullscreenState());
 
         // hwnd exists now: join the shell's appbar list so the work area ends above the bar
-        if (ReserveScreenSpace)
+        if (ReserveScreenSpace && !AutoHideOn)
         {
             _appBar = new AppBar();
             _appBar.Register(_hwnd);
@@ -152,7 +152,7 @@ public partial class DockWindow
         if (_appBar is not null)
         {
             _appBar.Remove();
-            _appBar.Register(_hwnd);
+            if (!AutoHideOn) _appBar.Register(_hwnd);
         }
         Reposition();
     }
@@ -173,12 +173,15 @@ public partial class DockWindow
         Log("tray toggled the dock");
         if (IsVisible)
         {
+            _trayHidden = true;
             Hide();
         }
         else
         {
+            _trayHidden = false;
             Show();
             Reposition();
+            RefreshRunning();
         }
     }
 

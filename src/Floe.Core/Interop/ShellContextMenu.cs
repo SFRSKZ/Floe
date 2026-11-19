@@ -97,6 +97,7 @@ public static class ShellContextMenu
         var child = IntPtr.Zero;
         var childArray = IntPtr.Zero;
         var menu = IntPtr.Zero;
+        var contextMenuPtr = IntPtr.Zero;
         IShellFolder? folder = null;
         IContextMenu? contextMenu = null;
 
@@ -120,7 +121,7 @@ public static class ShellContextMenu
             Marshal.WriteIntPtr(childArray, child);
 
             var iidContextMenu = new Guid("000214E4-0000-0000-C000-000000000046");
-            folder.GetUIObjectOf(ownerHwnd, 1, childArray, ref iidContextMenu, IntPtr.Zero, out var contextMenuPtr);
+            folder.GetUIObjectOf(ownerHwnd, 1, childArray, ref iidContextMenu, IntPtr.Zero, out contextMenuPtr);
             if (contextMenuPtr == IntPtr.Zero)
             {
                 return false;
@@ -202,6 +203,17 @@ public static class ShellContextMenu
             if (folder is not null)
             {
                 Marshal.ReleaseComObject(folder);
+            }
+
+            // the wrappers above hold references of their own: the ones the shell handed out are released here
+            if (contextMenuPtr != IntPtr.Zero)
+            {
+                Marshal.Release(contextMenuPtr);
+            }
+
+            if (parent != IntPtr.Zero)
+            {
+                Marshal.Release(parent);
             }
 
             if (pidl != IntPtr.Zero)

@@ -27,7 +27,8 @@ public partial class DockWindow
 
     private void HideTimer_Tick(object? sender, EventArgs e)
     {
-        if (!AutoHide || _menuOpen || _settingsOpen || _hwnd == IntPtr.Zero)
+        // a dock the tray or a full-screen app took away is not on screen at all: nothing to slide
+        if (!AutoHideOn || _hwnd == IntPtr.Zero || !IsVisible || _fullscreenHidden)
         {
             return;
         }
@@ -46,6 +47,13 @@ public partial class DockWindow
                 ShowDock();
             }
 
+            return;
+        }
+
+        // something is being done on the dock: a menu, the settings, a held icon, a window preview
+        if (_menuOpen || _settingsOpen || _isDragging || Mouse.Captured is not null || _preview is { IsVisible: true })
+        {
+            _outsideTicks = 0;
             return;
         }
 
@@ -74,7 +82,8 @@ public partial class DockWindow
 
         _shown = true;
         UpdateEffectVisibility();
-        _visualizerWindow?.PlaceBelowDock(_hwnd);
+        if (TaskbarOn) PutDockUnderVisualizer();
+        else _visualizerWindow?.PlaceBelowDock(_hwnd);
         _tronLayer?.PlaceBelowDock(_hwnd);
         _outsideTicks = 0;
         AnimateDockToEdge(shown: true);
@@ -91,6 +100,35 @@ public partial class DockWindow
         Log("autohide slid the dock away");
         UpdateEffectVisibility();
         AnimateDockToEdge(shown: false);
+    }
+
+    /// <summary>The dock slides away: asked for at startup (--autohide) or picked in the settings.</summary>
+    private bool AutoHideOn => AutoHide || DockSettings.AutoHide;
+
+    // follows the setting: the edge poll runs only while the dock may slide away, and a dock that may no longer
+    // hide comes back
+    private void ApplyAutoHide()
+    {
+        var on = AutoHideOn;
+        if (on == _hideTimer.IsEnabled)
+        {
+            return;
+        }
+
+        Log($"autohide {(on ? "on" : "off")}");
+        _outsideTicks = 0;
+        if (on)
+        {
+            _hideTimer.Start();
+        }
+        else
+        {
+            _hideTimer.Stop();
+            ShowDock();
+        }
+
+        // the reserved strip goes with the hiding, or an empty band would stay under every window
+        Reposition();
     }
 
     private void AnimateDockToEdge(bool shown)
@@ -132,6 +170,7 @@ public partial class DockWindow
     private void Reposition()
     {
         UpdateMonitor();
+        FitTaskbarToMonitor();
 
         BeginAnimation(LeftProperty, null);
         BeginAnimation(TopProperty, null);
@@ -159,20 +198,14 @@ public partial class DockWindow
         if (_orientedEdge != edge)
         {
             _orientedEdge = edge;
-            Root.LayoutTransform = edge switch
-            {
-                DockEdge.Left => new RotateTransform(90),
-                DockEdge.Right => new RotateTransform(270),
-                _ => Transform.Identity,
-            };
-            Root.RenderTransformOrigin = edge switch
-            {
-                DockEdge.Top => new Point(0.5, RestTop / WindowHeight),
-                DockEdge.Left => new Point(0, 0.5),
-                DockEdge.Right => new Point(1, 0.5),
-                _ => new Point(0.5, 1.0),
-            };
+            // The whole stage (glass, icons, sections, the effect layers over them) is laid out as the bottom dock
+            // and turned onto its edge, so its foot always meets the screen: mirrored for the top, a quarter turn
+            // for a side. The dock still scales about the middle of that foot.
+            Stage.LayoutTransform = EdgeTurn(edge);
         }
+
+        // and every icon and every piece of text is turned back, so it reads upright on any edge
+        ApplyUpright(edge);
 
         Root.Width = _windowWidth;
         Root.Height = WindowHeight;
@@ -209,6 +242,16 @@ public partial class DockWindow
         var bar = CapsuleWindowBounds();
         var scale = DockScale;
         var edge = DockSettings.Edge;
+        if (edge == DockEdge.Bottom && TaskbarOn)
+        {
+            // the root scales about its bottom middle: the bar's bottom lands on the screen's edge, its top hides
+            // TriggerShow above it when it slides away
+            var edgeY = anchor.Bottom / scale;
+            return shown
+                ? edgeY - Height + (ShadowRoom * TaskbarScale)
+                : edgeY - TriggerShow - Height + ((Height - RestTop) * TaskbarScale);
+        }
+
         if (edge == DockEdge.Bottom)
         {
             var bottom = anchor.Bottom / scale;
@@ -288,14 +331,16 @@ public partial class DockWindow
         }
     }
 
+    // Windows' taskbar is out of the way: hidden by the dock (as the preference in effect says) or by anyone else
+    private static bool TaskbarGone => App.HidesTaskbar || TaskbarController.IsHidden();
+
+    /// <summary>
+    /// What the dock, its visualizer and its slide-in trigger stand on, in physical pixels: the strip the app bar
+    /// holds, or without one the monitor down to Windows' taskbar while that one shows, so nothing is pinned to the
+    /// screen's physical bottom underneath a visible taskbar.
+    /// </summary>
     private ScreenInput.Rect AppBarBounds
-    {
-        get
-        {
-            var applied = _appBar?.AppliedRect ?? default;
-            return applied.Right > applied.Left && applied.Bottom > applied.Top ? applied : _monitorInfo.Monitor;
-        }
-    }
+        => DockFloor.Resolve(_monitorInfo.Monitor, _monitorInfo.Work, _appBar?.AppliedRect ?? default, TaskbarGone, DockSettings.Edge);
 
     /// <summary>The benchmark parks its dock here (DIP), off every screen, so it never covers the real one.</summary>
     internal static double? BenchLeft { get; set; }
@@ -339,16 +384,21 @@ public partial class DockWindow
             return;
         }
 
-        if (ReserveScreenSpace)
+        if (ReserveScreenSpace && !AutoHideOn)
         {
             _appBar ??= new AppBar();
             ApplyAppBarPosition();
+        }
+        else
+        {
+            // a dock that slides away keeps no strip: windows use the whole screen and it comes up over them
+            _appBar?.Remove();
         }
     }
 
     private void ApplyAppBarPosition()
     {
-        if (_appBar is null || _hwnd == IntPtr.Zero)
+        if (_appBar is null || _hwnd == IntPtr.Zero || AutoHideOn)
         {
             return;
         }
@@ -368,8 +418,8 @@ public partial class DockWindow
         // reserve up to the capsule's top as it rests: full size when the dock does not shrink, so maximized
         // windows end above it instead of under it
         var restTop = ((ShadowRoom + RestBarHeight) * CompactScale) + BottomMargin - Sink + 4;
-        var height = (int)Math.Round(Math.Max((RestBarHeight + BottomMargin) * FullScale, restTop) * DockScale);
-        _appBar.SetPosition(_monitorInfo.Monitor, height, DockSettings.Edge, DockSettings.HideWindowsTaskbar || TaskbarController.IsHidden());
+        var height = (int)Math.Round((TaskbarOn ? TaskbarHeight : Math.Max((RestBarHeight + BottomMargin) * FullScale, restTop)) * DockScale);
+        _appBar.SetPosition(_monitorInfo.Monitor, height, DockSettings.Edge, TaskbarGone);
         if (IsLoaded)
         {
             UpdateLayout();
@@ -387,6 +437,8 @@ public partial class DockWindow
 
         // turning the full-screen hiding off brings a hidden dock back at once
         UpdateFullscreenState();
+        ApplyTaskbarChange();
+        ApplyAutoHide();
 
         // a new size: the dock grows or shrinks to it, and the visualizer strip follows
         _targetDockScale = IsMouseOver || _menuOpen ? FullScale : CompactScale;
@@ -400,17 +452,24 @@ public partial class DockWindow
             return;
         }
 
+        Log($"dock edge {_lastDockEdge} -> {DockSettings.Edge}");
         _lastDockEdge = DockSettings.Edge;
         BeginAnimation(LeftProperty, null);
         BeginAnimation(TopProperty, null);
+        _tooltip.IsOpen = false;
+        HidePreview();
         ApplyDockOrientation();
         if (_appBar is not null && _hwnd != IntPtr.Zero)
         {
             _appBar.Remove();
             _appBar.Register(_hwnd);
         }
+        // a side has no song or weather: the row is laid out again, and the window takes its new length
+        RebuildIcons();
         UpdateShape();
         Reposition();
+        // the strip moves to the new edge now, not at the next poll
+        ApplyVisualizerState();
     }
 
 
@@ -455,10 +514,12 @@ public partial class DockWindow
         {
             Hide();
         }
-        else
+        else if (!_trayHidden)
         {
+            // a dock put away from the tray stays away: leaving a full-screen app must not bring it back
             Show();
             Reposition();
+            RefreshRunning();
         }
     }
 

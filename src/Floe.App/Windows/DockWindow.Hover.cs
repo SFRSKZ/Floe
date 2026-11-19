@@ -218,6 +218,15 @@ public partial class DockWindow
         if (GlassSettings.Cyber) return; // the scan card names it
 
         _tooltipText.Text = slot.Item.Name;
+        if (DockSettings.Edge != DockEdge.Bottom)
+        {
+            // a popup tied to a turned icon would turn its text with it: off the bottom edge it is placed on the screen
+            ShowUprightPopup(_tooltip, DockAnchor(slot.Center), 10);
+            return;
+        }
+
+        _tooltip.Placement = PlacementMode.Top;
+        _tooltip.VerticalOffset = -10;
         _tooltip.PlacementTarget = slot.Button;
         _tooltip.IsOpen = true;
 

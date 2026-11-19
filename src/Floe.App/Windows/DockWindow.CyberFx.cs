@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -300,8 +300,10 @@ public partial class DockWindow
             if (CyberFxLayer.Random(Math.Floor(p * 10) + 3) < .4 || !Root.IsAncestorOf(_clockTime)) return;
             var bounds = _clockTime.TransformToAncestor(Root).TransformBounds(new Rect(_clockTime.RenderSize));
             double middle = bounds.X + (bounds.Width / 2);
-            _fx.Text(dc, _clockTime.Text, middle - 3, bounds.Y + 1, _clockTime.FontSize, red, TextAlignment.Center);
-            _fx.Text(dc, _clockTime.Text, middle + 3, bounds.Y + 1, _clockTime.FontSize, cyan, TextAlignment.Center);
+            // down a side the time stands upright across the bar: its line is centred on the box it turned into
+            double top = DockSettings.Vertical ? bounds.Y + ((bounds.Height - _clockTime.ActualHeight) / 2) + 1 : bounds.Y + 1;
+            _fx.Text(dc, _clockTime.Text, middle - 3, top, _clockTime.FontSize, red, TextAlignment.Center, upright: true);
+            _fx.Text(dc, _clockTime.Text, middle + 3, top, _clockTime.FontSize, cyan, TextAlignment.Center, upright: true);
         }, inside: true);
     }
 
@@ -716,6 +718,8 @@ public partial class DockWindow
         switch (name)
         {
             case "hex": PlayHexDump(slot); break;
+            case "cubes": PlayClickCubes(slot); break;
+            case "cubes1": PlayClickCubes(_slots[1]); break;
             case "hover":
                 SetFxHover(slot);
                 PlaceSlotFill(slot);

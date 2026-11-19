@@ -20,6 +20,7 @@
     <EmbeddedResource Include="Effects\ActiveIcon\ActiveIcon.hlsl" LogicalName="Floe.ActiveIcon.hlsl" />
     <EmbeddedResource Include="Effects\ActiveIcon\ClickGlass.hlsl" LogicalName="Floe.ClickGlass.hlsl" />
     <EmbeddedResource Include="Effects\ActiveIcon\ClickPaint.hlsl" LogicalName="Floe.ClickPaint.hlsl" />
+    <EmbeddedResource Include="Effects\ActiveIcon\Lab\*.hlsl" LogicalName="Floe.IconLab.%(Filename).hlsl" />
     <EmbeddedResource Include="Effects\Chromatic\Chromatic.hlsl" LogicalName="Floe.Chromatic.hlsl" />
     <EmbeddedResource Include="Effects\Glass\DropLens.hlsl" LogicalName="Floe.DropLens.hlsl" />
     <EmbeddedResource Include="Effects\Glass\DozeGhost.hlsl" LogicalName="Floe.DozeGhost.hlsl" />
@@ -30,6 +31,8 @@
     <Resource Include="Assets\ContourIcons\names.csv" />
     <Resource Include="Assets\CardIcons\*.png" />
     <Resource Include="Assets\CardIcons\names.csv" />
+    <Resource Include="Assets\Visualizers\*.jpg" />
+    <Resource Include="Assets\Visualizers\*.png" />
   </ItemGroup>
 
   <ItemGroup>

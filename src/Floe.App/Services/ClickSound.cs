@@ -31,6 +31,8 @@ public static class ClickSound
     private static readonly double[] Drift = { 1, 1.012, .991, 1.006 };
     private static readonly object Gate = new();
     private static readonly List<Voice> Voices = new();
+    // set by a click: the mixer sleeps on it while nothing plays, so an idle dock writes no audio
+    private static readonly AutoResetEvent Wake = new(false);
 
     private static float[][] _dark = Array.Empty<float[]>();
     private static float[][] _light = Array.Empty<float[]>();
@@ -116,6 +118,8 @@ public static class ClickSound
         {
             Voices.Add(voice);
         }
+
+        Wake.Set();
     }
 
     /// <summary>Writes the click voices to a WAV file, for listening without the dock (diagnostics).</summary>
@@ -361,7 +365,14 @@ public static class ClickSound
             _headers[i].Length = Frames * Channels * 2;
             if (waveOutPrepareHeader(_device, _headerPtr + (i * size), size) != 0)
             {
+                for (var j = 0; j < i; j++)
+                {
+                    waveOutUnprepareHeader(_device, _headerPtr + (j * size), size);
+                }
+
                 waveOutClose(_device);
+                _headerHandle.Free();
+                _pcmHandle.Free();
                 return false;
             }
         }
@@ -374,6 +385,28 @@ public static class ClickSound
         var size = Marshal.SizeOf<WaveHeader>();
         while (true)
         {
+            bool playing;
+            lock (Gate)
+            {
+                playing = Voices.Count > 0;
+            }
+
+            if (!playing)
+            {
+                // nothing to play: let the queued buffers run out, then sleep until the next click instead of
+                // streaming silence forever (that kept the audio device busy and the thread spinning)
+                if (AnyQueued(size))
+                {
+                    Thread.Sleep(3);
+                }
+                else
+                {
+                    Wake.WaitOne();
+                }
+
+                continue;
+            }
+
             var wrote = false;
             for (var i = 0; i < BufferCount; i++)
             {
@@ -389,6 +422,19 @@ public static class ClickSound
 
             Thread.Sleep(wrote ? 1 : 3);
         }
+    }
+
+    private static bool AnyQueued(int size)
+    {
+        for (var i = 0; i < BufferCount; i++)
+        {
+            if ((ReadHeader(i, size).Flags & WHDR_INQUEUE) != 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static WaveHeader ReadHeader(int index, int size) =>
@@ -497,6 +543,9 @@ public static class ClickSound
 
     [DllImport("winmm.dll")]
     private static extern int waveOutPrepareHeader(IntPtr device, IntPtr header, int size);
+
+    [DllImport("winmm.dll")]
+    private static extern int waveOutUnprepareHeader(IntPtr device, IntPtr header, int size);
 
     [DllImport("winmm.dll")]
     private static extern int waveOutWrite(IntPtr device, IntPtr header, int size);

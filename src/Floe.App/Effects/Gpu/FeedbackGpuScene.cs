@@ -9,12 +9,18 @@ using Color = System.Windows.Media.Color;
 
 namespace Floe.App.Effects.Gpu;
 
+/// <summary>Implemented by GPU scenes that tint themselves from the active Cyberpunk glass theme when enabled.</summary>
+public interface IThemedGpuScene
+{
+    CyberLook? Theme { get; set; }
+}
+
 /// <summary>
 /// The MilkDrop loop for a full-screen look: one pass draws the new field from the last one into a float target,
 /// a second pass shows that field. A scene brings the two pixel shaders (t0 is the field, s0 a linear clamp) and
 /// the constants; this class owns the textures and the swap.
 /// </summary>
-public abstract class FeedbackGpuScene : IGpuScene
+public abstract class FeedbackGpuScene : IGpuScene, IThemedGpuScene
 {
     private readonly string _feedbackSource, _showSource;
     private ID3D11Device? _device;
@@ -62,7 +68,7 @@ public abstract class FeedbackGpuScene : IGpuScene
 
     protected abstract void Fill(GpuFrame frame);
 
-    public void Initialize(ID3D11Device device)
+    public virtual void Initialize(ID3D11Device device)
     {
         _device = device;
         _fullscreenVs = device.CreateVertexShader(Compile("vs_5_0", FullscreenVs).Span, null);
@@ -186,7 +192,7 @@ public abstract class FeedbackGpuScene : IGpuScene
         for (int i = 0; i < 24; i++) Data[at + i] = Math.Clamp(bands[i * bands.Length / 24], 0, 1);
     }
 
-    public void ReleaseDevice()
+    public virtual void ReleaseDevice()
     {
         ReleaseSized();
         _fullscreenVs?.Dispose(); _fullscreenVs = null;
@@ -227,7 +233,7 @@ public abstract class FeedbackGpuScene : IGpuScene
     /// </summary>
     protected sealed class BeatTracker
     {
-        private float _slow, _slowTreble, _last, _lastKick, _lastSnare, _gap;
+        private float _slow, _slowTreble, _last, _climb, _lastKick, _lastSnare, _gap;
 
         /// <summary>True on the one frame a beat lands.</summary>
         public bool Hit { get; private set; }
@@ -235,7 +241,7 @@ public abstract class FeedbackGpuScene : IGpuScene
         /// <summary>True when that beat was a snare rather than the low end.</summary>
         public bool Snare { get; private set; }
 
-        /// <summary>.6 on a beat, falling away over a third of a second.</summary>
+        /// <summary>A beat's weight, .45 for a light one to .75 for a hard one, falling away over a third of a second.</summary>
         public float Pulse { get; private set; }
 
         /// <summary>0..1: how far the low end stands above its recent average, right now.</summary>
@@ -256,7 +262,12 @@ public abstract class FeedbackGpuScene : IGpuScene
 
             bool kick = audio.Kick > .1f && _lastKick <= .1f;
             Snare = audio.Snare > .1f && _lastSnare <= .1f;
-            bool climb = rise > .2f && energy - _last > .04f;
+            // how fast the low end climbs, per second: the levels only change when the analyser has new sound, so
+            // the frame-to-frame step says nothing on a fast display
+            if (dt > 0) _climb += (((energy - _last) / dt) - _climb) * (1 - MathF.Exp(-dt * 30));
+            bool climb = rise > .2f && _climb > 2.4f;
+            // as MilkDrop weighs a beat by how far it stands out: the onsets arrive at .2 to .7 after the calming
+            float weight = Math.Clamp(Math.Max(kick ? audio.Kick : 0, Snare ? audio.Snare * .85f : 0) / .7f, 0, 1);
             _lastKick = audio.Kick;
             _lastSnare = audio.Snare;
             _last = energy;
@@ -264,7 +275,7 @@ public abstract class FeedbackGpuScene : IGpuScene
             _gap += dt;
             Hit = (kick || Snare || climb) && _gap > .2f;
             if (Hit) _gap = 0;
-            Pulse = Hit ? .6f : Pulse * MathF.Exp(-dt * 6);
+            Pulse = Hit ? (kick || Snare ? .45f + (.3f * weight) : .5f) : Pulse * MathF.Exp(-dt * 6);
         }
     }
 
@@ -303,6 +314,39 @@ public abstract class FeedbackGpuScene : IGpuScene
             int i = (int)f;
             int j = i + 1;
             return lerp(Bands[i / 4][i % 4], Bands[j / 4][j % 4], f - i);
+        }
+
+        // The helpers below adapt hg_sdf (Mercury demoscene, CC BY-NC, 2015-12-15) for new scenes, which may use them
+        // or not. Nothing calls them yet, so no existing look changes.
+
+        // hg_sdf's antialiased distance: 0 on the edge, 1 well inside. Use it in a single-sample main only; the
+        // four-sample turned-grid mains jitter their own antialiasing already and a second one would just soften them.
+        float AAdist(float d)
+        {
+            float w = max(abs(ddx(d)), abs(ddy(d)));
+            return saturate(d / max(w, 1e-5) * .5);
+        }
+
+        // hg_sdf fBox2 with a corner radius: half extents <b>, radius <r>; at 0 it is fBox2 exactly.
+        float SdfBox(float2 p, float2 b, float r)
+        {
+            float2 d = (abs(p) - b) + r;
+            return length(max(d, 0)) + min(max(d.x, d.y), 0) - r;
+        }
+
+        // hg_sdf fLineSegment: the distance to the stretch from <a> to <b>.
+        float SdfSegment(float2 p, float2 a, float2 b)
+        {
+            float2 ab = b - a;
+            float t = saturate(dot(p - a, ab) / max(dot(ab, ab), 1e-6));
+            return length((a + (ab * t)) - p);
+        }
+
+        // hg_sdf fHexagonCircumcircle in two dimensions: a hexagon whose flat sides sit <r> from the middle.
+        float SdfHex(float2 p, float r)
+        {
+            p = abs(p);
+            return max((p.x * .8660254) + (p.y * .5), p.y) - r;
         }
 
         """;

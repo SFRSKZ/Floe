@@ -12,6 +12,13 @@ public partial class DockWindow
 {
     private void PlayClickGlass(DockItemViewModel item)
     {
+        // the cubes take the click's place in either theme
+        if (AuraSettings.ClickCubes && AuraSettings.ClickEffect && !NoFx.Contains("click", StringComparison.OrdinalIgnoreCase))
+        {
+            if (_slots.FirstOrDefault(s => ReferenceEquals(s.Item, item)) is { } hit) PlayClickCubes(hit);
+            return;
+        }
+
         if (GlassSettings.Cyber)
         {
             if (AuraSettings.ClickEffect && !NoFx.Contains("click", StringComparison.OrdinalIgnoreCase)) PlayCyberClick(item);
@@ -60,9 +67,10 @@ public partial class DockWindow
         var animation = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(1050 / AuraSettings.ClickSpeed));
         animation.Completed += (_, _) =>
         {
-            grid.Children.Remove(overlay);
+            // the finished drop and the glass that stays cross-fade instead of cutting over
+            FadeOutGlass(overlay, GlassReturnMs);
             if (!ReferenceEquals(_glassLoop?.Parent, grid)) SetRestGlassVisible(grid, true);
-            if (loop is not null) loop.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)));
+            if (loop is not null) loop.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(GlassReturnMs)));
         };
         overlay.Unloaded += (_, _) =>
         {
@@ -119,13 +127,24 @@ public partial class DockWindow
 
     private void StopGlassLoop()
     {
-        _glassLoopEffect?.BeginAnimation(ClickGlassEffect.LoopTimeProperty, null);
         if (_glassLoop?.Parent is Grid grid)
         {
-            grid.Children.Remove(_glassLoop);
+            // the loop keeps running while it fades, so it does not freeze mid-wave on its way out
+            var leaving = _glassLoop;
+            var leavingEffect = _glassLoopEffect;
+            FadeOutGlass(leaving, GlassReturnMs, () =>
+            {
+                leavingEffect?.BeginAnimation(ClickGlassEffect.LoopTimeProperty, null);
+                leaving.Effect = null;
+            });
             SetRestGlassVisible(grid, true);
         }
-        if (_glassLoop is not null) _glassLoop.Effect = null;
+        else
+        {
+            _glassLoopEffect?.BeginAnimation(ClickGlassEffect.LoopTimeProperty, null);
+            if (_glassLoop is not null) _glassLoop.Effect = null;
+        }
+
         _glassLoop = null;
         _glassLoopEffect = null;
     }
@@ -195,9 +214,44 @@ public partial class DockWindow
         grid.Children.Insert(1, overlay);
     }
 
+    // how long the glass layers take to hand over to each other: a cut between two lit glasses reads as a flicker
+    private const double GlassHandOverMs = 140, GlassReturnMs = 420;
+
     private static void SetRestGlassVisible(Grid grid, bool visible)
     {
         foreach (var rest in grid.Children.OfType<Image>().Where(IsRestGlass))
-            rest.Visibility = visible ? Visibility.Visible : Visibility.Hidden;
+        {
+            if (visible)
+            {
+                var from = rest.Visibility == Visibility.Visible ? rest.Opacity : 0;
+                rest.Visibility = Visibility.Visible;
+                rest.BeginAnimation(OpacityProperty, new DoubleAnimation(from, 1, TimeSpan.FromMilliseconds(GlassReturnMs))
+                {
+                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+                });
+            }
+            else
+            {
+                var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(GlassHandOverMs));
+                fade.Completed += (_, _) =>
+                {
+                    // hidden once faded (it costs no frames), unless it was asked back meanwhile
+                    if (rest.Opacity <= 0.001) rest.Visibility = Visibility.Hidden;
+                };
+                rest.BeginAnimation(OpacityProperty, fade);
+            }
+        }
+    }
+
+    /// <summary>Fades a glass overlay out and takes it off its grid once gone.</summary>
+    private static void FadeOutGlass(Image overlay, double ms, Action? removed = null)
+    {
+        var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(ms)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } };
+        fade.Completed += (_, _) =>
+        {
+            (overlay.Parent as Grid)?.Children.Remove(overlay);
+            removed?.Invoke();
+        };
+        overlay.BeginAnimation(OpacityProperty, fade);
     }
 }

@@ -14,6 +14,11 @@ public partial class App : Application
 {
     private bool _hideTaskbar;
     private bool _dockRunning;
+    // held for the dock's whole life so a second start can tell it is running
+    private System.Threading.Mutex? _singleInstance;
+
+    // Floe or FloeCP77: each product keeps its own note of what Windows had
+    private static string ProductName => System.IO.Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "Floe");
     private DispatcherTimer? _taskbarTimer;
     private string[] _startupArgs = Array.Empty<string>();
 
@@ -118,9 +123,8 @@ public partial class App : Application
                 lines.AppendLine("WINDOWS:");
                 foreach (var window in windows)
                 {
-                    var match = pinned.FirstOrDefault(vm => Floe.App.Services.AppMatcher.Matches(
-                        vm.Name, vm.ProcessName, vm.App.Target, window.ProcessName, window.Title, window.ProcessPath));
-                    lines.AppendLine($"  {window.ProcessName} | {window.Title} | {window.ProcessPath} => {(match is null ? "(none)" : match.Name)}");
+                    var match = pinned.FirstOrDefault(vm => Floe.App.Services.AppMatcher.Matches(vm, window));
+                    lines.AppendLine($"  {window.ProcessName} | {window.Title} | {window.ProcessPath} | {window.AppId} => {(match is null ? "(none)" : match.Name)}");
                 }
 
                 lines.AppendLine("PINNED:");
@@ -184,6 +188,18 @@ public partial class App : Application
         var renderPath = e.Args
             .FirstOrDefault(a => a.StartsWith("--render=", StringComparison.OrdinalIgnoreCase))?["--render=".Length..];
 
+        // one dock per product: a second start (a shortcut clicked while the dock runs) leaves at once
+        if (renderPath is null)
+        {
+            _singleInstance = new System.Threading.Mutex(true, $@"Local\Floe.Dock.{System.IO.Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "Floe")}", out var first);
+            if (!first)
+            {
+                Log("another dock is already running; this one leaves");
+                Shutdown();
+                return;
+            }
+        }
+
         if (renderPath is null)
         {
             ConfigureTaskbarPreference(restoreWhenVisible: true);
@@ -193,8 +209,13 @@ public partial class App : Application
                 _taskbarTimer?.Stop();
                 Services.DockSettings.Changed -= OnDockSettingsChanged;
                 TaskbarController.Show();
+                TaskbarAlignment.Apply(false, ProductName);
             };
-            AppDomain.CurrentDomain.ProcessExit += (_, _) => TaskbarController.Show();
+            AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+            {
+                TaskbarController.Show();
+                TaskbarAlignment.Apply(false, ProductName);
+            };
         }
 
         if (renderPath is null
@@ -206,6 +227,22 @@ public partial class App : Application
 
         var blur = renderPath is null
             && !e.Args.Any(a => a.Equals("--no-blur", StringComparison.OrdinalIgnoreCase));
+
+        // --taskbar=strip|crown renders the dock as a taskbar without touching the saved choice
+        if (renderPath is not null
+            && e.Args.FirstOrDefault(a => a.StartsWith("--taskbar=", StringComparison.OrdinalIgnoreCase)) is { } taskbarArg
+            && Enum.TryParse<Services.TaskbarLayout>(taskbarArg["--taskbar=".Length..], true, out var taskbarLayout))
+        {
+            Services.DockSettings.PreviewTaskbar(taskbarLayout);
+        }
+
+        // --edge=top|left|right renders the dock on another screen edge without touching the saved choice
+        if (renderPath is not null
+            && e.Args.FirstOrDefault(a => a.StartsWith("--edge=", StringComparison.OrdinalIgnoreCase)) is { } edgeArg
+            && Enum.TryParse<Floe.Core.Models.DockEdge>(edgeArg["--edge=".Length..], true, out var edge))
+        {
+            Services.DockSettings.PreviewEdge(edge);
+        }
 
         var dock = new DockWindow
         {
@@ -244,14 +281,21 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// The taskbar preference in effect: the setting as --keep-taskbar / --hide-taskbar override it. The dock lays
+    /// itself out by this, so placement and hiding never disagree.
+    /// </summary>
+    internal static bool HidesTaskbar { get; private set; }
+
     private void OnDockSettingsChanged()
         => ConfigureTaskbarPreference(restoreWhenVisible: true);
 
     private void ConfigureTaskbarPreference(bool restoreWhenVisible)
     {
-        var forceVisible = _startupArgs.Any(a => a.Equals("--keep-taskbar", StringComparison.OrdinalIgnoreCase));
-        var forceHidden = _startupArgs.Any(a => a.Equals("--hide-taskbar", StringComparison.OrdinalIgnoreCase));
-        _hideTaskbar = !forceVisible && (forceHidden || Services.DockSettings.HideWindowsTaskbar);
+        _hideTaskbar = Floe.Core.Services.TaskbarPreference.HidesTaskbar(Services.DockSettings.HidesWindowsTaskbar, _startupArgs);
+        HidesTaskbar = _hideTaskbar;
+        // the taskbar's start button sits at the left: the Start menu opens over it
+        TaskbarAlignment.Apply(Services.DockSettings.TaskbarOn, ProductName);
 
         if (_hideTaskbar)
         {
@@ -442,11 +486,19 @@ public partial class App : Application
                 context.DrawRectangle(background, null, new Rect(0, 0, width, height));
             }
 
-            var brush = new VisualBrush(dock.Stage)
+            // off the bottom edge the stage is turned onto its edge: the window's own tree carries that turn
+            Visual source = Services.DockSettings.Edge == Floe.Core.Models.DockEdge.Bottom || VisualTreeHelper.GetChildrenCount(dock) == 0
+                ? dock.Stage
+                : (Visual)VisualTreeHelper.GetChild(dock, 0);
+            var brush = new VisualBrush(source)
             {
                 Stretch = Stretch.None,
                 AlignmentX = AlignmentX.Left,
                 AlignmentY = AlignmentY.Top,
+                // the window's own rectangle: a taskbar's capsule reaches past the window before its scale brings it
+                // in, and the content's bounds would shift the picture
+                ViewboxUnits = BrushMappingMode.Absolute,
+                Viewbox = new Rect(0, 0, width, height),
             };
             context.DrawRectangle(brush, null, new Rect(0, 0, width, height));
         }

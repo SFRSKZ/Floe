@@ -57,8 +57,8 @@ public partial class DockWindow
         _restCapsuleLeft = (_windowWidth - _capsuleWidth) / 2;
         _restCapsuleWidth = _capsuleWidth;
         _capsuleLeft = _restCapsuleLeft;
-        _backdrop.Width = _windowWidth;
-        _backdrop.Height = WindowHeight;
+        if (TaskbarOn) ApplyTaskbarGeometry();
+        ApplyBackdropTurn();
         UpdateBackdropUnscale();
 
         ApplyDockOrientation();
@@ -79,6 +79,7 @@ public partial class DockWindow
                 Stretch = Stretch.Uniform,
             };
             RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
+            MakeUpright(image);
 
             var dot = new Ellipse
             {
@@ -94,8 +95,19 @@ public partial class DockWindow
             var grid = new Grid { Width = IconBox, Height = IconBox };
             grid.Children.Add(image);
             // the cyber themes' outline icon, in the app artwork's place; the set leaves a wide margin around its drawings
-            grid.Children.Add(new Rectangle { Margin = new Thickness(-5), Visibility = Visibility.Collapsed });
+            var outline = new Rectangle { Margin = new Thickness(-5), Visibility = Visibility.Collapsed };
+            MakeUpright(outline);
+            grid.Children.Add(outline);
             grid.Children.Add(dot);
+            // an app with more windows shows as a small stack of itself; kept behind the artwork and after it in
+            // the children, since the click effects find the artwork as the first child
+            var stack = new Rectangle[StackDepth];
+            for (int layer = 0; layer < StackDepth; layer++)
+            {
+                stack[layer] = new Rectangle { Visibility = Visibility.Collapsed, IsHitTestVisible = false, RenderTransformOrigin = new Point(.5, .5) };
+                Panel.SetZIndex(stack[layer], -1 - layer);
+                grid.Children.Add(stack[layer]);
+            }
 
             var scale = new ScaleTransform(1, 1);
             var translate = new TranslateTransform(0, 0);
@@ -117,7 +129,11 @@ public partial class DockWindow
                 RenderTransformOrigin = new Point(0.5, 1.0),
                 RenderTransform = transformGroup,
             };
-            var slot = new IconSlot(button, dot, item, centerLocal, scale, translate);
+            // the card that flies to the back (or comes from it) when the wheel turns the deck
+            var flyer = new Rectangle { Visibility = Visibility.Collapsed, IsHitTestVisible = false, RenderTransformOrigin = new Point(.5, .5) };
+            Panel.SetZIndex(flyer, 5);
+            grid.Children.Add(flyer);
+            var slot = new IconSlot(button, dot, item, centerLocal, scale, translate) { Stack = stack, Flyer = flyer };
             _slots.Add(slot);
             IconLayer.Children.Add(button);
             ApplyCyberIcon(slot);
@@ -155,16 +171,27 @@ public partial class DockWindow
         return template;
     }
 
+    private double[] _scaleBuffer = Array.Empty<double>();
+    private double[] _falloffBuffer = Array.Empty<double>();
+
     private double[] ComputeScales(double hoverWindow)
     {
+        // called every frame while the dock moves: the two arrays are kept and only replaced when the icon count
+        // changes; every caller uses the result before the next call
         var count = _slots.Count;
-        var result = new double[count];
+        if (_scaleBuffer.Length != count)
+        {
+            _scaleBuffer = new double[count];
+            _falloffBuffer = new double[count];
+        }
+
+        var result = _scaleBuffer;
         if (count == 0)
         {
             return result;
         }
 
-        var falloffs = new double[count];
+        var falloffs = _falloffBuffer;
         var max = 0.0;
         for (var i = 0; i < count; i++)
         {
@@ -193,7 +220,9 @@ public partial class DockWindow
             total += IconBox * scales[i];
         }
 
-        var startX = _capsuleLeft + LeadX;
+        var startX = TaskbarOn ? TaskbarIconStart(total) : _capsuleLeft + LeadX;
+        _taskbarIconsLeft = startX;
+        _taskbarIconsRight = startX + total;
         var x = startX;
         var separatorX = double.NaN;
 
@@ -255,6 +284,8 @@ public partial class DockWindow
 
         PositionStartButton();
         PositionSections(startX + total);
+        FollowTaskbarLayout();
+        FollowDockGpu();
         UpdateCyberHover(scales);
 
         if (_activeIndex >= 0 && _activeIndex < count && _auraGrid.Visibility == Visibility.Visible)
@@ -277,6 +308,14 @@ public partial class DockWindow
         for (var i = 0; i < count; i++)
         {
             total += IconBox * scales[i];
+        }
+
+        if (TaskbarOn)
+        {
+            // the bar spans the monitor whatever it holds
+            _capsuleWidth = (_windowWidth / TaskbarScale) + (2 * TaskbarBleed);
+            _capsuleLeft = (_windowWidth - _capsuleWidth) / 2;
+            return;
         }
 
         _capsuleWidth = LeadX + total + TrailWidth(_mediaReveal);

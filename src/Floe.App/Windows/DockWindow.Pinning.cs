@@ -27,29 +27,36 @@ public partial class DockWindow
 
     private void Pin(DockItemViewModel item)
     {
-        if (item.IsPinned)
+        // an app whose exe could not be read has nothing to launch it by
+        if (item.IsPinned || string.IsNullOrWhiteSpace(item.App.Target))
         {
             return;
         }
 
         var pinned = new DockItemViewModel(item.App, isPinned: true);
+        if (_pinned.ContainsKey(pinned.Key))
+        {
+            return;
+        }
+
         _pinnedList.Add(pinned);
-        _pinned[pinned.ProcessName] = pinned;
+        _pinned[pinned.Key] = pinned;
         SavePinned();
         RefreshRunning();
     }
 
     private void Unpin(DockItemViewModel item)
     {
-        var target = _pinnedList.FirstOrDefault(v =>
-            string.Equals(v.ProcessName, item.ProcessName, StringComparison.OrdinalIgnoreCase));
+        // by its key: two packaged apps may share a process name, and only the one asked for goes
+        var target = _pinnedList.FirstOrDefault(v => ReferenceEquals(v, item))
+            ?? _pinnedList.FirstOrDefault(v => string.Equals(v.Key, item.Key, StringComparison.OrdinalIgnoreCase));
         if (target is null)
         {
             return;
         }
 
         _pinnedList.Remove(target);
-        _pinned.Remove(target.ProcessName);
+        _pinned.Remove(target.Key);
         SavePinned();
         RefreshRunning();
     }
@@ -77,6 +84,17 @@ public partial class DockWindow
 
     private static void CloseApp(DockItemViewModel item)
     {
+        // the item's own windows: another app with the same process name (two different app.exe) stays open
+        if (item.Windows.Count > 0)
+        {
+            foreach (var hwnd in item.Windows)
+            {
+                AppWindows.RequestClose(hwnd);
+            }
+
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(item.ProcessName))
         {
             return;

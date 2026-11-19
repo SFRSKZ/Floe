@@ -229,13 +229,37 @@ public sealed class CyberFxLayer : FrameworkElement
         return new PathGeometry(new[] { figure });
     }
 
-    public void Text(DrawingContext dc, string text, double x, double y, double size, Brush brush, TextAlignment align = TextAlignment.Left)
+    public void Text(DrawingContext dc, string text, double x, double y, double size, Brush brush, TextAlignment align = TextAlignment.Left, bool upright = false)
     {
         var format = new FormattedText(text, Loc.Culture, FlowDirection.LeftToRight,
             new Typeface(CyberLook.Font, FontStyles.Normal, FontWeights.Bold, FontStretches.Normal), size, brush,
             VisualTreeHelper.GetDpi(this).PixelsPerDip) { TextAlignment = align };
+        // a line of text keeps to its card or band and reads down a side like a book's spine; a glyph or two (a hex
+        // byte, a mark) and the clock stand upright
+        var turn = upright || text.Length <= 2 ? Upright : Spine;
+        if (turn.IsIdentity)
+        {
+            dc.DrawText(format, new Point(x, y));
+            return;
+        }
+
+        // the layer is turned with a dock on another edge: each line is turned back about its own middle
+        double left = align switch { TextAlignment.Center => x - (format.Width / 2), TextAlignment.Right => x - format.Width, _ => x };
+        var middle = new Point(left + (format.Width / 2), y + (format.Height / 2));
+        var about = Matrix.Identity;
+        about.Translate(-middle.X, -middle.Y);
+        about.Append(turn);
+        about.Translate(middle.X, middle.Y);
+        dc.PushTransform(new MatrixTransform(about));
         dc.DrawText(format, new Point(x, y));
+        dc.Pop();
     }
+
+    /// <summary>The turn that puts text upright again when the dock (and this layer with it) stands on another edge.</summary>
+    public Matrix Upright { get; set; } = Matrix.Identity;
+
+    /// <summary>The turn for a line of text on a side: none on the left, and the right edge's fold undone so it does not mirror.</summary>
+    public Matrix Spine { get; set; } = Matrix.Identity;
 
     public static void Corners(DrawingContext dc, Rect r, double length, Pen pen)
     {

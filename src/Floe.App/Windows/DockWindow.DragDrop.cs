@@ -33,7 +33,7 @@ public partial class DockWindow
         }
 
         _dragSlot = slot;
-        _dragStart = e.GetPosition(this);
+        _dragStart = e.GetPosition(Stage); // the stage's own coordinates: the bottom dock's, on any edge
         _isDragging = false;
         Log($"dragStart {slot.Item.Name}");
         _tooltip.IsOpen = false;
@@ -47,7 +47,7 @@ public partial class DockWindow
             return;
         }
 
-        var position = e.GetPosition(this);
+        var position = e.GetPosition(Stage);
         if (!_isDragging)
         {
             if (Math.Abs(position.X - _dragStart.X) < 6 && Math.Abs(position.Y - _dragStart.Y) < 6)
@@ -95,7 +95,7 @@ public partial class DockWindow
         }
 
         _isDragging = false;
-        var position = e.GetPosition(this);
+        var position = e.GetPosition(Stage);
 
         if (position.Y > IconBottom + (IconBox * 0.5))
         {
@@ -140,6 +140,8 @@ public partial class DockWindow
     {
         base.OnDragEnter(e);
         e.Effects = PreferredEffect(e);
+        // one line per drag: whether the dock sees it at all, and what it carries
+        Log($"dragEnter effects={e.Effects} allowed={e.AllowedEffects} formats={string.Join(",", e.Data.GetFormats())}");
     }
 
     protected override void OnDragOver(DragEventArgs e)
@@ -153,7 +155,7 @@ public partial class DockWindow
             _targetDockScale = FullScale;
             EnsureAnimation();
 
-            var index = FindIndexAt(e.GetPosition(this).X);
+            var index = TaskbarOn ? FindTaskbarIndexAt(e.GetPosition(IconLayer).X) : FindIndexAt(e.GetPosition(Stage).X);
             if (index != _dropIndex)
             {
                 _dropIndex = index;
@@ -217,6 +219,25 @@ public partial class DockWindow
         for (var i = 0; i < _slots.Count; i++)
         {
             var distance = Math.Abs(windowX - (_restCapsuleLeft + _slots[i].CenterLocal));
+            if (distance < best && distance <= IconBox)
+            {
+                best = distance;
+                index = i;
+            }
+        }
+
+        return index;
+    }
+
+    // On the taskbar the icons are not where the dock's rest layout puts them (the row is centred on the bar, or
+    // follows the start button), so the icon under a drag is found from where each one is drawn.
+    private int FindTaskbarIndexAt(double x)
+    {
+        var index = -1;
+        var best = double.MaxValue;
+        for (var i = 0; i < _slots.Count; i++)
+        {
+            var distance = Math.Abs(x - _slots[i].Center);
             if (distance < best && distance <= IconBox)
             {
                 best = distance;
@@ -402,14 +423,14 @@ public partial class DockWindow
         }
 
         var vm = new DockItemViewModel(app, isPinned: true);
-        if (string.IsNullOrWhiteSpace(vm.ProcessName) || _pinned.ContainsKey(vm.ProcessName))
+        if (string.IsNullOrWhiteSpace(vm.App.Target) || _pinned.ContainsKey(vm.Key))
         {
             Log($"pinpath skipped proc='{vm.ProcessName}'");
             return;
         }
 
         _pinnedList.Add(vm);
-        _pinned[vm.ProcessName] = vm;
+        _pinned[vm.Key] = vm;
         SavePinned();
         RefreshRunning();
     }

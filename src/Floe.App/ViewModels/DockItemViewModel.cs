@@ -8,11 +8,19 @@ namespace Floe.App.ViewModels;
 
 public sealed class DockItemViewModel
 {
-    public DockItemViewModel(DockApp app, bool isPinned = true, IntPtr window = default)
+    /// <param name="processName">The running process, for an app whose exe could not be read: the name is all there is.</param>
+    /// <param name="runningKey">The key a running, unpinned app is grouped under (<see cref="Floe.Core.Services.AppIdentity.RunningKey"/>).</param>
+    public DockItemViewModel(DockApp app, bool isPinned = true, IntPtr window = default, string? processName = null, string? runningKey = null)
     {
         App = app;
         IsPinned = isPinned;
-        ProcessName = ExtractProcessName(AppLauncher.ResolveTarget(app));
+        var resolved = AppLauncher.ResolveTarget(app);
+        ExePath = resolved.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && Path.IsPathRooted(resolved) ? resolved : null;
+        var extracted = ExtractProcessName(resolved);
+        ProcessName = extracted.Length > 0 ? extracted : processName ?? string.Empty;
+        Key = isPinned
+            ? "P:" + Floe.Core.Services.AppIdentity.PinnedKey(app.Target, ProcessName)
+            : "R:" + (string.IsNullOrEmpty(runningKey) ? Floe.Core.Services.AppIdentity.PinnedKey(app.Target, ProcessName) : runningKey);
 
         ReloadIcon();
         if (Icon is null && window != IntPtr.Zero)
@@ -41,6 +49,12 @@ public sealed class DockItemViewModel
     public bool IsPinned { get; }
 
     public string ProcessName { get; }
+
+    /// <summary>The exe the item launches, when its target resolves to one.</summary>
+    public string? ExePath { get; }
+
+    /// <summary>What the item is known by in the dock: unique per pinned target and per running app, never empty.</summary>
+    public string Key { get; }
 
     public bool IsRunning { get; set; }
 

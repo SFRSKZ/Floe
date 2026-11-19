@@ -23,6 +23,9 @@ public sealed class AudioPeakMeter : IDisposable
     private const int MaxChannels = 64;
     private const long ReacquireIntervalMs = 1000;
 
+    // how often a working meter checks that its device is still the default one
+    private const long DefaultCheckIntervalMs = 2000;
+
     private static readonly Guid AudioMeterInformationIid = new("C02216F6-8C67-4B5B-9D00-D008E73E0064");
 
     private readonly object _gate = new();
@@ -34,6 +37,8 @@ public sealed class AudioPeakMeter : IDisposable
     private float[] _channelBuffer = Array.Empty<float>();
     private int _channelCount;
     private long _lastAcquireMs = -ReacquireIntervalMs;
+    private long _lastDefaultCheckMs;
+    private string? _deviceId;
     private bool _disposed;
 
     /// <summary>Peak across all channels, 0..1. Returns 0 on any failure.</summary>
@@ -141,13 +146,21 @@ public sealed class AudioPeakMeter : IDisposable
             return false;
         }
 
+        long now = _clock.ElapsedMilliseconds;
         if (_meter is not null)
         {
-            meter = _meter;
-            return true;
+            // a meter on a device that still answers would keep reading it after the default moved on
+            // (headphones plugged in, another output picked): the default's id is compared now and then
+            if (now - _lastDefaultCheckMs < DefaultCheckIntervalMs || IsStillDefault())
+            {
+                meter = _meter;
+                return true;
+            }
+
+            DropEndpoint();
+            _lastAcquireMs = -ReacquireIntervalMs;
         }
 
-        long now = _clock.ElapsedMilliseconds;
         if (now - _lastAcquireMs < ReacquireIntervalMs)
         {
             return false;
@@ -164,6 +177,8 @@ public sealed class AudioPeakMeter : IDisposable
             }
 
             _device = device;
+            _deviceId = device.GetId(out var id) >= 0 ? id : null;
+            _lastDefaultCheckMs = now;
             var iid = AudioMeterInformationIid;
             if (device.Activate(ref iid, ClsCtxAll, IntPtr.Zero, out object? activated) < 0 ||
                 activated is not IAudioMeterInformation activatedMeter)
@@ -206,11 +221,33 @@ public sealed class AudioPeakMeter : IDisposable
         return true;
     }
 
+    /// <summary>Whether the meter's device is still the default render device; true when that cannot be told.</summary>
+    private bool IsStillDefault()
+    {
+        _lastDefaultCheckMs = _clock.ElapsedMilliseconds;
+        if (_enumerator is null || _deviceId is null) return true;
+        IMMDevice? current = null;
+        try
+        {
+            if (_enumerator.GetDefaultAudioEndpoint(ERender, EMultimedia, out current) < 0 || current is null) return true;
+            return current.GetId(out var id) < 0 || string.Equals(id, _deviceId, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return true;
+        }
+        finally
+        {
+            Release(ref current);
+        }
+    }
+
     /// <summary>Drops the endpoint/meter but keeps the enumerator for a quick re-acquire.</summary>
     private void DropEndpoint()
     {
         Release(ref _meter);
         Release(ref _device);
+        _deviceId = null;
         _channelBuffer = Array.Empty<float>();
         _channelCount = 0;
     }

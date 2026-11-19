@@ -243,7 +243,7 @@ public sealed partial class StardustGpuScene : IGpuScene
         // the simulation first: it leaves the particles where this frame draws them
         Simulate(dt, frame.Audio, frame.Palette, wave);
         BuildInstances(frame.Fade, wave);
-        BuildAurora();
+        BuildAurora(frame.Wave && !Shaped);
 
         if (_needClear)
         {
@@ -602,7 +602,7 @@ public sealed partial class StardustGpuScene : IGpuScene
 
         // in the MilkDrop flow the springs are loose, so the grains drift off the line with the swirls and come back
         bool milk = Milk;
-        float stiffness = milk ? 9 : SpringStiffness, damping = milk ? 4 : SpringDamping;
+        float stiffness = milk ? 9 : SpringStiffness * 1.25f, damping = milk ? 4 : SpringDamping;
         for (int i = 0; i < _waveCount; i++)
         {
             Home(i, out float hx, out float hy);
@@ -620,6 +620,13 @@ public sealed partial class StardustGpuScene : IGpuScene
 
     // swirl cells about 260 DIP wide and a little taller than the strip
     private const float MilkKx = 2 * MathF.PI / 260;
+    private float MilkCluster(float x)
+    {
+        float phase = (x * MilkKx * .5f) + ((float)_milkTime * .35f);
+        float weight = .5f + (.5f * MathF.Cos(phase));
+        return weight * weight;
+    }
+
     private float MilkKy() => 2 * MathF.PI / Math.Max(40, _height * 1.3f);
 
     // The music drives the flow: the bass zooms out of the middle, the level spins the cells, a kick does both.
@@ -715,6 +722,8 @@ public sealed partial class StardustGpuScene : IGpuScene
                 // a grain thrown far from home glows a little brighter
                 float speed = MathF.Min(1, (MathF.Abs(_wvx[i]) + MathF.Abs(_wvy[i])) / 300);
                 float b = (second ? .8f : 1.4f) * energy * twinkle * (1 + speed) * trail;
+                if (Milk) b *= .12f + (1.9f * MilkCluster(_wx[i]));
+                else if (!second) b *= 1.35f;
                 float xn = MathF.Abs((_wx[i] / _width) - .5f) * 2;
                 int hue = Math.Clamp((int)((second ? .55f + (.45f * xn) : xn * .6f) * (PaletteSize - 1)), 0, PaletteSize - 1);
                 int s = second ? 1 : 0;
@@ -730,7 +739,7 @@ public sealed partial class StardustGpuScene : IGpuScene
     // ---- the aurora -------------------------------------------------------------------------------
 
     // Exactly Aurora(): how high the light reaches and its colour, per column, then smoothed.
-    private void BuildAurora()
+    private void BuildAurora(bool wave)
     {
         int w = _auraReach.Length;
         if (w == 0) return;
@@ -744,9 +753,10 @@ public sealed partial class StardustGpuScene : IGpuScene
             int b0 = Math.Min(Bands - 2, (int)at);
             float band = _band[b0] + ((_band[b0 + 1] - _band[b0]) * (at - b0));
             float reach = (.13f + (.80f * MathF.Pow(band, 1.2f) * (.6f + (.4f * level))) + (.25f * (bass + pulse))) * height;
-            _auraReach[x] = Math.Max(_ppd, reach);
+            _auraReach[x] = Math.Max(_ppd, wave && !Milk ? reach * .45f : reach);
             int hue = (int)(xn * (PaletteSize - 1));
             float glow = (.24f + (.40f * band) + (.28f * pulse)) * ShapeAura;
+            if (wave) glow *= Milk ? .18f + (.58f * MilkCluster(x * _width / w)) : .55f;
             _auraR[x] = _palR[hue] * glow;
             _auraG[x] = _palG[hue] * glow;
             _auraB[x] = _palB[hue] * glow;

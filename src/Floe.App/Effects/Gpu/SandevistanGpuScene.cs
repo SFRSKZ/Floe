@@ -12,9 +12,9 @@ namespace Floe.App.Effects.Gpu;
 public sealed class SandevistanGpuScene : FeedbackGpuScene
 {
     private const int ConstantFloats = 64;
-    private const float Held = .3f;
-    private const float Catching = .28f;
-    private const float Rearm = .85f;
+    private const float Held = .12f;
+    private const float Catching = .16f;
+    private const float Rearm = 1.6f;
 
     private static readonly Color Yellow = Color.FromRgb(0xFC, 0xEE, 0x0A);
     private static readonly Color Red = Color.FromRgb(0xFF, 0x00, 0x3C);
@@ -41,20 +41,22 @@ public sealed class SandevistanGpuScene : FeedbackGpuScene
             _rearm = Rearm;
         }
 
-        float speed = .5f + (1.1f * level);
-        _burn = 1.1f;
+        // the heads run with the song: its level carries them and every beat pushes them on
+        float speed = .35f + (1.5f * level) + (.9f * Beat.Pulse);
+        _burn = 1.7f;
         if (_hold > 0)
         {
             _hold -= dt;
-            speed = .03f;
-            _burn = .03f;
+            // the grab is a short hitch, not a stop: the song must never seem to stall
+            speed *= .45f;
+            _burn = .4f;
             if (_hold <= 0) _catch = Catching;
         }
         else if (_catch > 0)
         {
             _catch -= dt;
-            speed *= 3.4f;
-            _burn = 3.6f;
+            speed *= 1.8f;
+            _burn = 2.2f;
         }
 
         // no music, no clock: the heads stop where they are and the strip fades out over them
@@ -160,7 +162,7 @@ public sealed class SandevistanGpuScene : FeedbackGpuScene
             {
                 float lap = floor(offset + (Flow * rate));
                 float energy = Band(saturate((float)row * RowHeight() / Size.y));
-                if (energy > .16 + (.42 * Hash(float2(row, lap + 11)))) light = 1;
+                if (energy > .13 + (.4 * Hash(float2(row, lap + 11)))) light = 1;
             }
 
             return float4(light, 0, 0, 1);
@@ -169,14 +171,15 @@ public sealed class SandevistanGpuScene : FeedbackGpuScene
 
     private const string ShowPs = """
 
+        // The implant's colours as one run: light ages from white through cyan, green, yellow and magenta to red.
         float3 AgeColour(float light)
         {
             if (light > .9) return PaperColor.rgb;
-            if (light > .72) return ColdColor.rgb;
-            if (light > .52) return GreenColor.rgb;
-            if (light > .34) return LeadColor.rgb;
-            if (light > .2) return MagentaColor.rgb;
-            return SecondColor.rgb;
+            if (light > .72) return lerp(ColdColor.rgb, PaperColor.rgb, (light - .72) / .18);
+            if (light > .52) return lerp(GreenColor.rgb, ColdColor.rgb, (light - .52) / .2);
+            if (light > .34) return lerp(LeadColor.rgb, GreenColor.rgb, (light - .34) / .18);
+            if (light > .2) return lerp(MagentaColor.rgb, LeadColor.rgb, (light - .2) / .14);
+            return lerp(SecondColor.rgb, MagentaColor.rgb, saturate((light - .06) / .14));
         }
 
         float4 main(float4 position : SV_Position) : SV_Target
@@ -187,35 +190,43 @@ public sealed class SandevistanGpuScene : FeedbackGpuScene
 
             int rowHeight = RowHeight();
             int ypx = (int)p.y;
-            if (ypx % rowHeight == rowHeight - 1) return 0;
+            int inRow = ypx % rowHeight;
+            if (inRow == rowHeight - 1) return 0;
 
             float light = Last.Load(int3((int2)p, 0)).r;
-            float3 color = 0;
-            float alpha = 0;
-            if (light > .09)
+            float3 glow = 0;
+
+            // a trail is a comet: full height and white hot where the head just was, a single dim pixel line where it is old
+            if (light > .06 && (inRow == 0 || light > .45))
             {
-                color = AgeColour(light);
-                alpha = light > .2 ? 1 : .6;
+                // a row is one band of the song, and its whole trail breathes with that band as it plays
+                float live = saturate(Band(saturate(p.y / Size.y)) * 1.3);
+                glow = AgeColour(light) * (.8 + (2.2 * light * light)) * (.45 + (1.1 * live));
             }
 
-            // while the clock is held, hard copies of the bright light hang ahead of it, one colour each
-            if (Hold > 0 && alpha < .5)
+            // while the clock is held, hard copies of the bright light hang ahead of it, each one colder and thinner
+            if (Hold > 0)
             {
                 float toward = p.x < Size.x * .5 ? 1 : -1;
                 float gap = 11 * Dip;
                 for (int k = 1; k <= 4; k++)
                 {
                     int2 source = int2((int)(p.x + (toward * gap * k)), ypx);
-                    if (Last.Load(int3(source, 0)).r > .72)
+                    if (Last.Load(int3(source, 0)).r > .72 && (k < 3 || inRow == 0))
                     {
-                        color = k == 1 ? ColdColor.rgb : (k == 2 ? GreenColor.rgb : (k == 3 ? LeadColor.rgb : MagentaColor.rgb));
-                        alpha = 1 - (k * .16);
+                        float3 tint = k == 1 ? ColdColor.rgb : (k == 2 ? GreenColor.rgb : (k == 3 ? LeadColor.rgb : MagentaColor.rgb));
+                        glow += tint * ((1.5 - (k * .3)) * Hold);
                         break;
                     }
                 }
             }
 
-            return float4(color, 1) * alpha * Fade;
+            // the light adds up and is tone mapped, so crossing trails run to white instead of clipping
+            float3 color = 1 - exp(-glow * 1.5);
+            float alpha = max(max(color.r, color.g), color.b);
+            // the top melts away, so the strip has no cut line over an empty desktop
+            float top = smoothstep(0, .14, p.y / Size.y);
+            return float4(color, alpha) * Fade * top;
         }
         """;
 }

@@ -24,4 +24,9 @@
     <ProjectReference Include="..\..\src\Floe.Core\Floe.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- the setup's file work is compiled in here as source: the setup itself is a trimmed single-file exe -->
+    <Compile Include="..\..\installer\FloeSetup\InstallFiles.cs" Link="Installer\InstallFiles.cs" />
+  </ItemGroup>
+
 </Project>

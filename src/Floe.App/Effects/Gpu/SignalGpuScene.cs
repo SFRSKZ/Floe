@@ -147,6 +147,13 @@ public sealed class SignalGpuScene : FeedbackGpuScene
                 float centre = .24 + (k * .26) + (.1 * sin((col * .013) + (Seed * (k + 1.3))));
                 float gate = Noise(float2((col * .016) + (Seed * 2.3), k * 5.7));
                 float thick = (.018 + (.13 * energy * energy) + (.025 * Level)) * smoothstep(.5, .62, gate + (.16 * energy)) * present;
+                // Keep a readable spine when the middle ribbon tears.
+                if (k == 1 && Tear > .05)
+                {
+                    float spine = y - thrown - centre;
+                    float width = max(.018, 2 * Dip / Size.y);
+                    field = max(field, min(spine + width, width * .45 - spine));
+                }
                 field = max(field, thick - abs(y - centre));
             }
 
@@ -198,7 +205,7 @@ public sealed class SignalGpuScene : FeedbackGpuScene
             float2 pixel = position.xy;
 
             // chroma: the picture's channels miss each other by a little, more on a kick
-            int split = (int)max(1, round(Dip * (1.2 + (3 * Tear))));
+            int split = (int)max(1, round(Dip * (1.2 + (2.5 * Tear * step(.72, Hash(float2(floor(pixel.x / (42 * Dip)), Seed)))))));
             float core = Burn(p);
             float left = Burn(p + int2(split, 0));
             float right = Burn(p - int2(split, 0));
@@ -254,7 +261,7 @@ public sealed class SignalGpuScene : FeedbackGpuScene
             if (left > 0 && core < .5) { color = Hot.rgb; alpha = 1; }
             if (right > 0 && core < .5) { color = Cold.rgb; alpha = 1; }
             if (core > .5) { color = Core.rgb * lines; alpha = 1; }
-            if (dash > 0) { color = sparkColor; alpha = 1; }
+            if (dash > 0 && core < .5) { color = sparkColor; alpha = 1; }
 
             // the top melts away, so the strip has no cut line over an empty desktop
             float top = smoothstep(0, .35, pixel.y / Size.y);

@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using Floe.App.Services;
 using Floe.App.ViewModels;
+using Floe.Core.Models;
 
 namespace Floe.App.Windows;
 
@@ -61,8 +62,16 @@ public partial class DockWindow
 
         _noticeIcon!.Source = item.Icon;
         _noticeName!.Text = item.Name;
-        _notice.PlacementTarget = _slots[0].Button;
-        _notice.IsOpen = true;
+        if (DockSettings.Edge != DockEdge.Bottom) ShowUprightPopup(_notice, DockAnchor(_slots[0].Center), 14);
+        else
+        {
+            _notice.Placement = PlacementMode.Top;
+            _notice.HorizontalOffset = 0;
+            _notice.VerticalOffset = -14;
+            _notice.PlacementTarget = _slots[0].Button;
+            _notice.IsOpen = true;
+        }
+
         _noticeCard!.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, Soft) { EasingFunction = EaseOut });
         _noticeLift!.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(10, 0, Soft) { EasingFunction = EaseOut });
         _noticeTimer!.Stop();

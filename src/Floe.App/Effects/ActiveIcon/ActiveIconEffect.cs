@@ -21,6 +21,45 @@ public sealed class ActiveIconEffect : ShaderEffect
     public const double Pad = 12;
 
     private static readonly Lazy<PixelShader?> Shader = new(() => ShaderCompiler.LoadShader("Floe.ActiveIcon.hlsl"));
+    // the film studies (IconLab), compiled on first use; a failed one is cached as null and falls back
+    private static readonly Dictionary<string, PixelShader?> Studies = new();
+
+    private static PixelShader? StudyShader(string id)
+    {
+        if (Studies.TryGetValue(id, out var cached)) return cached;
+        PixelShader? shader = null;
+        try
+        {
+            shader = new PixelShader();
+            using var stream = new System.IO.MemoryStream(IconLab.Compile(id, "ps_3_0"), writable: false);
+            shader.SetStreamSource(stream);
+            shader.Freeze();
+        }
+        catch (Exception ex)
+        {
+            ShaderCompiler.Log($"Icon study {id} disabled: {ex.Message}");
+            shader = null;
+        }
+        Studies[id] = shader;
+        return shader;
+    }
+
+    /// <summary>Whether this film study compiles here (ps_3_0).</summary>
+    public static bool IsStudyAvailable(string id) => StudyShader(id) is not null;
+
+    private string? _study;
+
+    /// <summary>A film study from <see cref="IconLab"/> instead of the neon / glass modes; null goes back to them.</summary>
+    public string? Study
+    {
+        get => _study;
+        set
+        {
+            if (_study == value) return;
+            _study = value;
+            PixelShader = value is null ? Shader.Value : StudyShader(value) ?? Shader.Value;
+        }
+    }
 
     public static readonly DependencyProperty InputProperty = RegisterPixelShaderSamplerProperty(nameof(Input), typeof(ActiveIconEffect), 0);
     public Brush Input { get => (Brush)GetValue(InputProperty); set => SetValue(InputProperty, value); }
@@ -56,18 +95,20 @@ public sealed class ActiveIconEffect : ShaderEffect
         {
             // the neon only flows its colour slowly: 12 fps is indistinguishable and saves constant writes;
             // the glass ripples move, and need twice that to glide
-            double fps = Math.Min(Mode >= 0.5 ? 24 : 12, Performance.AmbientFps);
+            // the film studies move all the time (rain, rings, light walls): they need a smooth rate
+            double fps = Math.Min(_study is not null ? 30 : Mode >= 0.5 ? 24 : 12, Performance.AmbientFps);
             if (!VisualizerPacing.DockAnimating && (fps <= 0 || now - _lastTime < 1.0 / fps))
             {
                 return;
             }
 
             _lastTime = now;
-            Time = now;
+            // wrapped: the shaders' noise and sines lose precision on a clock that has run for days
+            Time = now % 3600.0;
         }, 2, everyFrameWhileDockAnimates: true);
         PixelShader = Shader.Value;
         PaddingLeft = PaddingTop = PaddingRight = PaddingBottom = Pad;
-        Box = new Point(iconSize + (2 * Pad), 0);
+        Box = new Point(iconSize + (2 * Pad), iconSize);
         UpdateShaderValue(InputProperty);
         UpdateShaderValue(FieldProperty);
         foreach (var property in new[] { TimeProperty, ModeProperty, ColorAProperty, ColorBProperty, StrengthProperty, BoxProperty })

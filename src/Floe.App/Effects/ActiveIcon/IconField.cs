@@ -11,7 +11,8 @@ namespace Floe.App.Effects.ActiveIcon;
 /// </summary>
 public static class IconField
 {
-    private const int PixelsPerDip = 2;
+    // 4 per DIP: the glass's rim light is under half a DIP wide, so a coarser field shows its steps along curves
+    private const int PixelsPerDip = 4;
     private const double Range = 32;
     private static readonly ConditionalWeakTable<ImageSource, Dictionary<(double Size, bool Solid), ImageBrush>> Cache = new();
 
@@ -72,10 +73,17 @@ public static class IconField
         Transform(toInside, n);
         Transform(toOutside, n);
 
+        // the signed distance, in field pixels, smoothed: a field taken from a hard silhouette steps by whole
+        // pixels along a curve, and the thin rim light traced those steps as a jagged edge
+        var signed = new double[n * n];
+        for (int i = 0; i < n * n; i++) signed[i] = Math.Sqrt(toInside[i]) - Math.Sqrt(toOutside[i]);
+        Smooth(signed, n);
+        Smooth(signed, n);
+
         var field = new byte[n * n * 4];
         for (int i = 0; i < n * n; i++)
         {
-            var px = Math.Sqrt(toInside[i]) - Math.Sqrt(toOutside[i]);
+            var px = signed[i];
             var dip = px / PixelsPerDip;
             var g = (byte)Math.Round(Math.Clamp((dip / Range) + 0.5, 0, 1) * 255);
             field[i * 4] = field[(i * 4) + 1] = field[(i * 4) + 2] = g;
@@ -87,6 +95,33 @@ public static class IconField
         var brush = new ImageBrush(bitmap) { Stretch = Stretch.Fill };
         brush.Freeze();
         return brush;
+    }
+
+    /// <summary>One separable 1-2-1 pass over the grid, edges clamped.</summary>
+    private static void Smooth(double[] values, int n)
+    {
+        var temp = new double[n * n];
+        for (int y = 0; y < n; y++)
+        {
+            var row = y * n;
+            for (int x = 0; x < n; x++)
+            {
+                var l = values[row + Math.Max(0, x - 1)];
+                var r = values[row + Math.Min(n - 1, x + 1)];
+                temp[row + x] = (l + (2 * values[row + x]) + r) * .25;
+            }
+        }
+
+        for (int y = 0; y < n; y++)
+        {
+            var up = Math.Max(0, y - 1) * n;
+            var down = Math.Min(n - 1, y + 1) * n;
+            var row = y * n;
+            for (int x = 0; x < n; x++)
+            {
+                values[row + x] = (temp[up + x] + (2 * temp[row + x]) + temp[down + x]) * .25;
+            }
+        }
     }
 
     /// <summary>Closes gaps narrower than ~12 DIP and fills enclosed holes, rewriting both seed grids.</summary>

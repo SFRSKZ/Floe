@@ -33,16 +33,11 @@ public partial class SettingsWindow : Window
             replaced.Visibility = Visibility.Collapsed;
         }
 
-        TabEffect.Content = "Genel";
-        TabGlass.Content = "Stüdyo";
+        TabLook.Content = "Stüdyo";
         ClickEffectToggle.Content = "Hex dökümü";
         ClickSoundToggle.Content = "Tıklama sesi";
-        // no cubes here, but the sleep itself can still be turned off so the dock stays; the page it sits on is the
-        // Studio here, so it moves to the Dock page
+        // no cubes here, but the sleep itself can still be turned off so the dock stays
         DerezzToggle.Content = "Boşta kalınca uyu";
-        ((Panel)DerezzToggle.Parent).Children.Remove(DerezzToggle);
-        DerezzToggle.Margin = new Thickness(0, 0, 0, 8);
-        DockPage.Children.Insert(DockPage.Children.IndexOf(HideOnFullscreenToggle) + 1, DerezzToggle);
         VisualizerLookHologram.Visibility = Visibility.Collapsed;
         VisualizerLookStardust.Visibility = Visibility.Collapsed;
         VisualizerLookDustWave.Visibility = Visibility.Collapsed;
@@ -71,13 +66,29 @@ public partial class SettingsWindow : Window
         VisualizerLookCyberGlyph.Visibility = Visibility.Collapsed;
         VisualizerLookCyberRain.Visibility = Visibility.Collapsed;
         VisualizerLookCyberSamurai.Visibility = Visibility.Collapsed;
-        VisualizerLookCyberBraindance.Visibility = Visibility.Collapsed;
         VisualizerLookCyberSandevistan.Visibility = Visibility.Collapsed;
         VisualizerLookCyberBreach.Visibility = Visibility.Collapsed;
         VisualizerLookCyberCollar.Visibility = Visibility.Collapsed;
         VisualizerLookCyberPulse.Visibility = Visibility.Collapsed;
         VisualizerLookCyberRift.Visibility = Visibility.Collapsed;
-        VisualizerLookCyberBiometric.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberZiggurat.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberNetdive.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberRedline.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberJaws.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBlackwallCinder.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberArasakaOs.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBraindanceSuite.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberApogee.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberCantoDaemon.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberNightCity.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberTraumaTeam.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberLiquidChrome.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberDogtownFlir.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberMonowire.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberStrands.Visibility = Visibility.Collapsed;
+        StrandWallpaperToggle.Visibility = Visibility.Collapsed;
+        StrandMotionRow.Visibility = Visibility.Collapsed;
+        StrandAngleRow.Visibility = Visibility.Collapsed;
 #endif
         ApplyChrome();
         GlassSettings.Changed += ApplyChromeOnUi;
@@ -120,6 +131,9 @@ public partial class SettingsWindow : Window
         ClickScreenToggle.IsChecked = AuraSettings.ClickScreen;
         ClickScreenToggle.Checked += (_, _) => AuraSettings.SetClickScreen(true);
         ClickScreenToggle.Unchecked += (_, _) => AuraSettings.SetClickScreen(false);
+        ClickCubesToggle.IsChecked = AuraSettings.ClickCubes;
+        ClickCubesToggle.Checked += (_, _) => AuraSettings.SetClickCubes(true);
+        ClickCubesToggle.Unchecked += (_, _) => AuraSettings.SetClickCubes(false);
         ClickPaintToggle.IsChecked = AuraSettings.ClickPaint;
         ClickPaintToggle.Checked += (_, _) => AuraSettings.SetClickPaint(true);
         ClickPaintToggle.Unchecked += (_, _) => AuraSettings.SetClickPaint(false);
@@ -138,6 +152,16 @@ public partial class SettingsWindow : Window
         ClickRainbow.Checked += (_, _) => AuraSettings.SetClickPalette(ClickPalette.Rainbow);
         ClickClear.Checked += (_, _) => AuraSettings.SetClickPalette(ClickPalette.Clear);
         ClickIcon.Checked += (_, _) => AuraSettings.SetClickPalette(ClickPalette.Icon);
+        // tone, palette and speed shape the click's glass and its sound: without either there is nothing to shape
+        void ShowClickOptions() => ClickOptions.Visibility =
+            ClickEffectToggle.IsChecked == true || ClickSoundToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var toggle in new[] { ClickEffectToggle, ClickSoundToggle })
+        {
+            toggle.Checked += (_, _) => ShowClickOptions();
+            toggle.Unchecked += (_, _) => ShowClickOptions();
+        }
+
+        ShowClickOptions();
         ClickSpeedSlider.Value = AuraSettings.ClickSpeed;
         ClickSpeedValue.Text = AuraSettings.ClickSpeed.ToString("0.0") + "x";
         ClickSpeedSlider.ValueChanged += (_, e) =>
@@ -156,6 +180,15 @@ public partial class SettingsWindow : Window
         EffectGlass.Checked += (_, _) => AuraSettings.SetEffect(AuraEffect.Glass);
         EffectAurora.IsChecked = AuraSettings.Effect == AuraEffect.Aurora;
         EffectAurora.Checked += (_, _) => AuraSettings.SetEffect(AuraEffect.Aurora);
+        foreach (var (button, effect) in new[]
+        {
+            (EffectRain, AuraEffect.Rain), (EffectLightCycle, AuraEffect.LightCycle), (EffectGargantua, AuraEffect.Gargantua),
+            (EffectLogogram, AuraEffect.Logogram), (EffectCodeRain, AuraEffect.CodeRain), (EffectOneRing, AuraEffect.OneRing),
+        })
+        {
+            button.IsChecked = AuraSettings.Effect == effect;
+            button.Checked += (_, _) => AuraSettings.SetEffect(effect);
+        }
 
         IntensitySlider.Value = AuraSettings.SpectralIntensity;
         IntensityValue.Text = AuraSettings.SpectralIntensity.ToString("0.0");
@@ -409,8 +442,8 @@ public partial class SettingsWindow : Window
 
     private void BuildTabs()
     {
-        var tabs = new[] { TabEffect, TabGlass, TabVisualizer, TabDock };
-        var pages = new FrameworkElement[] { EffectPage, GlassPage, VisualizerPage, DockPage };
+        var tabs = new[] { TabLook, TabIcons, TabVisualizer, TabDock, TabGeneral };
+        var pages = new FrameworkElement[] { LookPage, IconsPage, VisualizerPage, DockPage, GeneralPage };
         for (var i = 0; i < tabs.Length; i++)
         {
             var index = i;
@@ -424,11 +457,46 @@ public partial class SettingsWindow : Window
             };
         }
 
-        tabs[_lastTab].IsChecked = true;
+        tabs[Math.Clamp(_lastTab, 0, tabs.Length - 1)].IsChecked = true;
+    }
+
+    private readonly List<(System.Windows.Controls.Primitives.ToggleButton Toggle, VisualizerStyle Look)> _lookToggles = new();
+
+    /// <summary>
+    /// On the taskbar a look that does not fit the 48 DIP bar is not played: its button says so and what plays
+    /// instead, so a choice never looks like it took while another look runs.
+    /// </summary>
+    private void MarkTaskbarLooks()
+    {
+        var on = DockSettings.TaskbarOn;
+        var instead = GlassSettings.Cyber ? "Signal" : "Stardust";
+        foreach (var (toggle, look) in _lookToggles)
+        {
+            var fits = !on || VisualizerWindow.FitsTaskbar(look);
+            toggle.IsEnabled = fits;
+            ToolTipService.SetShowOnDisabled(toggle, true);
+            toggle.ToolTip = fits ? null : Loc.T("Görev çubuğu modunda çalışmaz; yerine") + " " + instead + " " + Loc.T("oynar.");
+        }
     }
 
     private void BuildDockControls()
     {
+        EdgeBottom.IsChecked = DockSettings.Edge == DockEdge.Bottom;
+        EdgeTop.IsChecked = DockSettings.Edge == DockEdge.Top;
+        EdgeLeft.IsChecked = DockSettings.Edge == DockEdge.Left;
+        EdgeRight.IsChecked = DockSettings.Edge == DockEdge.Right;
+        // the taskbar only exists on the bottom edge, so the looks it cannot play are marked again
+        EdgeBottom.Checked += (_, _) => { DockSettings.SetEdge(DockEdge.Bottom); MarkTaskbarLooks(); };
+        EdgeTop.Checked += (_, _) => { DockSettings.SetEdge(DockEdge.Top); MarkTaskbarLooks(); };
+        EdgeLeft.Checked += (_, _) => { DockSettings.SetEdge(DockEdge.Left); MarkTaskbarLooks(); };
+        EdgeRight.Checked += (_, _) => { DockSettings.SetEdge(DockEdge.Right); MarkTaskbarLooks(); };
+        TaskbarOff.IsChecked = DockSettings.Taskbar == TaskbarLayout.Off;
+        TaskbarStrip.IsChecked = DockSettings.Taskbar == TaskbarLayout.Strip;
+        TaskbarCrown.IsChecked = DockSettings.Taskbar == TaskbarLayout.Crown;
+        TaskbarOff.Checked += (_, _) => { DockSettings.SetTaskbar(TaskbarLayout.Off); MarkTaskbarLooks(); };
+        TaskbarStrip.Checked += (_, _) => { DockSettings.SetTaskbar(TaskbarLayout.Strip); MarkTaskbarLooks(); };
+        TaskbarCrown.Checked += (_, _) => { DockSettings.SetTaskbar(TaskbarLayout.Crown); MarkTaskbarLooks(); };
+
         DockScaleSlider.Value = DockSettings.Scale;
         DockScaleValue.Text = $"{DockSettings.Scale * 100:0}%";
         DockScaleSlider.ValueChanged += (_, e) =>
@@ -440,6 +508,9 @@ public partial class SettingsWindow : Window
         HideOnFullscreenToggle.IsChecked = DockSettings.HideOnFullscreen;
         HideOnFullscreenToggle.Checked += (_, _) => DockSettings.SetHideOnFullscreen(true);
         HideOnFullscreenToggle.Unchecked += (_, _) => DockSettings.SetHideOnFullscreen(false);
+        AutoHideToggle.IsChecked = DockSettings.AutoHide;
+        AutoHideToggle.Checked += (_, _) => DockSettings.SetAutoHide(true);
+        AutoHideToggle.Unchecked += (_, _) => DockSettings.SetAutoHide(false);
         HideWindowsTaskbarToggle.IsChecked = DockSettings.HideWindowsTaskbar;
         HideWindowsTaskbarToggle.Checked += (_, _) => DockSettings.SetHideWindowsTaskbar(true);
         HideWindowsTaskbarToggle.Unchecked += (_, _) => DockSettings.SetHideWindowsTaskbar(false);
@@ -462,6 +533,27 @@ public partial class SettingsWindow : Window
         VisualizerThemeToggle.Checked += (_, _) => GlassSettings.SetVisualizerThemeColours(true);
         VisualizerThemeToggle.Unchecked += (_, _) => GlassSettings.SetVisualizerThemeColours(false);
         VisualizerThemeToggle.Visibility = Floe.Core.Services.Product.Cp77 ? Visibility.Visible : Visibility.Collapsed;
+        StrandWallpaperToggle.IsChecked = GlassSettings.StrandWallpaper;
+        foreach (var (toggle, angle) in new[] { (StrandAngleAuto, 0), (StrandAngle1, 1), (StrandAngle2, 2), (StrandAngle3, 3), (StrandAngle4, 4) })
+        {
+            toggle.IsChecked = GlassSettings.StrandWallpaperAngle == angle;
+            toggle.Checked += (_, _) =>
+            {
+                GlassSettings.SetStrandWallpaperAngle(angle);
+                StrandMotionRow.IsEnabled = angle == 0;
+            };
+        }
+
+        StrandMotionRow.IsEnabled = GlassSettings.StrandWallpaperAngle == 0;
+        foreach (var (toggle, motion) in new[] { (StrandMotionGlide, StrandMotion.Glide), (StrandMotionFocus, StrandMotion.Focus),
+            (StrandMotionFlight, StrandMotion.Flight), (StrandMotionDive, StrandMotion.Dive), (StrandMotionFocusFlight, StrandMotion.FocusFlight) })
+        {
+            toggle.IsChecked = GlassSettings.StrandWallpaperMotion == motion;
+            toggle.Checked += (_, _) => GlassSettings.SetStrandWallpaperMotion(motion);
+        }
+
+        StrandWallpaperToggle.Checked += (_, _) => GlassSettings.SetStrandWallpaper(true);
+        StrandWallpaperToggle.Unchecked += (_, _) => GlassSettings.SetStrandWallpaper(false);
         SignalEqualizerToggle.IsChecked = GlassSettings.SignalEqualizer;
         SignalEqualizerToggle.Checked += (_, _) => GlassSettings.SetSignalEqualizer(true);
         SignalEqualizerToggle.Unchecked += (_, _) => GlassSettings.SetSignalEqualizer(false);
@@ -496,8 +588,18 @@ public partial class SettingsWindow : Window
         BulgeFlat.Checked += (_, _) => GlassSettings.SetBulge(BulgeStyle.Flat);
 
         VisualizerToggle.IsChecked = GlassSettings.Visualizer;
-        VisualizerToggle.Checked += (_, _) => GlassSettings.SetVisualizer(true);
-        VisualizerToggle.Unchecked += (_, _) => GlassSettings.SetVisualizer(false);
+        // a visualizer that is off has no style or colour to pick
+        VisualizerBody.Visibility = GlassSettings.Visualizer ? Visibility.Visible : Visibility.Collapsed;
+        VisualizerToggle.Checked += (_, _) =>
+        {
+            GlassSettings.SetVisualizer(true);
+            VisualizerBody.Visibility = Visibility.Visible;
+        };
+        VisualizerToggle.Unchecked += (_, _) =>
+        {
+            GlassSettings.SetVisualizer(false);
+            VisualizerBody.Visibility = Visibility.Collapsed;
+        };
 
         // a theme turns its visualizer on with it: Tron the OLED panel
         foreach (var (button, theme) in new[]
@@ -537,13 +639,17 @@ public partial class SettingsWindow : Window
             AuraSettings.SetDerezz(true);
             DerezzSpeedSlider.IsEnabled = true;
             DerezzCellSlider.IsEnabled = true;
+            DerezzOptions.Visibility = Visibility.Visible;
         };
         DerezzToggle.Unchecked += (_, _) =>
         {
             AuraSettings.SetDerezz(false);
             DerezzSpeedSlider.IsEnabled = false;
             DerezzCellSlider.IsEnabled = false;
+            DerezzOptions.Visibility = Visibility.Collapsed;
         };
+        // the sleep's speed and cube size show only while the dock sleeps at all
+        DerezzOptions.Visibility = AuraSettings.Derezz ? Visibility.Visible : Visibility.Collapsed;
         DerezzSpeedSlider.IsEnabled = AuraSettings.Derezz;
         DerezzSpeedSlider.Value = AuraSettings.DerezzSpeed;
         DerezzSpeedValue.Text = AuraSettings.DerezzSpeed.ToString("0.0") + "x";
@@ -602,9 +708,16 @@ public partial class SettingsWindow : Window
         VisualizerLookRibbon.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Ribbon;
         VisualizerLookRibbon.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Ribbon);
         foreach (var (toggle, look) in new[] { (VisualizerLookCyberSignal, VisualizerStyle.CyberSignal), (VisualizerLookCyberBlackwall, VisualizerStyle.CyberBlackwall), (VisualizerLookCyberCircuit, VisualizerStyle.CyberCircuit), (VisualizerLookCyberGlyph, VisualizerStyle.CyberGlyph), (VisualizerLookCyberRain, VisualizerStyle.CyberRain), (VisualizerLookCyberSamurai, VisualizerStyle.CyberSamurai),
-            (VisualizerLookCyberBraindance, VisualizerStyle.CyberBraindance), (VisualizerLookCyberSandevistan, VisualizerStyle.CyberSandevistan), (VisualizerLookCyberBreach, VisualizerStyle.CyberBreach), (VisualizerLookCyberCollar, VisualizerStyle.CyberCollar),
+            (VisualizerLookCyberSandevistan, VisualizerStyle.CyberSandevistan), (VisualizerLookCyberBreach, VisualizerStyle.CyberBreach), (VisualizerLookCyberCollar, VisualizerStyle.CyberCollar),
             (VisualizerLookCyberPulse, VisualizerStyle.CyberPulse), (VisualizerLookCyberRift, VisualizerStyle.CyberRift),
-            (VisualizerLookCyberBiometric, VisualizerStyle.CyberBiometric) })
+            (VisualizerLookCyberZiggurat, VisualizerStyle.CyberZiggurat), (VisualizerLookCyberNetdive, VisualizerStyle.CyberNetdive),
+            (VisualizerLookCyberRedline, VisualizerStyle.CyberRedline),
+            (VisualizerLookCyberJaws, VisualizerStyle.CyberJaws),
+            (VisualizerLookCyberBlackwallCinder, VisualizerStyle.CyberBlackwallCinder), (VisualizerLookCyberArasakaOs, VisualizerStyle.CyberArasakaOs),
+            (VisualizerLookCyberBraindanceSuite, VisualizerStyle.CyberBraindanceSuite), (VisualizerLookCyberApogee, VisualizerStyle.CyberApogee),
+            (VisualizerLookCyberCantoDaemon, VisualizerStyle.CyberCantoDaemon), (VisualizerLookCyberNightCity, VisualizerStyle.CyberNightCity),
+            (VisualizerLookCyberTraumaTeam, VisualizerStyle.CyberTraumaTeam), (VisualizerLookCyberLiquidChrome, VisualizerStyle.CyberLiquidChrome),
+            (VisualizerLookCyberDogtownFlir, VisualizerStyle.CyberDogtownFlir), (VisualizerLookCyberMonowire, VisualizerStyle.CyberMonowire), (VisualizerLookCyberStrands, VisualizerStyle.CyberStrands) })
         {
             toggle.IsChecked = GlassSettings.VisualizerLook == look;
             toggle.Checked += (_, _) => GlassSettings.SetVisualizerLook(look);
@@ -612,6 +725,28 @@ public partial class SettingsWindow : Window
 
         VisualizerLookLed.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Led;
         VisualizerLookLed.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Led);
+
+        _lookToggles.AddRange(new (System.Windows.Controls.Primitives.ToggleButton, VisualizerStyle)[]
+        {
+            (VisualizerLookGlow, VisualizerStyle.Glow), (VisualizerLookHologram, VisualizerStyle.Hologram), (VisualizerLookCubes, VisualizerStyle.Cubes),
+            (VisualizerLookStardust, VisualizerStyle.Stardust), (VisualizerLookDustWave, VisualizerStyle.DustWave), (VisualizerLookDustMilk, VisualizerStyle.DustMilk),
+            (VisualizerLookChladni, VisualizerStyle.Chladni), (VisualizerLookFireflies, VisualizerStyle.Fireflies), (VisualizerLookFerrofluid, VisualizerStyle.Ferrofluid),
+            (VisualizerLookSilkContour, VisualizerStyle.SilkContour), (VisualizerLookOled, VisualizerStyle.Oled), (VisualizerLookPrism, VisualizerStyle.Prism),
+            (VisualizerLookWheat, VisualizerStyle.Wheat), (VisualizerLookRibbon, VisualizerStyle.Ribbon), (VisualizerLookLed, VisualizerStyle.Led),
+            (VisualizerLookCyberSignal, VisualizerStyle.CyberSignal), (VisualizerLookCyberBlackwall, VisualizerStyle.CyberBlackwall), (VisualizerLookCyberCircuit, VisualizerStyle.CyberCircuit),
+            (VisualizerLookCyberGlyph, VisualizerStyle.CyberGlyph), (VisualizerLookCyberRain, VisualizerStyle.CyberRain), (VisualizerLookCyberSamurai, VisualizerStyle.CyberSamurai),
+            (VisualizerLookCyberSandevistan, VisualizerStyle.CyberSandevistan), (VisualizerLookCyberBreach, VisualizerStyle.CyberBreach), (VisualizerLookCyberCollar, VisualizerStyle.CyberCollar),
+            (VisualizerLookCyberPulse, VisualizerStyle.CyberPulse), (VisualizerLookCyberRift, VisualizerStyle.CyberRift),
+            (VisualizerLookCyberZiggurat, VisualizerStyle.CyberZiggurat), (VisualizerLookCyberNetdive, VisualizerStyle.CyberNetdive),
+            (VisualizerLookCyberRedline, VisualizerStyle.CyberRedline),
+            (VisualizerLookCyberJaws, VisualizerStyle.CyberJaws),
+            (VisualizerLookCyberBlackwallCinder, VisualizerStyle.CyberBlackwallCinder), (VisualizerLookCyberArasakaOs, VisualizerStyle.CyberArasakaOs),
+            (VisualizerLookCyberBraindanceSuite, VisualizerStyle.CyberBraindanceSuite), (VisualizerLookCyberApogee, VisualizerStyle.CyberApogee),
+            (VisualizerLookCyberCantoDaemon, VisualizerStyle.CyberCantoDaemon), (VisualizerLookCyberNightCity, VisualizerStyle.CyberNightCity),
+            (VisualizerLookCyberTraumaTeam, VisualizerStyle.CyberTraumaTeam), (VisualizerLookCyberLiquidChrome, VisualizerStyle.CyberLiquidChrome),
+            (VisualizerLookCyberDogtownFlir, VisualizerStyle.CyberDogtownFlir), (VisualizerLookCyberMonowire, VisualizerStyle.CyberMonowire), (VisualizerLookCyberStrands, VisualizerStyle.CyberStrands),
+        });
+        MarkTaskbarLooks();
 
         // the OLED panel has its own effects and none of the colour settings: each look shows only what it uses
         void ShowLookOptions()
@@ -626,7 +761,11 @@ public partial class SettingsWindow : Window
             LookOptions.Visibility = oled || Floe.Core.Services.Product.Cp77 ? Visibility.Collapsed : Visibility.Visible;
         }
 
-        foreach (var look in new[] { VisualizerLookGlow, VisualizerLookHologram, VisualizerLookCubes, VisualizerLookStardust, VisualizerLookDustWave, VisualizerLookDustMilk, VisualizerLookSilkContour, VisualizerLookOled, VisualizerLookLed, VisualizerLookPrism, VisualizerLookWheat, VisualizerLookRibbon, VisualizerLookChladni, VisualizerLookFireflies, VisualizerLookFerrofluid })
+        foreach (var look in new[] { VisualizerLookGlow, VisualizerLookHologram, VisualizerLookCubes, VisualizerLookStardust, VisualizerLookDustWave, VisualizerLookDustMilk, VisualizerLookSilkContour, VisualizerLookOled, VisualizerLookLed, VisualizerLookPrism, VisualizerLookWheat, VisualizerLookRibbon, VisualizerLookChladni, VisualizerLookFireflies, VisualizerLookFerrofluid,
+            // the cyber looks too: Signal and Glyph each have a toggle that must come and go with them
+            VisualizerLookCyberSignal, VisualizerLookCyberBlackwall, VisualizerLookCyberCircuit, VisualizerLookCyberGlyph, VisualizerLookCyberRain, VisualizerLookCyberSamurai,
+            VisualizerLookCyberSandevistan, VisualizerLookCyberBreach, VisualizerLookCyberCollar, VisualizerLookCyberPulse, VisualizerLookCyberRift, VisualizerLookCyberZiggurat, VisualizerLookCyberNetdive, VisualizerLookCyberRedline, VisualizerLookCyberJaws,
+            VisualizerLookCyberBlackwallCinder, VisualizerLookCyberArasakaOs, VisualizerLookCyberBraindanceSuite, VisualizerLookCyberApogee, VisualizerLookCyberCantoDaemon, VisualizerLookCyberNightCity, VisualizerLookCyberTraumaTeam, VisualizerLookCyberLiquidChrome, VisualizerLookCyberDogtownFlir, VisualizerLookCyberMonowire, VisualizerLookCyberStrands })
         {
             look.Checked += (_, _) => ShowLookOptions();
         }
@@ -693,6 +832,23 @@ public partial class SettingsWindow : Window
         IntroCubes.Checked += (_, _) => GlassSettings.SetIntro(NowPlayingIntro.Cubes);
         IntroDust.IsChecked = GlassSettings.Intro == NowPlayingIntro.Dust;
         IntroDust.Checked += (_, _) => GlassSettings.SetIntro(NowPlayingIntro.Dust);
+
+        // the colour sliders belong to a custom colour, the cube size to the cubes: each shows with its owner
+        void ShowOwnedOptions()
+        {
+            CustomColorPanel.Visibility = HologramTintCustom.IsChecked == true || DustColorsCustom.IsChecked == true
+                ? Visibility.Visible : Visibility.Collapsed;
+            CubeSizePanel.Visibility = VisualizerLookCubes.IsChecked == true || IntroCubes.IsChecked == true
+                ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        foreach (var owner in new[] { HologramTintCustom, DustColorsCustom, VisualizerLookCubes, IntroCubes })
+        {
+            owner.Checked += (_, _) => ShowOwnedOptions();
+            owner.Unchecked += (_, _) => ShowOwnedOptions();
+        }
+
+        ShowOwnedOptions();
     }
 
     /// <summary>

@@ -36,7 +36,9 @@ internal sealed class VisualizerWindow : Window
     // the catalog's looks share one layer, rebuilt when the look changes
     private GpuLayerWindow? _novelLayer;
     private VisualizerStyle _novelLook;
-    private FeedbackGpuScene? _themed;
+    private IThemedGpuScene? _themed;
+    private GpuLayerWindow? _idleLayer;
+    private FeedbackGpuScene? _idleScene;
     private GpuLayerWindow? _oled;
     private OledGpuScene? _panel;
     private CubeGpuScene? _cubeScene;
@@ -44,6 +46,7 @@ internal sealed class VisualizerWindow : Window
     private byte[]? _cover;
     private Rect _dockRect;
     private bool _gpuFailed;
+    private int _gpuRebuilds;
     private IntPtr _hwnd;
     private IntPtr _dock;
     private Rect _bounds = Rect.Empty;
@@ -51,6 +54,10 @@ internal sealed class VisualizerWindow : Window
     private DispatcherTimer? _hideTimer;
     private bool _placed;
     private bool _running;
+    // on the taskbar: the spans of the strip kept clear for the icons and the bar's ends (see GpuLayerWindow.SetClear)
+    private float[] _clear = Array.Empty<float>();
+    // the screen edge the strip lies on (Floe.Core.Models.DockEdge); the looks draw it foot down and it is turned on
+    private int _edge;
 
     public VisualizerWindow()
     {
@@ -74,7 +81,7 @@ internal sealed class VisualizerWindow : Window
         root.Children.Add(_silkContour);
         root.Children.Add(_sculpted);
         // the LED screen over the WPF looks needs the strip's size in pixels
-        root.SizeChanged += (_, _) => ApplyLedScreen();
+        root.SizeChanged += (_, _) => { ApplyLedScreen(); UpdateCapsule(); };
         _root = root;
         Content = root;
         SizeChanged += (_, _) => UpdateCapsule();
@@ -86,16 +93,16 @@ internal sealed class VisualizerWindow : Window
     public IntPtr Handle => _hwnd;
 
     /// <summary>The window the light is drawn in right now: the GPU layer when it carries the look.</summary>
-    public IntPtr TopHandle => _oled is { IsRunning: true } oled ? oled.Handle  : _gpu is { IsRunning: true } gpu ? gpu.Handle : _holo is { IsRunning: true } holo ? holo.Handle
-        : _cubeLayer is { IsRunning: true } cubes ? cubes.Handle : _novelLayer is { IsRunning: true } novel ? novel.Handle : _hwnd;
+    public IntPtr TopHandle => _oled is { IsRunning: true } oled ? oled.Handle : _gpu is { IsRunning: true } gpu ? gpu.Handle : _holo is { IsRunning: true } holo ? holo.Handle
+        : _cubeLayer is { IsRunning: true } cubes ? cubes.Handle : _novelLayer is { IsRunning: true } novel ? novel.Handle : _idleLayer is { IsRunning: true } idle ? idle.Handle : _hwnd;
 
     /// <summary>The OLED panel runs under the dock: its glass has to keep up with what moves behind it.</summary>
     public bool PanelBehindDock => _oled is { IsRunning: true };
 
-    public bool Showing => IsVisible || _gpu is { IsRunning: true } || _holo is { IsRunning: true } || _oled is { IsRunning: true } || _cubeLayer is { IsRunning: true } || _novelLayer is { IsRunning: true };
+    public bool Showing => IsVisible || _gpu is { IsRunning: true } || _holo is { IsRunning: true } || _oled is { IsRunning: true } || _cubeLayer is { IsRunning: true } || _novelLayer is { IsRunning: true } || _idleLayer is { IsRunning: true };
 
     /// <summary>Whether the cyber feedback look is on the GPU layer now; the dock reserves the extra strip height only then.</summary>
-    public bool CyberGpuPlaying => _novelLayer is { IsRunning: true } && GlassSettings.IsCyberLook(_novelLook);
+    public bool CyberGpuPlaying => (_novelLayer is { IsRunning: true } && GlassSettings.IsCyberLook(_novelLook)) || _idleLayer is { IsRunning: true };
 
     /// <summary>The GPU cube scene while it exists; the benchmark holds its level.</summary>
     internal CubeGpuScene? CubeScene => _cubeScene;
@@ -117,6 +124,9 @@ internal sealed class VisualizerWindow : Window
         _novelLayer?.Dispose();
         _novelLayer = null;
         _themed = null;
+        _idleLayer?.Dispose();
+        _idleLayer = null;
+        _idleScene = null;
         _oled?.Dispose();
         _oled = null;
         base.OnClosed(e);
@@ -135,6 +145,7 @@ internal sealed class VisualizerWindow : Window
     /// <summary>dockRect: the dock's capsule on screen, in DIPs.</summary>
     public void Place(Rect bounds, double scale, IntPtr dock, Rect dockRect)
     {
+        ApplyEdge();
         _scale = scale;
         _dockRect = dockRect;
         PlacePanel(bounds);
@@ -159,6 +170,126 @@ internal sealed class VisualizerWindow : Window
         PlaceGpu();
     }
 
+    /// <summary>Spans of the strip (0..1 pairs) the GPU looks leave empty; an empty array clears nothing.</summary>
+    public void SetClear(float[] spans)
+    {
+        // a crowded bar gives overlapping spans: merged, the mask never fades back in where two of them meet
+        spans = Floe.Core.Services.ClearSpans.Merge(spans);
+        _clear = spans;
+        // the WPF looks (no GPU) keep the same spans empty through a mask over the whole strip, its ends as soft
+        // as the GPU layers' (ClearFeatherPass)
+        // the icons move while they animate and set the spans every frame: the mask is only redrawn when it changes
+        var maskKey = (string.Join(',', spans), _bounds.Width, _bounds.Height);
+        if (maskKey != _clearMaskKey)
+        {
+            _clearMaskKey = maskKey;
+            _root.OpacityMask = _bounds.Width >= 1 && _bounds.Height >= 1
+                ? RoundClearMask(spans, _bounds.Width, _bounds.Height)
+                : ClearMask(spans, _bounds.Width > 0 ? ClearFeatherDip / _bounds.Width : 0);
+        }
+
+        _gpu?.SetClear(spans);
+        _holo?.SetClear(spans);
+        _cubeLayer?.SetClear(spans);
+        _novelLayer?.SetClear(spans);
+        _idleLayer?.SetClear(spans);
+        _oled?.SetClear(spans);
+    }
+
+    private (string, double, double) _clearMaskKey;
+
+    // how far the light thins out outside a cleared span, in DIP (the GPU layers use the same)
+    private const double ClearFeatherDip = 36;
+
+    /// <summary>
+    /// Keeps every icon/group span completely clear (alpha = 0) and feathers smoothly outside each open boundary
+    /// into the free glass, matching ClearFeatherPass on the GPU.
+    /// </summary>
+    private static Brush? RoundClearMask(float[] spans, double widthDip, double heightDip)
+    {
+        if (spans.Length < 2) return null;
+        int width = Math.Clamp((int)Math.Round(widthDip), 1, 8192), height = Math.Clamp((int)Math.Round(heightDip), 1, 512);
+        double feather = ClearFeatherDip * width / widthDip;
+        var pixels = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                double px = x + .5, keep = 1;
+                for (int i = 0; i + 1 < spans.Length; i += 2)
+                {
+                    double a = spans[i] * width, b = spans[i + 1] * width;
+                    if (px >= a && px <= b)
+                    {
+                        keep = 0;
+                        break;
+                    }
+
+                    if (px < a && a > .5) keep *= Smooth(0, feather, a - px);
+                    else if (px > b && b < width - .5) keep *= Smooth(0, feather, px - b);
+                }
+
+                // premultiplied white: only the alpha counts in a mask
+                byte alpha = (byte)Math.Round(Math.Clamp(keep, 0, 1) * 255);
+                int at = ((y * width) + x) * 4;
+                pixels[at] = pixels[at + 1] = pixels[at + 2] = pixels[at + 3] = alpha;
+            }
+        }
+
+        var bitmap = BitmapSource.Create(width, height, 96, 96, PixelFormats.Pbgra32, null, pixels, width * 4);
+        bitmap.Freeze();
+        var mask = new ImageBrush(bitmap) { Stretch = Stretch.Fill };
+        mask.Freeze();
+        return mask;
+
+        static double Smooth(double from, double to, double x)
+        {
+            double t = Math.Clamp((x - from) / (to - from), 0, 1);
+            return t * t * (3 - (2 * t));
+        }
+    }
+
+    /// <summary>
+    /// Opaque along the strip except inside each merged 0..1 span pair, ramping over <paramref name="feather"/>
+    /// (a fraction of the strip) before and after each; null when nothing is cleared.
+    /// </summary>
+    private static Brush? ClearMask(float[] spans, double feather)
+    {
+        if (spans.Length < 2) return null;
+        var stops = new GradientStopCollection();
+        for (int i = 0; i + 1 < spans.Length; i += 2)
+        {
+            double from = spans[i], to = spans[i + 1];
+            double rampIn = i >= 2 ? Math.Min(feather, (from - spans[i - 1]) / 2) : Math.Min(feather, from);
+            double rampOut = i + 2 < spans.Length ? Math.Min(feather, (spans[i + 2] - to) / 2) : Math.Min(feather, 1 - to);
+            if (from > 0) stops.Add(new GradientStop(Colors.Black, Math.Max(0, from - rampIn)));
+            stops.Add(new GradientStop(Colors.Transparent, from));
+            stops.Add(new GradientStop(Colors.Transparent, to));
+            if (to < 1) stops.Add(new GradientStop(Colors.Black, Math.Min(1, to + rampOut)));
+        }
+
+        if (stops.Count == 0) return null;
+        var mask = new LinearGradientBrush(stops, new Point(0, 0.5), new Point(1, 0.5));
+        mask.Freeze();
+        return mask;
+    }
+
+    /// <summary>
+    /// The looks that keep to the 48 DIP taskbar: drawn as light over the bar, with no backdrop of their own that
+    /// would paint the glass over, and nothing that needs the dock strip's height.
+    /// </summary>
+    internal static bool FitsTaskbar(VisualizerStyle look) => look is VisualizerStyle.CyberSignal or VisualizerStyle.CyberBlackwall
+        or VisualizerStyle.CyberGlyph or VisualizerStyle.CyberRain or VisualizerStyle.CyberSamurai or VisualizerStyle.CyberPulse
+        or VisualizerStyle.CyberRift or VisualizerStyle.CyberZiggurat or VisualizerStyle.CyberNetdive
+        or VisualizerStyle.CyberRedline
+        or VisualizerStyle.CyberJaws
+        or VisualizerStyle.CyberBlackwallCinder or VisualizerStyle.CyberArasakaOs or VisualizerStyle.CyberBraindanceSuite
+        or VisualizerStyle.CyberApogee or VisualizerStyle.CyberCantoDaemon or VisualizerStyle.CyberNightCity
+        or VisualizerStyle.CyberTraumaTeam or VisualizerStyle.CyberLiquidChrome or VisualizerStyle.CyberDogtownFlir
+        or VisualizerStyle.CyberMonowire
+        or VisualizerStyle.Chladni or VisualizerStyle.Fireflies or VisualizerStyle.Ferrofluid
+        or VisualizerStyle.Stardust or VisualizerStyle.DustWave or VisualizerStyle.DustMilk;
+
     public void PlaceBelowDock(IntPtr dock)
     {
         _dock = dock;
@@ -167,14 +298,17 @@ internal sealed class VisualizerWindow : Window
         _holo?.PlaceBelowDock(dock);
         _cubeLayer?.PlaceBelowDock(dock);
         _novelLayer?.PlaceBelowDock(dock);
+        _idleLayer?.PlaceBelowDock(dock);
         _oled?.PlaceBelowDock(dock);
     }
 
-    public void SetRunning(bool running)
+    public void SetRunning(bool running, bool idle = false)
     {
         var look = GlassSettings.VisualizerLook;
         // a cyber theme plays its own strips, whatever the glass themes were left on
         if (GlassSettings.Cyber && !GlassSettings.IsCyberLook(look)) look = VisualizerStyle.CyberBlackwall;
+        // on the taskbar a look that does not fit gives way to one that does
+        if (DockSettings.TaskbarOn && !FitsTaskbar(look)) look = GlassSettings.Cyber ? VisualizerStyle.CyberSignal : VisualizerStyle.Stardust;
         // the OLED panel only exists on the GPU; the dust looks move there when the setting asks for it
         // the LED look is the OLED panel's show on a colour LED wall: the same layer, other flags
         if (look == VisualizerStyle.Led) look = VisualizerStyle.Oled;
@@ -203,7 +337,20 @@ internal sealed class VisualizerWindow : Window
             && Layer(ref _cubeLayer, () => _cubeScene = new CubeGpuScene());
         _cubeLayer?.SetRunning(cubes);
 
-        bool novel = running && GlassSettings.GpuVisualizer && GpuSceneCatalog.Has(look);
+        bool wantIdle = running && idle && GlassSettings.Cyber && GlassSettings.GpuVisualizer;
+        bool idleOn = wantIdle && Layer(ref _idleLayer, () =>
+        {
+            var scene = new Effects.Gpu.Cp77.CyberIdleHudGpuScene();
+            _idleScene = scene;
+            return scene;
+        }, needAudio: false);
+        if (_idleLayer is not null)
+        {
+            if (idleOn) _idleLayer.Fps = 24;
+            _idleLayer.SetRunning(idleOn);
+        }
+
+        bool novel = running && !wantIdle && GlassSettings.GpuVisualizer && GpuSceneCatalog.Has(look);
         if (novel && _novelLayer is not null && _novelLook != look)
         {
             _novelLayer.Dispose();
@@ -216,7 +363,7 @@ internal sealed class VisualizerWindow : Window
             novel = Layer(ref _novelLayer, () =>
             {
                 var scene = GpuSceneCatalog.Create(look);
-                _themed = scene as FeedbackGpuScene;
+                _themed = scene as IThemedGpuScene;
                 return scene;
             });
             if (!novel) _themed = null;
@@ -224,7 +371,7 @@ internal sealed class VisualizerWindow : Window
         _novelLayer?.SetRunning(novel);
         ApplySceneColours();
         // without the GPU these looks play as stardust; the cyber looks have nothing to fall back on
-        if (GpuSceneCatalog.Has(look) && !novel && !GlassSettings.Cyber) look = VisualizerStyle.Stardust;
+        if (GpuSceneCatalog.Has(look) && !novel && !wantIdle && !GlassSettings.Cyber) look = VisualizerStyle.Stardust;
 
         _oled?.SetRunning(oled);
 
@@ -232,7 +379,7 @@ internal sealed class VisualizerWindow : Window
         if (look == VisualizerStyle.Oled && !oled) look = VisualizerStyle.Stardust;
 
         // a GPU layer carries its look by itself; this window only fades out what it drew before
-        running &= !(dust || oled || holo || cubes || novel);
+        running &= !(dust || oled || holo || cubes || novel || idleOn);
         _running = running;
         _glow.IsActive = running && look == VisualizerStyle.Glow;
         _hologram.IsActive = running && look == VisualizerStyle.Hologram;
@@ -323,17 +470,88 @@ internal sealed class VisualizerWindow : Window
         }
     }
 
+    // the span the GPU looks keep clear, in the strip's DIPs; empty follows the gap Place was handed
+    private Rect? _gpuDock;
+    // the same span handed over as 0..1 along the strip; both null leaves the say to the rect above (or the gap)
+    private float? _gpuLeft;
+    private float? _gpuRight;
+
+    /// <summary>
+    /// The span the GPU looks keep clear, 0..1 along the strip as the looks draw it (foot down, left to right); null
+    /// follows the gap <see cref="Place"/> hands over. The WPF looks keep their own mask (<see cref="SetClear"/>), so
+    /// this never moves them.
+    /// </summary>
+    public void SetGpuDock(float? left, float? right)
+    {
+        if (left == _gpuLeft && right == _gpuRight && _gpuDock is null) return;
+        _gpuLeft = left;
+        _gpuRight = right;
+        _gpuDock = null;
+        PlacePanel(_bounds);
+    }
+
+    /// <summary>
+    /// The dock's span the GPU looks keep clear, in the strip's DIPs (the space <see cref="Place"/> hands the gap over
+    /// in); null follows that gap. The WPF looks keep their own mask (<see cref="SetClear"/>), so this never moves them.
+    /// </summary>
+    public void SetGpuDock(Rect? dock)
+    {
+        if (dock == _gpuDock && _gpuLeft is null) return;
+        _gpuDock = dock;
+        _gpuLeft = _gpuRight = null;
+        PlacePanel(_bounds);
+    }
+
     private void PlacePanel(Rect bounds)
     {
-        if (bounds.Width > 0 && !_dockRect.IsEmpty)
+        if (bounds.Width <= 0 || bounds.Height <= 0) return;
+        // a span handed over straight (the taskbar) is already where the looks draw it
+        if (_gpuLeft is { } spanLeft && _gpuRight is { } spanRight)
         {
-            _novelLayer?.SetDock((float)((_dockRect.Left - bounds.Left) / bounds.Width), (float)((_dockRect.Right - bounds.Left) / bounds.Width));
+            _novelLayer?.SetDock(spanLeft, spanRight);
+            _idleLayer?.SetDock(spanLeft, spanRight);
+            _panel?.SetDock(spanLeft, spanRight);
+            return;
         }
 
-        if (_panel is not null && bounds.Width > 0 && !_dockRect.IsEmpty)
+        var dock = _gpuDock ?? _dockRect;
+        if (dock.IsEmpty) return;
+        var (left, right) = AlongStrip(bounds, dock);
+        _novelLayer?.SetDock(left, right);
+        _idleLayer?.SetDock(left, right);
+        _panel?.SetDock(left, right);
+    }
+
+    /// <summary>Where <paramref name="rect"/> stands along the strip, 0..1 as the looks draw it (foot down, left to right).</summary>
+    private (float Left, float Right) AlongStrip(Rect bounds, Rect rect) => _edge switch
+    {
+        // down either side the strip runs from the top, as the dock's icons do
+        2 or 3 => ((float)((rect.Top - bounds.Top) / bounds.Height), (float)((rect.Bottom - bounds.Top) / bounds.Height)),
+        _ => ((float)((rect.Left - bounds.Left) / bounds.Width), (float)((rect.Right - bounds.Left) / bounds.Width)),
+    };
+
+    private void ApplyEdge()
+    {
+        var edge = (int)DockSettings.Edge;
+        if (edge != _edge)
         {
-            _panel.SetDock((float)((_dockRect.Left - bounds.Left) / bounds.Width), (float)((_dockRect.Right - bounds.Left) / bounds.Width));
+            _edge = edge;
+            // the WPF looks are laid out as the bottom strip and turned with it, as the dock is
+            _root.LayoutTransform = edge switch
+            {
+                1 => new ScaleTransform(1, -1),
+                2 => new RotateTransform(90),
+                3 => new MatrixTransform(0, 1, 1, 0, 0, 0),
+                _ => Transform.Identity,
+            };
         }
+
+        _gpu?.SetEdge(edge);
+        _holo?.SetEdge(edge);
+        _cubeLayer?.SetEdge(edge);
+        _novelLayer?.SetEdge(edge);
+        _idleLayer?.SetEdge(edge);
+        _oled?.SetEdge(edge);
     }
 
     // The GPU scenes read their own copy of the theme on the render thread; a settings change hands them the new one.
@@ -353,7 +571,9 @@ internal sealed class VisualizerWindow : Window
     // A feedback scene reads its colours on the render thread; this hands it the current ones from the UI thread.
     private void ApplySceneColours()
     {
-        if (_themed is not null) _themed.Theme = GlassSettings.VisualizerThemeColours ? CyberLook.Current : null;
+        var theme = GlassSettings.VisualizerThemeColours ? CyberLook.Current : null;
+        if (_themed is not null) _themed.Theme = theme;
+        if (_idleScene is not null) _idleScene.Theme = theme;
     }
 
     private void ApplyPanelSettings()
@@ -375,6 +595,7 @@ internal sealed class VisualizerWindow : Window
         if (_holo is not null) _holo.LedScreen = on;
         if (_cubeLayer is not null) _cubeLayer.LedScreen = on;
         if (_novelLayer is not null) _novelLayer.LedScreen = on;
+        if (_idleLayer is not null) _idleLayer.LedScreen = on;
         if (!on || !LedScreenEffect.IsAvailable)
         {
             _root.Effect = null;
@@ -388,14 +609,27 @@ internal sealed class VisualizerWindow : Window
         effect.Pitch = 3 * dpi.DpiScaleX; // 3 DIP, as the GPU layers draw it
     }
 
-    private bool Layer(ref GpuLayerWindow? layer, Func<IGpuScene> scene, bool capturable = false)
+    private bool Layer(ref GpuLayerWindow? layer, Func<IGpuScene> scene, bool capturable = false, bool needAudio = true)
     {
         if (_gpuFailed) return false;
+        // a layer that stopped on an error is rebuilt with a fresh scene; one that keeps failing sends the looks
+        // to the WPF path for good instead of a rebuild every poll
+        if (layer is { Halted: true })
+        {
+            layer.Dispose();
+            layer = null;
+            if (++_gpuRebuilds > 3)
+            {
+                _gpuFailed = true;
+                return false;
+            }
+        }
+
         if (layer is null)
         {
             try
             {
-                layer = new GpuLayerWindow(scene(), capturable);
+                layer = new GpuLayerWindow(scene(), capturable, needAudio);
             }
             catch (Exception ex)
             {
@@ -410,6 +644,9 @@ internal sealed class VisualizerWindow : Window
                 _gpuFailed = true;
                 return false;
             }
+
+            layer.SetClear(_clear);
+            layer.SetEdge(_edge);
 
             PlaceGpu();
         }
@@ -430,6 +667,7 @@ internal sealed class VisualizerWindow : Window
         _holo?.Place(pixels, _scale, _dock);
         _cubeLayer?.Place(pixels, _scale, _dock);
         _novelLayer?.Place(pixels, _scale, _dock);
+        _idleLayer?.Place(pixels, _scale, _dock);
         _oled?.Place(pixels, _scale, _dock);
     }
 
@@ -452,8 +690,9 @@ internal sealed class VisualizerWindow : Window
 
     private void UpdateCapsule()
     {
-        // The whole strip is the "capsule": the light rises from the screen's bottom edge.
-        var strip = new Rect(0, 0, Math.Max(1, ActualWidth), Math.Max(1, ActualHeight));
+        // The whole strip is the "capsule": the light rises from the strip's foot, the screen's edge. The root is
+        // laid out as the bottom strip on every edge, so its own size is the strip's.
+        var strip = new Rect(0, 0, Math.Max(1, _root.ActualWidth), Math.Max(1, _root.ActualHeight));
         _glow.Capsule = strip with { Y = strip.Height - 2, Height = 2 };
         // the hologram keeps its base line 4 DIP above the capsule's bottom; push that onto the screen edge
         _hologram.Capsule = strip with { Height = strip.Height + 4 };

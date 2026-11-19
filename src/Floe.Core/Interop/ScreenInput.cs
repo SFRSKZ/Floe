@@ -159,36 +159,21 @@ public static class ScreenInput
         }
     }
 
-    public readonly record struct ForegroundInfo(string ProcessName, string Title, string Path);
+    public readonly record struct ForegroundInfo(string ProcessName, string Title, string Path, string AppId = "");
 
-    public static ForegroundInfo GetForegroundInfo()
-    {
-        var foreground = GetForegroundWindow();
-        if (foreground == IntPtr.Zero)
-        {
-            return new ForegroundInfo(string.Empty, string.Empty, string.Empty);
-        }
-
-        GetWindowThreadProcessId(foreground, out var processId);
-
-        var name = string.Empty;
-        try
-        {
-            name = Process.GetProcessById((int)processId).ProcessName;
-        }
-        catch
-        {
-            // process may have exited
-        }
-
-        return new ForegroundInfo(name, GetWindowTitle(foreground), AppWindows.GetProcessPath(processId));
-    }
+    public static ForegroundInfo GetForegroundInfo() => GetWindowInfo(GetForegroundWindow());
 
     public static ForegroundInfo GetWindowInfo(IntPtr hwnd)
     {
         if (hwnd == IntPtr.Zero)
         {
             return new ForegroundInfo(string.Empty, string.Empty, string.Empty);
+        }
+
+        // a UWP app's frame belongs to ApplicationFrameHost: name the app inside it, with its app id
+        if (AppWindows.Describe(hwnd) is { } app)
+        {
+            return new ForegroundInfo(app.Name, GetWindowTitle(hwnd), app.Path, app.AppId);
         }
 
         GetWindowThreadProcessId(hwnd, out var processId);

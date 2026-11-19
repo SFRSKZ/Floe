@@ -37,7 +37,13 @@ float4 main(float2 uv : TEXCOORD0) : COLOR0
         float glow = exp(-abs(tb) / 2.0) * 0.5 + exp(-abs(tb) / 5.0) * 0.14;
         float3 tint = lerp(ColorA.rgb, ColorB.rgb, 0.5 + 0.5 * sin(a + Time * 1.5));
         float flick = 0.88 + 0.12 * step(0.9, frac(sin(floor(Time * 18.0) * 12.9898) * 43758.5453));
-        float outside = smoothstep(-0.5, 1.0, d) * k;
+        // the wide glow still carries light where the padded box ends: fade it out before that edge, or the
+        // box shows as a faint square around the icon every time the tube flares
+        float edge = 0.5 * total - max(abs(p.x), abs(p.y));
+        // and it dies out by its distance from the icon, well inside the box: the haze keeps the icon's own
+        // outline instead of filling the square it is drawn in
+        float reach = 1.0 - smoothstep(5.5, 10.0, d);
+        float outside = smoothstep(-0.5, 1.0, d) * smoothstep(0.0, 5.0, edge) * reach * k;
         float3 neon = (core * 0.45 + tint * (core * 1.1 + glow * 2.2)) * flick * outside;
         float alpha = saturate(max(core * 0.9, glow * 1.2)) * outside;
         // premultiplied: rgb above alpha adds light, which is what a neon should do

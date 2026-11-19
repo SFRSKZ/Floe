@@ -26,7 +26,8 @@ public sealed class CircuitGpuScene : FeedbackGpuScene
     protected override void Advance(GpuFrame frame)
     {
         // the medium moves one cell a step, so its speed must not follow the refresh rate
-        _owed = Math.Min(_owed + (frame.Dt * 60), 2);
+        // 26 steps a second: slow enough to follow a pulse along its trace with the eye
+        _owed = Math.Min(_owed + (frame.Dt * 26), 2);
         _step = _owed >= 1;
         if (_step) _owed -= 1;
         _surge |= Beat.Hit;
@@ -182,27 +183,28 @@ public sealed class CircuitGpuScene : FeedbackGpuScene
             float dice = Hash(float2(cell) + float2(Tick * .71, Tick * .37));
             float x = at.x;
             float e = Energy(x);
+            float active = smoothstep(.015, .16, Level);
             bool head = false;
 
             if (wire > .5)
             {
                 if (charge > 0) charge = max(0, charge - .1);
-                else if (heads > 0) head = true;
-                else if (dice < (.00014 + (.0036 * e * e * e)) * (.45 + Level)) head = true;
+                else if (heads > 0 && active > .05) head = true;
+                else if (dice < active * (.00014 + (.0036 * e * e * e)) * (.45 + Level)) head = true;
 
                 // a beat blows a few spots of the board at once, loudest where the music is, and runs out from each
                 float2 spot = floor(position.xy / (54 * Dip));
                 bool seed = length(position.xy - ((spot + .5) * 54 * Dip)) < 5 * Dip;
-                if (Surge > .5 && seed && Hash(spot + float2(Tick * .13, 5)) < .03 + (.07 * e)) head = true;
+                if (Surge > .5 && seed && Hash(spot + float2(Tick * .13, 5)) < .12 + (.18 * e)) head = true;
             }
-            if (wire > 1.5 && charge <= 0 && dice < (.002 + (.03 * Surge)) * (.5 + Level)) head = true;
+            if (wire > 1.5 && charge <= 0 && dice < active * (.002 + (.03 * Surge)) * (.5 + Level)) head = true;
 
             if (wire < .5)
             {
                 charge = max(0, charge - .3);
 
                 // a trace at its limit arcs over to whatever is near
-                if (hottest > .92 && dice < .03) head = true;
+                if (active > .05 && hottest > .92 && dice < .03) head = true;
             }
 
             if (head)
@@ -211,7 +213,7 @@ public sealed class CircuitGpuScene : FeedbackGpuScene
                 heat += .25 * saturate(wire);
             }
 
-            heat = lerp(heat, warm * .25, .08) * (.989 + (.004 * Level));
+            heat = lerp(heat, warm * .25, .08) * lerp(.62, .989 + (.004 * Level), active);
 
             if (wire > .5 && wire < 1.5 && heat > 1)
             {

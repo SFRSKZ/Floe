@@ -44,9 +44,14 @@ public sealed class SpectrumFrame
 public sealed class AudioSpectrum : IDisposable
 {
     private const int FftSize = 2048;
-    private const int Ring = 8192;
+    private const int Ring = 32768; // room for the transform's window at 192 kHz, eight times over at 48
     private const float MinHz = 30, MaxHz = 16000;
-    private const int FluxHistory = 43; // ~1.4 s of reads at 30 fps
+    private const int FluxHistory = 64; // ~1 s of analyses at 60 a second, ~2 s at 30
+    // The music is analysed at most this often, however fast the caller draws: a 180 Hz strip reads three times
+    // between two capture packets, and those reads carry nothing new.
+    private const int AnalysisRate = 60;
+    // no packet for this long is silence; shorter gaps are only the capture thread's own rhythm
+    private const double Starved = .12;
 
     private readonly object _gate = new();
     private readonly float[] _ring = new float[Ring];
@@ -70,7 +75,13 @@ public sealed class AudioSpectrum : IDisposable
     private readonly float[][] _flux = { new float[FluxHistory], new float[FluxHistory], new float[FluxHistory] };
     private readonly double[] _sinceOnset = { 1, 1, 1 };
     private int _fluxAt;
-    private long _lastReceived;
+    private long _lastSeen, _lastAnalysed;
+    private double _starved, _sinceAnalysis;
+    private bool _wasSilent = true;
+    // what the last analysis found, handed out again on the reads between two analyses
+    private float[] _held = Array.Empty<float>();
+    private float _heldBass, _heldMid, _heldTreble, _heldLevel;
+    private float[] _bandAt = Array.Empty<float>();
     // where each band starts and ends in the FFT bins, for the rate and band count they were worked out for
     private int[] _bandFrom = Array.Empty<int>(), _bandTo = Array.Empty<int>();
     private int _bandRate;
@@ -78,114 +89,214 @@ public sealed class AudioSpectrum : IDisposable
     private float _wavePeak;
 
     public AudioSpectrum()
+        : this(true)
+    {
+    }
+
+    /// <param name="listen">False leaves the loopback capture off: the samples come from <see cref="Feed"/> (tests, offline previews).</param>
+    public AudioSpectrum(bool listen)
     {
         for (int i = 0; i < FftSize; i++) _window[i] = (float)(.5 - (.5 * Math.Cos(2 * Math.PI * i / (FftSize - 1))));
         _thread = new Thread(CaptureLoop) { IsBackground = true, Name = "FloeSpectrum", Priority = ThreadPriority.AboveNormal };
         _thread.SetApartmentState(ApartmentState.MTA);
-        _thread.Start();
+        if (listen) _thread.Start();
+    }
+
+    /// <summary>Hands mono samples to the analyser as the capture thread would, for a spectrum that does not listen.</summary>
+    public void Feed(ReadOnlySpan<float> mono, int sampleRate)
+    {
+        lock (_gate)
+        {
+            _sampleRate = sampleRate;
+            foreach (float sample in mono)
+            {
+                _ring[_write] = sample;
+                _write = (_write + 1) % Ring;
+                _leftEnergy += sample * sample;
+                _rightEnergy += sample * sample;
+            }
+
+            _received += mono.Length;
+        }
     }
 
     public void Dispose() => _disposed = true;
 
-    /// <summary>Analyses the newest samples into <paramref name="frame"/>; <paramref name="dt"/> is the time since the last read.</summary>
+    /// <summary>
+    /// Fills <paramref name="frame"/> with what the music is doing; <paramref name="dt"/> is the time since the last
+    /// read. The analysis runs on the samples, not on the reads: a read that finds too little new sound gets the last
+    /// levels again (and no onset), so a fast display neither sees silence between two packets nor counts one hit
+    /// several times.
+    /// </summary>
     public void Read(SpectrumFrame frame, double dt)
     {
-        int rate;
+        int rate, step;
         long received;
+        float left, right;
+        bool analyse;
         lock (_gate)
         {
-            int start = (_write - FftSize + Ring) % Ring;
-            for (int i = 0; i < FftSize; i++) _re[i] = _ring[(start + i) % Ring] * _window[i];
-            int scopeStart = (_write - _scope.Length + Ring) % Ring;
-            for (int i = 0; i < _scope.Length; i++) _scope[i] = _ring[(scopeStart + i) % Ring];
             rate = _sampleRate;
             received = _received;
-            float energy = _leftEnergy + _rightEnergy;
-            if (energy > 1e-6f)
-            {
-                float balance = (_rightEnergy - _leftEnergy) / energy;
-                frame.Balance += (balance - frame.Balance) * (float)Math.Min(1, dt * 6);
-            }
-            else
-            {
-                frame.Balance -= frame.Balance * (float)Math.Min(1, dt * 2);
-            }
-
+            left = _leftEnergy;
+            right = _rightEnergy;
             _leftEnergy = _rightEnergy = 0;
+
+            // 96 and 192 kHz devices: the same 2048 points over half or a quarter of the time would leave the whole
+            // low end in two bins, so the samples are thinned back to ~48 kHz first
+            step = Math.Clamp((int)Math.Round(rate / 48000.0), 1, Ring / FftSize / 2);
+            analyse = received - _lastAnalysed >= rate / AnalysisRate;
+            if (analyse)
+            {
+                int start = (_write - (FftSize * step) + Ring) % Ring;
+                for (int i = 0; i < FftSize; i++)
+                {
+                    float sum = 0;
+                    for (int s = 0; s < step; s++) sum += _ring[(start + (i * step) + s) % Ring];
+                    _re[i] = sum / step * _window[i];
+                }
+
+                int scopeStart = (_write - _scope.Length + Ring) % Ring;
+                for (int i = 0; i < _scope.Length; i++) _scope[i] = _ring[(scopeStart + i) % Ring];
+            }
         }
 
-        // nothing new arrived: loopback sends no packets while nothing plays
-        bool silent = received == _lastReceived;
-        _lastReceived = received;
-        int bins = FftSize / 2;
-        float total = 0;
-        if (silent)
+        if (received != _lastSeen)
         {
-            // the transform of silence is silence: no FFT for it
-            Array.Clear(_magnitude);
+            _lastSeen = received;
+            _starved = 0;
         }
         else
         {
-            Array.Clear(_im);
-            Fft(_re, _im);
-            for (int k = 1; k < bins; k++)
-            {
-                float m = MathF.Sqrt((_re[k] * _re[k]) + (_im[k] * _im[k]));
-                _magnitude[k] = m;
-                total += m;
-            }
+            _starved += dt;
         }
 
-        float hzPerBin = rate / (float)FftSize;
+        // loopback sends no packets while nothing plays
+        bool silent = _starved > Starved;
+        float energy = left + right;
+        if (energy > 1e-6f)
+        {
+            float balance = (right - left) / energy;
+            frame.Balance += (balance - frame.Balance) * (float)Math.Min(1, dt * 6);
+        }
+        else if (silent)
+        {
+            frame.Balance -= frame.Balance * (float)Math.Min(1, dt * 2);
+        }
+
         var bands = frame.Bands;
         if (_average.Length != bands.Length + 4)
         {
             _average = new float[bands.Length + 4];
             _peak = new float[bands.Length + 4];
+            _held = new float[bands.Length];
             Array.Fill(_average, float.NaN);
         }
 
-        if (_bandFrom.Length != bands.Length || _bandRate != rate)
+        _sinceAnalysis += dt;
+        frame.Kick = frame.Snare = frame.Hat = 0;
+        if (silent)
+        {
+            if (!_wasSilent)
+            {
+                _wasSilent = true;
+                Array.Clear(_magnitude);
+                Array.Clear(_previous);
+                Array.Clear(_held);
+                _heldBass = _heldMid = _heldTreble = _heldLevel = 0;
+                ReadWave(frame.Wave, dt, true);
+            }
+
+            _lastAnalysed = received;
+            _sinceAnalysis = 0;
+        }
+        else if (analyse)
+        {
+            Analyse(frame, rate / (float)step, _sinceAnalysis);
+            _lastAnalysed = received;
+            _sinceAnalysis = 0;
+        }
+
+        // the caller may have reshaped the last frame's levels (AudioCalm does): always hand out the analyser's own
+        Array.Copy(_held, bands, bands.Length);
+        frame.Bass = _heldBass;
+        frame.Mid = _heldMid;
+        frame.Treble = _heldTreble;
+        frame.Level = _heldLevel;
+    }
+
+    private void Analyse(SpectrumFrame frame, float rate, double dt)
+    {
+        int bins = FftSize / 2;
+        float total = 0;
+        Array.Clear(_im);
+        Fft(_re, _im);
+        for (int k = 1; k < bins; k++)
+        {
+            float m = MathF.Sqrt((_re[k] * _re[k]) + (_im[k] * _im[k]));
+            _magnitude[k] = m;
+            total += m;
+        }
+
+        float hzPerBin = rate / FftSize;
+        var bands = frame.Bands;
+        if (_bandFrom.Length != bands.Length || _bandRate != (int)rate)
         {
             _bandFrom = new int[bands.Length];
             _bandTo = new int[bands.Length];
-            _bandRate = rate;
+            _bandAt = new float[bands.Length];
+            _bandRate = (int)rate;
             for (int b = 0; b < bands.Length; b++)
             {
                 float lo = MinHz * MathF.Pow(MaxHz / MinHz, b / (float)bands.Length);
                 float hi = MinHz * MathF.Pow(MaxHz / MinHz, (b + 1) / (float)bands.Length);
                 _bandFrom[b] = Math.Clamp((int)(lo / hzPerBin), 1, bins - 1);
                 _bandTo[b] = Math.Clamp((int)MathF.Ceiling(hi / hzPerBin), _bandFrom[b] + 1, bins);
+                // a band narrower than the bins it sits between is read at its own centre, between the two: the
+                // lowest bands would otherwise share one bin and move as a block
+                _bandAt[b] = (hi - lo) / hzPerBin < 1.5f ? Math.Clamp((lo + hi) / (2 * hzPerBin), 1, bins - 2) : -1;
             }
         }
 
+        // the first sound after a silence has nothing before it to grow from: it is no onset
+        bool prime = _wasSilent;
+        _wasSilent = false;
         _reads++;
         for (int b = 0; b < bands.Length; b++)
         {
             float sum = 0;
-            for (int k = _bandFrom[b]; k < _bandTo[b]; k++) sum = Math.Max(sum, _magnitude[k]);
-            bands[b] = Normalise(b, 20 * MathF.Log10(sum + 1e-6f), dt, silent);
+            if (_bandAt[b] >= 0)
+            {
+                int k = (int)_bandAt[b];
+                sum = _magnitude[k] + ((_magnitude[k + 1] - _magnitude[k]) * (_bandAt[b] - k));
+            }
+            else
+            {
+                for (int k = _bandFrom[b]; k < _bandTo[b]; k++) sum = Math.Max(sum, _magnitude[k]);
+            }
+
+            _held[b] = Normalise(b, 20 * MathF.Log10(sum + 1e-6f), dt, false);
         }
 
         int n = bands.Length;
-        frame.Bass = Normalise(n, Group(30, 150, hzPerBin), dt, silent);
-        frame.Mid = Normalise(n + 1, Group(150, 2000, hzPerBin), dt, silent);
-        frame.Treble = Normalise(n + 2, Group(2000, 16000, hzPerBin), dt, silent);
-        frame.Level = Normalise(n + 3, 20 * MathF.Log10((total / bins) + 1e-6f), dt, silent);
+        _heldBass = Normalise(n, Group(30, 150, hzPerBin), dt, false);
+        _heldMid = Normalise(n + 1, Group(150, 2000, hzPerBin), dt, false);
+        _heldTreble = Normalise(n + 2, Group(2000, 16000, hzPerBin), dt, false);
+        _heldLevel = Normalise(n + 3, 20 * MathF.Log10((total / bins) + 1e-6f), dt, false);
 
-        frame.Kick = Onset(0, 30, 150, hzPerBin, dt, .14, silent);
-        // a kick also shows as the lows leaping up from where they just were
-        float jump = frame.Bass - _lastBass;
-        _lastBass = frame.Bass;
-        if (frame.Kick == 0 && jump > .3f && frame.Bass > .6f && _sinceOnset[0] >= .14)
+        frame.Kick = Onset(0, 30, 150, hzPerBin, dt, .14, prime);
+        // a kick also shows as the lows leaping up from where they stood a moment ago (about two frames at 60)
+        float jump = _heldBass - _lastBass;
+        _lastBass += (_heldBass - _lastBass) * (float)(1 - Math.Exp(-dt / .03));
+        if (!prime && frame.Kick == 0 && jump > .3f && _heldBass > .6f && _sinceOnset[0] >= .14)
         {
             _sinceOnset[0] = 0;
             frame.Kick = Math.Clamp(jump * 1.5f, .3f, 1);
         }
 
-        frame.Snare = Onset(1, 150, 2500, hzPerBin, dt, .12, silent);
-        frame.Hat = Onset(2, 6000, 16000, hzPerBin, dt, .07, silent);
-        ReadWave(frame.Wave, dt, silent);
+        frame.Snare = Onset(1, 150, 2500, hzPerBin, dt, .12, prime);
+        frame.Hat = Onset(2, 6000, 16000, hzPerBin, dt, .07, prime);
+        ReadWave(frame.Wave, dt, false);
         _fluxAt = (_fluxAt + 1) % FluxHistory;
         Array.Copy(_magnitude, _previous, bins);
     }
@@ -247,7 +358,7 @@ public sealed class AudioSpectrum : IDisposable
     }
 
     // Spectral flux: how much the band grew since the last read, against its own recent average and spread.
-    private float Onset(int g, float loHz, float hiHz, float hzPerBin, double dt, double refractory, bool silent)
+    private float Onset(int g, float loHz, float hiHz, float hzPerBin, double dt, double refractory, bool prime)
     {
         int k0 = Math.Max(1, (int)(loHz / hzPerBin)), k1 = Math.Min(FftSize / 2, (int)(hiHz / hzPerBin) + 1);
         float flux = 0, energy = 0;
@@ -268,7 +379,7 @@ public sealed class AudioSpectrum : IDisposable
         history[_fluxAt] = flux;
         _sinceOnset[g] += dt;
         float threshold = mean + (1.6f * spread) + .02f;
-        if (silent || _reads < FluxHistory / 2 || flux <= threshold || _sinceOnset[g] < refractory) return 0;
+        if (prime || _reads < FluxHistory / 2 || flux <= threshold || _sinceOnset[g] < refractory) return 0;
         _sinceOnset[g] = 0;
         return Math.Clamp((flux - threshold) / (threshold + 1e-3f), .25f, 1);
     }
@@ -370,13 +481,23 @@ public sealed class AudioSpectrum : IDisposable
             capture = (IAudioCaptureClient)service;
             lock (_gate) _sampleRate = rate;
             if (client.Start() < 0) return;
+            Note($"audio attach rate={rate} ch={channels} float={isFloat}");
 
             int checks = 0;
             while (!_disposed)
             {
                 Thread.Sleep(10);
-                while (capture.GetNextPacketSize(out uint packet) >= 0 && packet > 0)
+                while (true)
                 {
+                    // a device that was reset or lost its stream fails here; the same id would never re-attach otherwise
+                    int hr = capture.GetNextPacketSize(out uint packet);
+                    if (hr < 0)
+                    {
+                        Note($"audio lost hr=0x{hr:X8}, re-attaching");
+                        return;
+                    }
+
+                    if (packet == 0) break;
                     if (capture.GetBuffer(out IntPtr data, out uint frames, out uint flags, out _, out _) < 0) return;
                     Push(data, (int)frames, channels, isFloat, (flags & SilentFlag) != 0);
                     capture.ReleaseBuffer(frames);
@@ -386,6 +507,7 @@ public sealed class AudioSpectrum : IDisposable
                 if (++checks % 200 == 0
                     && (enumerator.GetDefaultAudioEndpoint(ERender, EMultimedia, out var current) < 0 || current is null || Changed(current, id)))
                 {
+                    Note("audio default device changed, re-attaching");
                     return;
                 }
             }
@@ -399,6 +521,19 @@ public sealed class AudioSpectrum : IDisposable
             Release(client);
             Release(device);
             Release(enumerator);
+        }
+    }
+
+    // rare events only: an attach, a lost stream, a device switch
+    private static void Note(string text)
+    {
+        try
+        {
+            File.AppendAllText(Path.Combine(Path.GetTempPath(), "floe.log"), $"{DateTime.Now:HH:mm:ss} {text}{Environment.NewLine}");
+        }
+        catch
+        {
+            // logging must never throw
         }
     }
 

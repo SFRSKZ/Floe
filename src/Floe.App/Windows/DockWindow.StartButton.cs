@@ -5,15 +5,15 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Shapes;
+using Floe.App.Effects.Cyber;
 using Floe.App.Services;
 using Floe.Core.Interop;
 
 namespace Floe.App.Windows;
 
 /// <summary>
-/// The leading button where Windows keeps Start. Left click opens the Start menu, right click shows
-/// the desktop. Shared by both products: the plain dock draws a dot-matrix desktop glyph, the
-/// Cyberpunk edition draws the slab glyph.
+/// The leading Start button. Shared by both products: the plain dock draws a dot-matrix glyph, while the
+/// Cyberpunk edition draws a chamfered angular Start badge.
 /// </summary>
 public partial class DockWindow
 {
@@ -29,26 +29,15 @@ public partial class DockWindow
     private readonly Rectangle _startDivider = new() { Width = 1, Height = 34, RadiusX = 0.5, RadiusY = 0.5, IsHitTestVisible = false };
     private readonly ScaleTransform _startScale = new(1, 1);
 
-    private readonly DesktopSlabGlyph _startSlab = new(StartWidth);
-
     private void InitializeStartButton()
     {
-        _start.ToolTip = Loc.T("Sol tık: Başlat menüsü | Sağ tık: Masaüstünü göster");
+        _start.ToolTip = Loc.T("Başlat");
         _start.RenderTransformOrigin = new Point(0.5, 0.5);
         _start.RenderTransform = _startScale;
         _start.Children.Add(_startGlyph);
-        _start.Children.Add(_startSlab);
         _start.MouseLeftButtonUp += (_, _) => DesktopController.OpenStartMenu();
-        _start.MouseEnter += (_, _) =>
-        {
-            AnimateStart(1.12, 1);
-            _startSlab.Peek(true);
-        };
-        _start.MouseLeave += (_, _) =>
-        {
-            AnimateStart(1, 0.82);
-            _startSlab.Peek(false);
-        };
+        _start.MouseEnter += (_, _) => AnimateStart(1.12, 1);
+        _start.MouseLeave += (_, _) => AnimateStart(1, GlassSettings.Cyber ? 1 : 0.82);
         _startGlyph.Opacity = 0.82;
         RenderOptions.SetBitmapScalingMode(_startGlyph, BitmapScalingMode.HighQuality);
 
@@ -68,12 +57,10 @@ public partial class DockWindow
     {
         var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
         bool cyber = GlassSettings.Cyber;
-        _startSlab.Visibility = cyber ? Visibility.Visible : Visibility.Collapsed;
-        _startGlyph.Visibility = cyber ? Visibility.Collapsed : Visibility.Visible;
         if (cyber)
         {
-            var look = CyberLook.Current;
-            _startSlab.Paint(StartGlyphColor, CyberLook.Readable(look.Accent, look.Body), look.Body);
+            _startGlyph.Source = CyberIcons.Draw("floe-start", CyberFxLayer.Solid(StartGlyphColor));
+            _startGlyph.Opacity = 1;
             return;
         }
 
@@ -92,7 +79,7 @@ public partial class DockWindow
 
     private void PositionStartButton()
     {
-        var left = _capsuleLeft + PadX;
+        var left = StartButtonLeft;
         Canvas.SetLeft(_start, left);
         Canvas.SetTop(_start, RestTop + ((RestBarHeight - StartWidth) / 2));
         Canvas.SetLeft(_startDivider, left + StartWidth + (StartGap / 2));

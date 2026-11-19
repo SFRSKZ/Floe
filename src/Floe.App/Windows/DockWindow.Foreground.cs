@@ -28,14 +28,23 @@ public partial class DockWindow
     private void UpdateForeground()
     {
         var info = ScreenInput.GetForegroundInfo();
-        if (IsIgnoredForeground(info.ProcessName) || string.Equals(info.ProcessName, _activeProcess, StringComparison.OrdinalIgnoreCase))
+        if (IsIgnoredForeground(info.ProcessName))
         {
+            return;
+        }
+
+        // the whole identity counts: two different apps can share a process name
+        if (SameApp(info.ProcessName, info.Path, info.AppId, _activeProcess, _activePath, _activeAppId))
+        {
+            // back to the active app before the debounce ran out: the app in between never took over
+            _foregroundDebounce.Stop();
             return;
         }
 
         _pendingForeground = info.ProcessName;
         _pendingTitle = info.Title;
         _pendingPath = info.Path;
+        _pendingAppId = info.AppId;
         _foregroundDebounce.Stop();
         _foregroundDebounce.Start();
     }
@@ -44,7 +53,7 @@ public partial class DockWindow
     {
         _foregroundDebounce.Stop();
         if (string.IsNullOrEmpty(_pendingForeground)
-            || string.Equals(_pendingForeground, _activeProcess, StringComparison.OrdinalIgnoreCase))
+            || SameApp(_pendingForeground, _pendingPath, _pendingAppId, _activeProcess, _activePath, _activeAppId))
         {
             return;
         }
@@ -52,9 +61,10 @@ public partial class DockWindow
         _activeProcess = _pendingForeground;
         _activeTitle = _pendingTitle;
         _activePath = _pendingPath;
+        _activeAppId = _pendingAppId;
 
         if (_attentionItem is not null
-            && AppMatcher.Matches(_attentionItem.Name, _attentionItem.ProcessName, _attentionItem.App.Target, _activeProcess, _activeTitle, _activePath))
+            && AppMatcher.Matches(_attentionItem, _activeProcess, _activePath, _activeAppId))
         {
             _attentionItem = null;
         }
@@ -70,6 +80,11 @@ public partial class DockWindow
         Log($"fg='{_activeProcess}' title='{_activeTitle}' path='{_activePath}' auraIndex={_activeIndex} visible={_auraGrid.Visibility}");
     }
 
+    private static bool SameApp(string? process, string? path, string? appId, string? activeProcess, string? activePath, string? activeAppId)
+        => string.Equals(process, activeProcess, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(path ?? string.Empty, activePath ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(appId ?? string.Empty, activeAppId ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
     private void OnSystemAlert(IntPtr hwnd)
     {
         var info = ScreenInput.GetWindowInfo(hwnd);
@@ -82,7 +97,7 @@ public partial class DockWindow
         {
             var item = _slots[i].Item;
             if (item.IsRunning
-                && AppMatcher.Matches(item.Name, item.ProcessName, item.App.Target, info.ProcessName, info.Title, info.Path))
+                && AppMatcher.Matches(item, info.ProcessName, info.Path, info.AppId))
             {
                 if (!ReferenceEquals(_attentionItem, item))
                 {

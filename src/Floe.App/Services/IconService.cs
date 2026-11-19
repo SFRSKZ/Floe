@@ -44,7 +44,14 @@ public static class IconService
     private static extern bool DestroyIcon(IntPtr hIcon);
 
     [DllImport("user32.dll")]
-    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+    private static extern IntPtr SendMessageTimeout(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam, uint flags, uint timeoutMs, out IntPtr result);
+
+    // SMTO_ABORTIFHUNG | SMTO_BLOCK: a hung app answers nothing and is not waited for
+    private const uint SmtoAbortIfHung = 0x0002, SmtoBlock = 0x0001;
+
+    /// <summary>WM_GETICON with a short timeout: a plain SendMessage to a hung window would freeze the dock.</summary>
+    private static IntPtr AskIcon(IntPtr hwnd, int kind)
+        => SendMessageTimeout(hwnd, WmGetIcon, (IntPtr)kind, IntPtr.Zero, SmtoAbortIfHung | SmtoBlock, 100, out var icon) == IntPtr.Zero ? IntPtr.Zero : icon;
 
     [DllImport("user32.dll", EntryPoint = "GetClassLongPtrW")]
     private static extern IntPtr GetClassLongPtr(IntPtr hWnd, int index);
@@ -93,10 +100,10 @@ public static class IconService
 
     private static ImageSource? ResolveWindowIcon(IntPtr hwnd, int box)
     {
-        var handle = SendMessage(hwnd, WmGetIcon, (IntPtr)1, IntPtr.Zero);
+        var handle = AskIcon(hwnd, 1);
         if (handle == IntPtr.Zero)
         {
-            handle = SendMessage(hwnd, WmGetIcon, (IntPtr)2, IntPtr.Zero);
+            handle = AskIcon(hwnd, 2);
         }
 
         if (handle == IntPtr.Zero)

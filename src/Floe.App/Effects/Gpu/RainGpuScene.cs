@@ -50,12 +50,52 @@ public sealed class RainGpuScene : FeedbackGpuScene
         d[9] = frame.Dt * 60;
         d[10] = .3f + (.7f * Math.Clamp(_form, 0, 1));
         d[11] = _mask ? 1 : 0;
+        d[12] = MaskAt(frame);
         PutBands(16, frame);
         var lead = Lead(Cyan);
         Put(40, Theme is null ? Ink : Mix(lead, Colors.White, .75f));
         Put(44, lead);
         Put(48, Theme is null ? Deep : Mix(Colors.Black, lead, .45f));
         Put(52, Second(Red));
+    }
+
+    /// <summary>
+    /// Where the mask stands along the strip: in the left wing, unless the spans the layer clears (the icons on the
+    /// taskbar) would wipe it there; then in the middle of the widest free stretch.
+    /// </summary>
+    private static float MaskAt(GpuFrame frame)
+    {
+        const float home = .1f;
+        var spans = frame.Clear;
+        if (spans.Length < 2 || frame.Width <= 0) return home;
+        // the figure is 110 of 120 cells of 96 % of the height wide; its glow reaches a little further
+        float half = .5f * frame.Height / frame.Width;
+        bool Hit(float at)
+        {
+            for (int i = 0; i + 1 < spans.Length; i += 2)
+            {
+                if (at + half > spans[i] && at - half < spans[i + 1]) return true;
+            }
+
+            return false;
+        }
+
+        if (!Hit(home)) return home;
+        var edges = new List<float>(spans.Length + 2) { 0 };
+        edges.AddRange(spans);
+        edges.Add(1);
+        float best = home, widest = 0;
+        for (int i = 0; i + 1 < edges.Count; i += 2)
+        {
+            float from = Math.Clamp(edges[i], 0, 1), to = Math.Clamp(edges[i + 1], 0, 1);
+            if (to - from > widest)
+            {
+                widest = to - from;
+                best = (from + to) / 2;
+            }
+        }
+
+        return best;
     }
 
     private const string Shared = """
@@ -95,7 +135,7 @@ public sealed class RainGpuScene : FeedbackGpuScene
 
     private const string MaskPs = """
 
-        float MaskCenter() { return Size.x * .1; }
+        float MaskCenter() { return Size.x * Spare.x; }
 
         // what the mask has at this pixel: 0 nothing, 1 red, 2 chrome; the upper rows, its flames, sway
         int Mask(float2 pixel)

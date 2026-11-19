@@ -25,6 +25,10 @@ internal sealed class ClickGlassRenderer : IDisposable
         : this(mask, backdrop, "Floe.DropLens.hlsl", "float2 Box", "float Height") { }
 
     private ClickGlassRenderer(BitmapSource input, BitmapSource field, string resource, string firstConstant, string firstFunction)
+        : this(input, field, CompilePixel(resource, firstConstant, firstFunction)) { }
+
+    /// <summary>Any ps_4_0 bytecode over the icon (t0) and its field (t1); the target is the input's size.</summary>
+    internal ClickGlassRenderer(BitmapSource input, BitmapSource field, byte[] pixel)
     {
         _width = input.PixelWidth;
         _height = input.PixelHeight;
@@ -43,7 +47,6 @@ internal sealed class ClickGlassRenderer : IDisposable
             texture.Usage = 3; texture.BindFlags = 0; texture.CpuAccessFlags = 0x20000;
             Check(Call<CreateTexture>(_device, 5)(_device, ref texture, IntPtr.Zero, out _readback));
             var vertex = ShaderCompiler.CompilePreview(vertex: true);
-            var pixel = CompilePixel(resource, firstConstant, firstFunction);
             Check(Call<CreateShader>(_device, 12)(_device, vertex, (nuint)vertex.Length, IntPtr.Zero, out _vertexShader));
             Check(Call<CreateShader>(_device, 15)(_device, pixel, (nuint)pixel.Length, IntPtr.Zero, out _pixelShader));
             var buffer = new BufferDescription { ByteWidth = 9 * 16, BindFlags = 4 }; // CONSTANT_BUFFER

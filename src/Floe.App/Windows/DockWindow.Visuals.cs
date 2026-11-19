@@ -392,7 +392,7 @@ public partial class DockWindow
         if (Changed(ref _liquidBulge, EffectiveBulge * scale)) _liquid.Bulge = _liquidBulge;
         if (Changed(ref _liquidPlateau, BulgeShape.Plateau * scale)) _liquid.Plateau = _liquidPlateau;
         if (Changed(ref _liquidSigma, BulgeShape.Sigma * scale)) _liquid.Sigma = _liquidSigma;
-        if (Changed(ref _liquidRadius, CornerRadius * scale)) _liquid.Radius = _liquidRadius;
+        if (Changed(ref _liquidRadius, (TaskbarOn ? 0 : CornerRadius) * scale)) _liquid.Radius = _liquidRadius;
     }
 
     private static bool Changed(ref double cache, double value)
@@ -411,7 +411,8 @@ public partial class DockWindow
 
     private void UpdateGlassShape()
     {
-        _windowGlassBounds.Rect = new Rect(0, 0, _windowWidth, WindowHeight);
+        // the taskbar's capsule reaches past the window until the root's scale brings it in: clip to the capsule then
+        _windowGlassBounds.Rect = TaskbarOn ? new Rect(BarLeft, 0, BarRight - BarLeft, WindowHeight) : new Rect(0, 0, _windowWidth, WindowHeight);
         // Account for the root's compact/hover scale as well as monitor DPI.
         var pixel = 1 / (_dpi * Math.Max(0.1, _dockScale));
         _rim.StrokeThickness = 2 * pixel; // clipping discards the outer half: a 1px inner hairline
@@ -433,7 +434,8 @@ public partial class DockWindow
         _metalSurface.Height = RestBarHeight;
         var size = new Size(width, RestBarHeight);
         if (_metalSize != size) { _metalSize = size; _metalEffect.Size = size; }
-        if (Changed(ref _metalCorner, CornerRadius)) _metalEffect.CornerRadius = CornerRadius;
+        var corner = TaskbarOn ? 0 : CornerRadius;
+        if (Changed(ref _metalCorner, corner)) _metalEffect.CornerRadius = corner;
         var cursorX = Math.Clamp(hover / width, 0, 1);
         if (Changed(ref _metalCursorX, cursorX)) _metalEffect.CursorX = cursorX;
         var cursorY = IsMouseOver ? Math.Clamp((Mouse.GetPosition(Root).Y - RestTop) / RestBarHeight, 0, 1) : 0;
@@ -521,8 +523,9 @@ public partial class DockWindow
         var args = Environment.GetCommandLineArgs();
         _glassPreview = args.Any(a => a.StartsWith("--render=", StringComparison.OrdinalIgnoreCase));
         if (!_glassPreview) return;
-        _dockScale = _targetDockScale = 1;
-        _rootScale.ScaleX = _rootScale.ScaleY = 1;
+        // a still shows the dock at full size; the taskbar only has its one size
+        _dockScale = _targetDockScale = TaskbarOn ? TaskbarScale : 1;
+        _rootScale.ScaleX = _rootScale.ScaleY = _dockScale;
         var background = args.FirstOrDefault(a => a.StartsWith("--renderbg=", StringComparison.OrdinalIgnoreCase))?[11..];
         if (!args.Any(a => a.Equals("--no-blur", StringComparison.OrdinalIgnoreCase))
             && background is not null && System.IO.File.Exists(background))

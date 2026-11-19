@@ -42,6 +42,8 @@ internal static class PerfBench
         // the bench's dock never opens the visualizer: music playing right now would skew the numbers
         if (dock is not null) Environment.SetEnvironmentVariable("FLOE_NOFX", (Environment.GetEnvironmentVariable("FLOE_NOFX") ?? "") + ",viz");
         GlassSettings.Load();
+        // --bench-edge=top|left|right: the dock on another edge, the saved choice untouched
+        if (Value(args, "--bench-edge=") is { } benchEdge && Enum.TryParse<DockEdge>(benchEdge, true, out var edge)) DockSettings.PreviewEdge(edge);
         try
         {
             if (viz is not null) RunViz(seconds, output, label);

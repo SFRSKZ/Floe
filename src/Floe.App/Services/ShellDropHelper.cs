@@ -42,6 +42,12 @@ public static class ShellDropHelper
             offsets[i] = (int)BitConverter.ToUInt32(data, position);
         }
 
+        // the shell reads an id list until its zero terminator: one that runs past the buffer would read foreign memory
+        if (!ValidIdList(data, offsets[0]))
+        {
+            return result;
+        }
+
         var handle = GCHandle.Alloc(data, GCHandleType.Pinned);
         try
         {
@@ -50,7 +56,7 @@ public static class ShellDropHelper
 
             for (var i = 1; i <= count; i++)
             {
-                if (offsets[i] < 0 || offsets[i] >= data.Length)
+                if (!ValidIdList(data, offsets[i]))
                 {
                     continue;
                 }
@@ -82,5 +88,33 @@ public static class ShellDropHelper
         }
 
         return result;
+    }
+
+    // an id list is items of [ushort size][size - 2 bytes], ended by a zero size, all inside the buffer
+    private static bool ValidIdList(byte[] data, int offset)
+    {
+        if (offset < 0)
+        {
+            return false;
+        }
+
+        var position = offset;
+        while (position + 2 <= data.Length)
+        {
+            var size = BitConverter.ToUInt16(data, position);
+            if (size == 0)
+            {
+                return true;
+            }
+
+            if (size < 2 || position + size > data.Length)
+            {
+                return false;
+            }
+
+            position += size;
+        }
+
+        return false;
     }
 }

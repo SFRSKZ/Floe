@@ -9,6 +9,7 @@ internal static class ClickGlassPreview
 {
     internal static bool TryRender(string[] args)
     {
+        if (IconLab.TryRender(args)) return true;
         const string option = "--renderclick=";
         var argument = args.FirstOrDefault(a => a.StartsWith(option, StringComparison.OrdinalIgnoreCase));
         if (argument is null) return false;
