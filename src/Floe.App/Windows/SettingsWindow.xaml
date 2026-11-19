@@ -480,6 +480,7 @@
                     <RadioButton x:Name="VisualizerLookOled" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="OLED ekran" />
                     <RadioButton x:Name="VisualizerLookLed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="LED ekran"
                                  ToolTip="OLED şovu renkli RGB LED noktalarda, vuruşlarda cam damlalarla" />
+                    <RadioButton x:Name="VisualizerLookPlugin" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="WebGL (eklenti)" />
                     <RadioButton x:Name="VisualizerLookCyberSignal" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Sinyal kaybı"
                                  ToolTip="Kopan bir görüntü sinyali: vuruşta sıçrayan testere şeritler, kırmızı-mavi kıvılcımlar" />
                     <RadioButton x:Name="VisualizerLookCyberGlyph" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Harf taraması"
@@ -568,6 +569,14 @@
                           ToolTip="Şeritler yerine ortadan yanlara uzanan ince çizgiler" />
                 <CheckBox x:Name="GlyphNegativeToggle" Style="{StaticResource GlassToggle}" Content="Negatif renk" Margin="0,8,0,0"
                           ToolTip="Harfler dolu hücrelerin içinden oyulur, dalgalar sarıya döner" />
+
+                <StackPanel x:Name="PluginOptions">
+                    <TextBlock Text="WebGL eklentisi" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,10,0,6" />
+                    <WrapPanel x:Name="PluginChoices" />
+                    <TextBlock x:Name="PluginHint" Foreground="#66FFFFFF" FontSize="11" TextWrapping="Wrap" Margin="2,4,0,0" />
+                    <Button x:Name="PluginFolderButton" Style="{StaticResource GlassButton}" Content="Eklenti klasörünü aç"
+                            HorizontalAlignment="Left" Margin="2,6,0,0" />
+                </StackPanel>
 
                 <StackPanel x:Name="OledOptions">
                     <CheckBox x:Name="OledColourToggle" Style="{StaticResource GlassToggle}" Content="Renkli noktalar ve cam damla" Margin="0,8,0,0"

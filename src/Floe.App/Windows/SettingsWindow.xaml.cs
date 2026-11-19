@@ -28,6 +28,9 @@ public partial class SettingsWindow : Window
         Title = Product.Name + " " + Loc.T("Ayarları");
         // each product hides the themes and looks the other one owns; the Cyber code stays in both builds
 #if CP77
+        // the plugins are the glass themes' web looks; the cyber theme plays its own strips
+        VisualizerLookPlugin.Visibility = Visibility.Collapsed;
+        PluginOptions.Visibility = Visibility.Collapsed;
         foreach (var replaced in new UIElement[] { ThemeTitle, ThemeRow, DockColorToggle, DockColorPicker })
         {
             replaced.Visibility = Visibility.Collapsed;
@@ -701,6 +704,10 @@ public partial class SettingsWindow : Window
         VisualizerLookSilkContour.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.SilkContour);
         VisualizerLookOled.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Oled;
         VisualizerLookOled.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Oled);
+        VisualizerLookPlugin.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Plugin;
+        VisualizerLookPlugin.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Plugin);
+        BuildPluginChoices();
+        PluginFolderButton.Click += (_, _) => VisualizerPlugins.OpenUserFolder();
         VisualizerLookPrism.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Prism;
         VisualizerLookPrism.Checked += (_, _) => GlassSettings.SetVisualizerLook(VisualizerStyle.Prism);
         VisualizerLookWheat.IsChecked = GlassSettings.VisualizerLook == VisualizerStyle.Wheat;
@@ -732,7 +739,7 @@ public partial class SettingsWindow : Window
             (VisualizerLookStardust, VisualizerStyle.Stardust), (VisualizerLookDustWave, VisualizerStyle.DustWave), (VisualizerLookDustMilk, VisualizerStyle.DustMilk),
             (VisualizerLookChladni, VisualizerStyle.Chladni), (VisualizerLookFireflies, VisualizerStyle.Fireflies), (VisualizerLookFerrofluid, VisualizerStyle.Ferrofluid),
             (VisualizerLookSilkContour, VisualizerStyle.SilkContour), (VisualizerLookOled, VisualizerStyle.Oled), (VisualizerLookPrism, VisualizerStyle.Prism),
-            (VisualizerLookWheat, VisualizerStyle.Wheat), (VisualizerLookRibbon, VisualizerStyle.Ribbon), (VisualizerLookLed, VisualizerStyle.Led),
+            (VisualizerLookWheat, VisualizerStyle.Wheat), (VisualizerLookRibbon, VisualizerStyle.Ribbon), (VisualizerLookLed, VisualizerStyle.Led), (VisualizerLookPlugin, VisualizerStyle.Plugin),
             (VisualizerLookCyberSignal, VisualizerStyle.CyberSignal), (VisualizerLookCyberBlackwall, VisualizerStyle.CyberBlackwall), (VisualizerLookCyberCircuit, VisualizerStyle.CyberCircuit),
             (VisualizerLookCyberGlyph, VisualizerStyle.CyberGlyph), (VisualizerLookCyberRain, VisualizerStyle.CyberRain), (VisualizerLookCyberSamurai, VisualizerStyle.CyberSamurai),
             (VisualizerLookCyberSandevistan, VisualizerStyle.CyberSandevistan), (VisualizerLookCyberBreach, VisualizerStyle.CyberBreach), (VisualizerLookCyberCollar, VisualizerStyle.CyberCollar),
@@ -957,6 +964,43 @@ public partial class SettingsWindow : Window
         }
 
         PaletteList.Visibility = paletteActive && !Floe.Core.Services.Product.Cp77 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void BuildPluginChoices()
+    {
+        VisualizerPlugins.Reload();
+        PluginChoices.Children.Clear();
+
+        var plugins = VisualizerPlugins.Enabled;
+        if (plugins.Count == 0)
+        {
+            PluginHint.Text = Loc.T("Henüz eklenti yok: klasöre bir görselleştirici koyun, Floe onu kendisi bulur.");
+            return;
+        }
+
+        foreach (var plugin in plugins)
+        {
+            var radio = new RadioButton
+            {
+                GroupName = "VisualizerPlugin",
+                Style = (Style)FindResource("ModeToggle"),
+                Content = VisualizerPlugins.DisplayName(plugin),
+                Tag = plugin.Id,
+                IsChecked = string.Equals(GlassSettings.PluginId, plugin.Id, StringComparison.OrdinalIgnoreCase),
+                Margin = new Thickness(0, 0, 8, 4),
+            };
+            radio.Checked += (sender, _) =>
+            {
+                if (sender is RadioButton { Tag: string id })
+                {
+                    VisualizerPlugins.Select(id);
+                    GlassSettings.SetVisualizerLook(VisualizerStyle.Plugin);
+                }
+            };
+            PluginChoices.Children.Add(radio);
+        }
+
+        PluginHint.Text = string.Format(Loc.T("{0} eklenti bulundu."), plugins.Count);
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();

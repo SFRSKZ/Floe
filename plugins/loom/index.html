@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Loom</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; }
+    #loom { display: block; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <canvas id="loom"></canvas>
+  <script src="./js/guard.js"></script>
+  <script type="module" src="./js/boot.js"></script>
+</body>
+</html>
+

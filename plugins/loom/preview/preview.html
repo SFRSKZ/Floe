@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Loom · preview</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #07111f; }
+
+    /* a stand-in for the desktop: something with colour and structure behind the strip */
+    .wallpaper {
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(120% 90% at 18% 8%, rgba(88, 140, 255, .35), transparent 60%),
+        radial-gradient(90% 70% at 82% 12%, rgba(255, 92, 170, .22), transparent 55%),
+        radial-gradient(70% 55% at 50% 100%, rgba(0, 220, 210, .18), transparent 70%),
+        linear-gradient(160deg, #0b1a30 0%, #0a1524 45%, #060b14 100%);
+    }
+    .wallpaper::after {
+      content: ""; position: absolute; inset: 0;
+      background-image: radial-gradient(rgba(255,255,255,.035) 1px, transparent 1px);
+      background-size: 3px 3px;
+      opacity: .5;
+    }
+
+    #strip {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      height: var(--strip-height, 110px);
+      pointer-events: none;
+    }
+    #loom { display: block; width: 100%; height: 100%; }
+
+    /* a stand-in for Floe's capsule, so the strip is judged the way it will be seen */
+    #dock {
+      position: fixed; left: 50%; transform: translateX(-50%);
+      bottom: 10px; height: 74px; width: min(760px, 64vw);
+      border-radius: 42px;
+      background: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.055) 55%, rgba(255,255,255,.10));
+      border: 1px solid rgba(255,255,255,.22);
+      box-shadow: 0 18px 46px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.35);
+      backdrop-filter: blur(22px) saturate(1.35);
+      -webkit-backdrop-filter: blur(22px) saturate(1.35);
+      display: flex; align-items: center; justify-content: center; gap: 18px;
+      opacity: var(--dock-opacity, 1);
+    }
+    #dock i {
+      width: 40px; height: 40px; border-radius: 12px;
+      background: linear-gradient(160deg, rgba(255,255,255,.7), rgba(255,255,255,.18));
+      box-shadow: 0 4px 12px rgba(0,0,0,.35);
+      opacity: .75;
+    }
+    #dock i:nth-child(2) { background: linear-gradient(160deg, #7ae7ff, #2f7bd6); }
+    #dock i:nth-child(3) { background: linear-gradient(160deg, #ffb3d9, #b05cff); }
+    #dock i:nth-child(4) { background: linear-gradient(160deg, #ffe38a, #ff8a5c); }
+    #dock i:nth-child(5) { background: linear-gradient(160deg, #9dffcf, #2fbf8f); }
+    #dock i:nth-child(6) { background: linear-gradient(160deg, #ff8ec8, #ff3d6e); }
+  </style>
+</head>
+<body>
+  <div class="wallpaper"></div>
+  <div id="dock"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div id="strip"><canvas id="loom"></canvas></div>
+  <script type="module" src="./preview.js"></script>
+</body>
+</html>

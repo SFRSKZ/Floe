@@ -114,6 +114,8 @@ public enum VisualizerStyle
     CyberDogtownFlir,
     CyberMonowire,
     CyberStrands,
+    // a WebGL2 visualizer from the plugins folder, run in a WebView2 strip
+    Plugin,
 }
 
 /// <summary>A theme dresses the whole dock (glass, rim, glows) and its visualizer in one look.</summary>
@@ -260,6 +262,9 @@ public static class GlassSettings
 
     public static VisualizerStyle VisualizerLook { get; private set; } = VisualizerStyle.Stardust;
 
+    /// <summary>The visualizer plugin the Plugin look runs; an id from its manifest.</summary>
+    public static string PluginId { get; private set; } = "floe.tidepool";
+
     // still in the code but no longer offered: glow, cubes, silk contour, prism, wheat field, light ribbon
     private static bool IsRetired(VisualizerStyle look) => look is VisualizerStyle.Glow or VisualizerStyle.Cubes
         or VisualizerStyle.SilkContour or VisualizerStyle.Prism or VisualizerStyle.Wheat or VisualizerStyle.Ribbon
@@ -335,6 +340,7 @@ public static class GlassSettings
                 ? look
                 : VisualizerStyle.Stardust;
             HologramTint = Enum.TryParse<HologramColor>(model.HologramTint, true, out var tint) ? tint : HologramColor.Blue;
+            if (!string.IsNullOrWhiteSpace(model.PluginId)) PluginId = model.PluginId!;
             Intro = Enum.TryParse<NowPlayingIntro>(model.Intro, true, out var intro) ? intro : NowPlayingIntro.Drop;
             OledEffect = Math.Clamp(model.OledEffect, -1, 10);
             DustColors = Enum.TryParse<DustPalette>(model.DustColors, true, out var dust) ? dust : DustPalette.Tint;
@@ -726,6 +732,18 @@ public static class GlassSettings
         Changed?.Invoke();
     }
 
+    public static void SetPlugin(string id)
+    {
+        if (string.Equals(PluginId, id, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        PluginId = id;
+        Save();
+        Changed?.Invoke();
+    }
+
     public static void SetHologramTint(HologramColor tint)
     {
         if (HologramTint == tint)
@@ -866,6 +884,7 @@ public static class GlassSettings
                 StrandWallpaperMotion = StrandWallpaperMotion.ToString(),
                 StrandWallpaperAngle = StrandWallpaperAngle,
                 VisualizerLook = VisualizerLook.ToString(),
+                PluginId = PluginId,
                 HologramTint = HologramTint.ToString(),
                 Intro = Intro.ToString(),
                 OledEffect = OledEffect,
@@ -958,6 +977,8 @@ public static class GlassSettings
         public int StrandWallpaperAngle { get; set; }
 
         public string VisualizerLook { get; set; } = nameof(VisualizerStyle.Stardust);
+
+        public string? PluginId { get; set; }
 
         public double CubeSize { get; set; } = 17;
 
