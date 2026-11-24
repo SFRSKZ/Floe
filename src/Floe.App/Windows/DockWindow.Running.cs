@@ -74,20 +74,24 @@ public partial class DockWindow
         // above, or are grouped under its app below - only the helpers named in AppIdentity, nothing by name pattern
         remaining.RemoveAll(window => AppIdentity.IsShellProcess(window.ProcessName) || IsOwnProduct(window.ProcessName));
 
-        var grouped = new Dictionary<string, (string Name, string Path, List<IntPtr> Windows)>(StringComparer.OrdinalIgnoreCase);
+        var grouped = new Dictionary<string, (string Name, string Path, string AppId, List<IntPtr> Windows)>(StringComparer.OrdinalIgnoreCase);
         foreach (var window in remaining)
         {
             var key = AppIdentity.RunningKey(new WindowFacts(window.ProcessName, window.ProcessPath, window.AppId));
             if (key.Length == 0) continue;
             if (!grouped.TryGetValue(key, out var entry))
             {
-                entry = (AppIdentity.OwnerProcess(window.ProcessName), window.ProcessPath, new List<IntPtr>());
+                entry = (AppIdentity.OwnerProcess(window.ProcessName), window.ProcessPath, window.AppId, new List<IntPtr>());
                 grouped[key] = entry;
             }
-            else if (entry.Path.Length == 0 && window.ProcessPath.Length > 0)
+            else if ((entry.Path.Length == 0 && window.ProcessPath.Length > 0) || (entry.AppId.Length == 0 && window.AppId.Length > 0))
             {
-                // a later window of the same app may have a readable exe: the icon comes from it
-                entry = (entry.Name, window.ProcessPath, entry.Windows);
+                // a later window of the same app may have a readable exe or appId: the icon comes from it
+                entry = (
+                    entry.Name,
+                    entry.Path.Length > 0 ? entry.Path : window.ProcessPath,
+                    entry.AppId.Length > 0 ? entry.AppId : window.AppId,
+                    entry.Windows);
                 grouped[key] = entry;
             }
 
@@ -104,8 +108,11 @@ public partial class DockWindow
         var unpinned = new List<DockItemViewModel>();
         foreach (var (key, entry) in grouped.OrderBy(pair => pair.Value.Name, StringComparer.OrdinalIgnoreCase))
         {
-            var name = entry.Name;
-            if (known.TryGetValue("R:" + key, out var existing) && (existing.App.Target.Length > 0 || entry.Path.Length == 0))
+            var processName = entry.Name;
+            var shellAppTarget = entry.AppId.Contains('!') ? $"shell:AppsFolder\\{entry.AppId}" : null;
+            var targetPath = entry.Path.Length > 0 ? entry.Path : (shellAppTarget ?? string.Empty);
+
+            if (known.TryGetValue("R:" + key, out var existing) && (existing.App.Target.Length > 0 || targetPath.Length == 0))
             {
                 existing.Windows = entry.Windows;
                 existing.IsRunning = true;
@@ -113,11 +120,13 @@ public partial class DockWindow
                 continue;
             }
 
+            var displayName = (shellAppTarget is not null ? ShellImage.GetDisplayName(shellAppTarget) : null) ?? processName;
+
             var vm = new DockItemViewModel(
-                new DockApp { Name = name, Target = entry.Path },
+                new DockApp { Name = displayName, Target = targetPath, IconPath = entry.Path.Length > 0 ? null : shellAppTarget },
                 isPinned: false,
                 window: entry.Windows.Count > 0 ? entry.Windows[0] : IntPtr.Zero,
-                processName: name,
+                processName: processName,
                 runningKey: key);
 
             vm.Windows = entry.Windows;
@@ -178,8 +187,8 @@ public partial class DockWindow
 
     private const int StackDepth = 3;
 
-    // a copy of the icon as it shows: the outline in the ink, or the artwork
-    private static void Dress(System.Windows.Shapes.Rectangle copy, Image artwork, System.Windows.Shapes.Rectangle line)
+    // a copy of the icon as it shows: the outline in the ink, or the full card/artwork (never an empty hover frame)
+    private static void Dress(System.Windows.Shapes.Rectangle copy, IconSlot slot, Image artwork, System.Windows.Shapes.Rectangle line)
     {
         if (line.Visibility == Visibility.Visible)
         {
@@ -189,7 +198,8 @@ public partial class DockWindow
         }
         else
         {
-            copy.Fill = new ImageBrush(artwork.Source) { Stretch = Stretch.Uniform };
+            var source = slot.Card is { } card ? card.OnFrame : (artwork.Source ?? slot.Item.Icon);
+            copy.Fill = source is null ? null : new ImageBrush(source) { Stretch = Stretch.Uniform };
             copy.OpacityMask = null;
             copy.Margin = artwork.Margin;
         }
@@ -205,11 +215,11 @@ public partial class DockWindow
         if (slot.Flyer is not { } flyer || slot.Item.Windows.Count < 2
             || slot.Button.Content is not Grid { Children: [Image artwork, System.Windows.Shapes.Rectangle line, ..] }) return;
         var front = line.Visibility == Visibility.Visible ? (UIElement)line : artwork;
-        if (!outlineOrArt(artwork, line)) return;
-        Dress(flyer, artwork, line);
+        if (!outlineOrArt(slot, artwork, line)) return;
+        Dress(flyer, slot, artwork, line);
 
         int depth = Math.Min(StackDepth, slot.Item.Windows.Count - 1);
-        double back = IconBox * .1 * depth, shrink = 1 - (.08 * depth);
+        double back = IconBox * .18 * depth, shrink = 1 - (.08 * depth);
         var duration = new Duration(TimeSpan.FromMilliseconds(260));
         var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
         var move = new TranslateTransform();
@@ -227,7 +237,7 @@ public partial class DockWindow
         move.BeginAnimation(TranslateTransform.YProperty, forward ? Run(0, -back) : Run(-back, 0));
         size.BeginAnimation(ScaleTransform.ScaleXProperty, forward ? Run(1, shrink) : Run(shrink, 1));
         size.BeginAnimation(ScaleTransform.ScaleYProperty, forward ? Run(1, shrink) : Run(shrink, 1));
-        flyer.BeginAnimation(OpacityProperty, forward ? Run(1, 0) : Run(.25, 1));
+        flyer.BeginAnimation(OpacityProperty, forward ? Run(1, .30) : Run(.45, 1));
 
         // the card left in front: forward it rises out of the stack, backward it is hidden until the flyer lands
         front.BeginAnimation(OpacityProperty, forward ? Run(.35, 1) : new DoubleAnimationUsingKeyFrames
@@ -237,7 +247,8 @@ public partial class DockWindow
             KeyFrames = { new DiscreteDoubleKeyFrame(0, KeyTime.FromPercent(0)), new DiscreteDoubleKeyFrame(1, KeyTime.FromPercent(1)) },
         });
 
-        static bool outlineOrArt(Image artwork, System.Windows.Shapes.Rectangle line) => line.Visibility == Visibility.Visible || artwork.Source is not null;
+        static bool outlineOrArt(IconSlot slot, Image artwork, System.Windows.Shapes.Rectangle line)
+            => line.Visibility == Visibility.Visible || slot.Card is not null || artwork.Source is not null || slot.Item.Icon is not null;
     }
 
     /// <summary>
@@ -249,24 +260,25 @@ public partial class DockWindow
         if (slot.Stack.Length == 0 || slot.Button.Content is not Grid { Children: [Image artwork, System.Windows.Shapes.Rectangle line, ..] }) return;
         int extra = Math.Min(StackDepth, Math.Max(0, slot.Item.Windows.Count - 1));
         bool outline = line.Visibility == Visibility.Visible;
-        double step = IconBox * .1;
+        bool hasArt = outline || slot.Card is not null || artwork.Source is not null || slot.Item.Icon is not null;
+        double step = IconBox * .08;
         for (int layer = 0; layer < slot.Stack.Length; layer++)
         {
             var copy = slot.Stack[layer];
-            if (layer >= extra || (!outline && artwork.Source is null))
+            if (layer >= extra || !hasArt)
             {
                 copy.Visibility = Visibility.Collapsed;
                 continue;
             }
 
-            Dress(copy, artwork, line);
+            Dress(copy, slot, artwork, line);
             double k = layer + 1;
             double shrink = 1 - (.08 * k);
             var turn = new TransformGroup();
             turn.Children.Add(new ScaleTransform(shrink, shrink));
             turn.Children.Add(new TranslateTransform(step * k, -step * k));
             copy.RenderTransform = turn;
-            copy.Opacity = .55 - (.15 * layer);
+            copy.Opacity = .36 - (.10 * layer);
             copy.Visibility = Visibility.Visible;
         }
     }

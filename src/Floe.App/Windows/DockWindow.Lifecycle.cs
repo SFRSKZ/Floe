@@ -44,6 +44,7 @@ public partial class DockWindow
 
         _source = HwndSource.FromHwnd(_hwnd);
         _source?.AddHook(WndProc);
+        WatchDisplayPower();
         if (_source is not null) CaptureReveal.Initialize(_source);
         WatchUsbDevices();
         IsVisibleChanged += (_, _) =>
@@ -75,6 +76,7 @@ public partial class DockWindow
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg == DeviceChangeMessage && wParam.ToInt64() == DeviceArrival) NoteUsbArrival();
+        HandleDisplayPower(msg, wParam, lParam);
 
         if (msg == 0x0312 && wParam.ToInt32() == DesktopController.HotkeyIdVeil)
         {
@@ -236,6 +238,20 @@ public partial class DockWindow
         _fullscreenHook?.Dispose();
         _windowHook?.Dispose();
         _alertHook?.Dispose();
+        GlassSettings.Changed -= OnCyberGrainSettingsChanged;
+        _hideTimer.Stop();
+        _runningTimer.Stop();
+        _foregroundTimer.Stop();
+        _foregroundDebounce.Stop();
+        _runningDebounce.Stop();
+        _fullscreenTimer.Stop();
+        _clockTimer.Stop();
+        _tooltipTimer.Stop();
+        _previewHideTimer.Stop();
+        _secondsTimer.Stop();
+        _grainTimer.Stop();
+        _textGlitch.Stop();
+        _clickThroughTimer?.Stop();
         _ambientTimer.Stop();
         _backdropCapture?.Dispose();
         TrayNotification.Remove(_hwnd, Product.Name, _trayIcon);

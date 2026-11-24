@@ -134,7 +134,21 @@ public partial class DockWindow
             var hwnd = e.Delta < 0 ? slot.Item.PreviousWindow() : slot.Item.NextWindow();
 
             WindowActivator.Activate(hwnd);
-            ShuffleStack(slot, forward: e.Delta >= 0);
+            _preview?.SetActiveSource(hwnd);
+            if (GlassSettings.Cyber)
+            {
+                int activeIndex = 0;
+                for (int i = 0; i < slot.Item.Windows.Count; i++)
+                {
+                    if (slot.Item.Windows[i] == hwnd) { activeIndex = i; break; }
+                }
+
+                PlayWindowWarp(slot, forward: e.Delta >= 0, activeIndex, slot.Item.Windows.Count);
+            }
+            else
+            {
+                ShuffleStack(slot, forward: e.Delta >= 0);
+            }
             e.Handled = true;
         }
     }

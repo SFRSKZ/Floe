@@ -13,6 +13,8 @@ internal static class StrandWallpaperHost
     private static readonly object Gate = new();
     private static DesktopWallpaper? _wallpaper;
     private static bool _attached, _starting;
+    // the scene the running (or starting) wallpaper plays
+    private static string _scene = "";
 
     public static void Start()
     {
@@ -42,24 +44,37 @@ internal static class StrandWallpaperHost
     private static void Apply()
     {
         bool want = GlassSettings.StrandWallpaper;
+        string scene = GlassSettings.DesktopScene;
         lock (Gate)
         {
-            if (want == (_wallpaper is not null || _starting)) return;
+            bool on = _wallpaper is not null || _starting;
+            if (_starting) return;
+            if (want == on && (!want || scene == _scene)) return;
             if (want)
             {
                 _starting = true;
+                _scene = scene;
+                var old = _wallpaper;
+                _wallpaper = null;
                 Task.Run(() =>
                 {
-                    var made = new DesktopWallpaper(() => new StrandCurtainGpuScene(desktop: true));
+                    // another scene: the old one gives the desktop back before the new one takes it
+                    old?.Dispose();
+                    var made = new DesktopWallpaper(() => Effects.Gpu.Desktop.DesktopScenes.Create(scene) ?? new StrandCurtainGpuScene(desktop: true));
                     bool keep;
                     lock (Gate)
                     {
                         _starting = false;
-                        keep = _wallpaper is null && GlassSettings.StrandWallpaper;
+                        keep = _wallpaper is null && GlassSettings.StrandWallpaper && GlassSettings.DesktopScene == scene;
                         if (keep) _wallpaper = made;
                     }
 
-                    if (!keep) made.Dispose();
+                    if (!keep)
+                    {
+                        made.Dispose();
+                        // the setting moved on while this one started; catch up with it
+                        Apply();
+                    }
                 });
                 return;
             }

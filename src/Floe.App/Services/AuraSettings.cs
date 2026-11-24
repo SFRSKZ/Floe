@@ -21,6 +21,23 @@ public enum ClickTone
     Light,
 }
 
+public enum CyberClickStyle
+{
+    Glitch,
+    Hex,
+    Datamosh,
+    BitCrush,
+}
+
+public enum CyberActiveStyle
+{
+    GlitchLines,
+    SideStripe,
+    FocusPop,
+    ChromaticEcho,
+    PerimeterRunner,
+}
+
 /// <summary>Colours of the click effect's rim; the values are the shader's Palette constant.</summary>
 public enum ClickPalette
 {
@@ -111,6 +128,10 @@ public static class AuraSettings
 
     public static ClickTone ClickTone { get; private set; } = ClickTone.Dark;
 
+    public static CyberClickStyle CyberClick { get; private set; } = CyberClickStyle.Glitch;
+
+    public static CyberActiveStyle CyberActive { get; private set; } = CyberActiveStyle.GlitchLines;
+
     public static ClickPalette ClickPalette { get; private set; } = ClickPalette.Clear;
 
     /// <summary>Playback speed of the click effect, 0.5 .. 2 (1 = 900 ms).</summary>
@@ -123,6 +144,9 @@ public static class AuraSettings
 
     /// <summary>Edge of one sleep (derezz) cube in dock units, 4 .. 12.</summary>
     public static double DerezzCell { get; private set; } = 6;
+
+    /// <summary>The dock flows away as a river of particles instead of the cubes or the relic failure; autohide plays it too.</summary>
+    public static bool DerezzParticles { get; private set; }
 
     public static int PaletteIndex { get; private set; }
 
@@ -148,11 +172,14 @@ public static class AuraSettings
             ClickPaint = model.ClickPaint;
             ClickCubes = model.ClickCubes;
             ClickTone = Enum.TryParse<ClickTone>(model.ClickTone, true, out var tone) && Enum.IsDefined(tone) ? tone : ClickTone.Dark;
+            CyberClick = Enum.TryParse<CyberClickStyle>(model.CyberClick, true, out var cc) && Enum.IsDefined(cc) ? cc : CyberClickStyle.Glitch;
+            CyberActive = Enum.TryParse<CyberActiveStyle>(model.CyberActive, true, out var ca) && Enum.IsDefined(ca) ? ca : CyberActiveStyle.GlitchLines;
             ClickPalette = Enum.TryParse<ClickPalette>(model.ClickPalette, true, out var palette) && Enum.IsDefined(palette) ? palette : ClickPalette.Clear;
             ClickSpeed = model.ClickSpeed <= 0 ? 1.0 : Math.Clamp(model.ClickSpeed, 0.5, 2.0);
             Derezz = model.Derezz;
             DerezzSpeed = model.DerezzSpeed <= 0 ? 1.0 : Math.Clamp(model.DerezzSpeed, 0.5, 2.0);
             DerezzCell = model.DerezzCell <= 0 ? 6 : Math.Clamp(Math.Round(model.DerezzCell), 4, 24);
+            DerezzParticles = model.DerezzParticles;
             Mode = Enum.TryParse<AuraColorMode>(model.Mode, true, out var mode) ? mode : AuraColorMode.Palette;
             Effect = Enum.TryParse<AuraEffect>(model.Effect, true, out var effect) ? effect : AuraEffect.Glow;
 #if CP77
@@ -223,6 +250,24 @@ public static class AuraSettings
         Changed?.Invoke();
     }
 
+    public static void SetCyberClick(CyberClickStyle style)
+    {
+        if (CyberClick == style) return;
+        CyberClick = style;
+        Save();
+        Changed?.Invoke();
+    }
+
+    internal static void PreviewCyberActive(CyberActiveStyle style) => CyberActive = style;
+
+    public static void SetCyberActive(CyberActiveStyle style)
+    {
+        if (CyberActive == style) return;
+        CyberActive = style;
+        Save();
+        Changed?.Invoke();
+    }
+
     public static void SetClickPalette(ClickPalette palette)
     {
         if (ClickPalette == palette) return;
@@ -253,6 +298,14 @@ public static class AuraSettings
         cell = Math.Clamp(Math.Round(cell), 4, 24);
         if (Math.Abs(DerezzCell - cell) < 0.001) return;
         DerezzCell = cell;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetDerezzParticles(bool enabled)
+    {
+        if (DerezzParticles == enabled) return;
+        DerezzParticles = enabled;
         Save();
         Changed?.Invoke();
     }
@@ -350,11 +403,14 @@ public static class AuraSettings
                 ClickPaint = ClickPaint,
                 ClickCubes = ClickCubes,
                 ClickTone = ClickTone.ToString(),
+                CyberClick = CyberClick.ToString(),
+                CyberActive = CyberActive.ToString(),
                 ClickPalette = ClickPalette.ToString(),
                 ClickSpeed = ClickSpeed,
                 Derezz = Derezz,
                 DerezzSpeed = DerezzSpeed,
                 DerezzCell = DerezzCell,
+                DerezzParticles = DerezzParticles,
                 Mode = Mode.ToString(),
                 Effect = Effect.ToString(),
                 SpectralIntensity = SpectralIntensity,
@@ -385,6 +441,10 @@ public static class AuraSettings
 
         public string ClickTone { get; set; } = nameof(global::Floe.App.Services.ClickTone.Dark);
 
+        public string? CyberClick { get; set; }
+
+        public string? CyberActive { get; set; }
+
         public string ClickPalette { get; set; } = nameof(global::Floe.App.Services.ClickPalette.Clear);
 
         public double ClickSpeed { get; set; } = 1.0;
@@ -394,6 +454,8 @@ public static class AuraSettings
         public double DerezzSpeed { get; set; } = 1.0;
 
         public double DerezzCell { get; set; } = 6;
+
+        public bool DerezzParticles { get; set; }
 
         public string Mode { get; set; } = nameof(AuraColorMode.Palette);
 

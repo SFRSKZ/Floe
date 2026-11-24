@@ -94,6 +94,19 @@ public sealed class CyberLockMark : FrameworkElement
         if (_lock > 0) _lock--;
         if (_burst > 0) _burst--;
 
+        switch (AuraSettings.CyberActive)
+        {
+            case CyberActiveStyle.SideStripe or CyberActiveStyle.FocusPop:
+                if (changed) InvalidateVisual();
+                return;
+            case CyberActiveStyle.ChromaticEcho:
+                if (changed || (_step % 12) is 0 or 2) InvalidateVisual();
+                return;
+            case CyberActiveStyle.PerimeterRunner:
+                InvalidateVisual();
+                return;
+        }
+
         if (_step >= _holdUntil)
         {
             // the lines hold for a few steps, then jump
@@ -116,13 +129,96 @@ public sealed class CyberLockMark : FrameworkElement
     protected override void OnRender(DrawingContext dc)
     {
         if (_stale && Parent is Grid grid) Read(grid);
-        if (_icon is null || _solid.Length == 0) return;
+        if (_slot.Width <= 0) return;
 
         var look = CyberLook.Current;
-        var ink = new SolidColorBrush(Ink(look));
+        var style = AuraSettings.CyberActive;
+        if (style != CyberActiveStyle.GlitchLines)
+        {
+            DrawActiveStyle(dc, look, style);
+            return;
+        }
+
+        if (_icon is null || _solid.Length == 0) return;
+
+        var ink = CyberFxLayer.Solid(Ink(look));
         double intensity = _lock > 0 ? _lock / (double)LockSteps : _burst > 0 ? .55 : 0;
         if (intensity > 0) DrawTear(dc, look, ink, intensity, (_seed * 131) + _step);
         DrawLines(dc, ink, intensity, _seed);
+    }
+
+    private void DrawActiveStyle(DrawingContext dc, CyberLook look, CyberActiveStyle style)
+    {
+        var hi = CyberLook.Readable(look.Accent, look.Body);
+        var cyan = Color.FromRgb(0x02, 0xD7, 0xF2);
+        var red = Color.FromRgb(0xFF, 0x00, 0x3C);
+        var dark = Color.FromRgb(0x0A, 0x0A, 0x10);
+        double lockT = _lock > 0 ? Math.Clamp(1.0 - (_lock / (double)LockSteps), 0.15, 1.0) : 1.0;
+
+        switch (style)
+        {
+            case CyberActiveStyle.SideStripe:
+            {
+                double barX = _slot.X - 4.5;
+                double barY = _slot.Y;
+                double barH = Math.Max(4.0, _slot.Height * lockT);
+                dc.DrawRectangle(CyberFxLayer.Solid(dark), null, new Rect(barX - 1.0, barY - 1.0, 5.5, barH + 2.0));
+                dc.DrawRectangle(CyberFxLayer.Solid(hi), null, new Rect(barX, barY, 3.5, barH));
+                if (barH > 15.0)
+                {
+                    dc.DrawRectangle(CyberFxLayer.Solid(dark), null, new Rect(barX, barY + 7.0, 3.5, 1.5));
+                    dc.DrawRectangle(CyberFxLayer.Solid(dark), null, new Rect(barX, barY + 13.0, 3.5, 1.5));
+                }
+
+                dc.DrawRectangle(CyberFxLayer.Solid(cyan), null, new Rect(_slot.Right + 2.0, _slot.Y + (_slot.Height * 0.5) - 6.0, 2.0, 12.0));
+                break;
+            }
+
+            case CyberActiveStyle.FocusPop:
+            {
+                var borderRect = Rect.Inflate(_slot, 2.0 * lockT, 2.0 * lockT);
+                var plate = CyberFxLayer.Plate(borderRect, 7.0);
+                dc.DrawGeometry(null, CyberFxLayer.CachedPen(dark, 3.2), plate);
+                dc.DrawGeometry(null, CyberFxLayer.CachedPen(hi, 1.8), plate);
+                break;
+            }
+
+            case CyberActiveStyle.ChromaticEcho:
+            {
+                if (_icon is null) return;
+                double pulse = (_step % 12) < 2 ? 3.4 : 2.2;
+                double off = pulse * lockT;
+                var leftRect = _iconArea;
+                leftRect.Offset(-off, -0.5);
+                var rightRect = _iconArea;
+                rightRect.Offset(off, 0.5);
+                CyberFxLayer.Silhouette(dc, _icon, leftRect, CyberFxLayer.Solid(Color.FromArgb(0xDC, cyan.R, cyan.G, cyan.B)));
+                CyberFxLayer.Silhouette(dc, _icon, rightRect, CyberFxLayer.Solid(Color.FromArgb(0xDC, red.R, red.G, red.B)));
+                dc.DrawImage(_icon, _iconArea);
+                break;
+            }
+
+            case CyberActiveStyle.PerimeterRunner:
+            {
+                var borderRect = Rect.Inflate(_slot, 2.0, 2.0);
+                var plate = CyberFxLayer.Plate(borderRect, 7.0);
+                dc.DrawGeometry(null, CyberFxLayer.CachedPen(Color.FromArgb(0x5A, cyan.R, cyan.G, cyan.B), 1.2), plate);
+
+                double perimUnits = Math.Max(20.0, borderRect.Width + borderRect.Height);
+                double offset = -((_step * 3.0) % perimUnits);
+                var cyanPen = new Pen(CyberFxLayer.Solid(cyan), 2.0)
+                {
+                    DashStyle = new DashStyle(new[] { 9.0, Math.Max(1.0, perimUnits - 9.0) }, offset),
+                };
+                var accentPen = new Pen(CyberFxLayer.Solid(hi), 2.0)
+                {
+                    DashStyle = new DashStyle(new[] { 4.0, Math.Max(1.0, perimUnits - 4.0) }, offset - 11.0),
+                };
+                dc.DrawGeometry(null, cyanPen, plate);
+                dc.DrawGeometry(null, accentPen, plate);
+                break;
+            }
+        }
     }
 
     // the resting lines: a few rows run out of the icon's edges
@@ -144,7 +240,7 @@ public sealed class CyberLockMark : FrameworkElement
     // the tear: bands of the icon thrown sideways, the gap they leave filled with the dock, the far edge smeared out
     private void DrawTear(DrawingContext dc, CyberLook look, Brush ink, double intensity, long seed)
     {
-        var body = new SolidColorBrush(look.Body);
+        var body = CyberFxLayer.Solid(look.Body);
         int bands = 1 + (int)(intensity * 4);
         for (var b = 0; b < bands; b++)
         {
@@ -158,7 +254,9 @@ public sealed class CyberLockMark : FrameworkElement
             dc.DrawRectangle(body, null, band);
             var moved = band;
             moved.Offset(shift, 0);
-            dc.PushClip(new RectangleGeometry(moved));
+            var clip = new RectangleGeometry(moved);
+            clip.Freeze();
+            dc.PushClip(clip);
             dc.DrawImage(_icon, new Rect(_iconArea.X + shift, _iconArea.Y, _iconArea.Width, _iconArea.Height));
             dc.Pop();
 

@@ -170,6 +170,14 @@ public partial class DockWindow
     // the lock sits in the slot itself, so it follows the icon as the dock magnifies; it snaps in only for a new app
     private void SetCyberLock(IconSlot? slot)
     {
+        bool dimInactive = GlassSettings.Cyber && AuraSettings.CyberActive == CyberActiveStyle.FocusPop && slot is not null;
+        foreach (var candidate in _slots)
+        {
+            if (ReferenceEquals(candidate, _dragSlot)) continue;
+            double targetOpacity = dimInactive && !ReferenceEquals(candidate, slot) ? 0.55 : 1.0;
+            if (Math.Abs(candidate.Button.Opacity - targetOpacity) > 0.01) candidate.Button.Opacity = targetOpacity;
+        }
+
         var grid = slot?.Button.Content as Grid;
         if (!ReferenceEquals(_lockMark.Parent, grid))
         {

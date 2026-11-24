@@ -8,6 +8,7 @@ namespace Floe.App.Services;
 public static class IconChoices
 {
     private const string Real = "real";
+    private const string Forged = "forged";
     private const string SetPrefix = "set:";
     private const string CardPrefix = "card:";
     private const string FilePrefix = "file:";
@@ -22,6 +23,8 @@ public static class IconChoices
     public static bool HasChoice(DockApp app) => Choices.Value.ContainsKey(Key(app));
 
     public static bool UsesReal(DockApp app) => Get(app) == Real;
+
+    public static bool UsesForged(DockApp app) => Get(app) == Forged;
 
     /// <summary>The outline icon's file name when one was picked.</summary>
     public static string? SetIcon(DockApp app) => Value(app, SetPrefix);
@@ -39,6 +42,8 @@ public static class IconChoices
     public static void ChooseFile(DockApp app, string path) => Store(app, FilePrefix + path);
 
     public static void ChooseReal(DockApp app) => Store(app, Real);
+
+    public static void ChooseForged(DockApp app) => Store(app, Forged);
 
     public static void Clear(DockApp app) => Store(app, null);
 

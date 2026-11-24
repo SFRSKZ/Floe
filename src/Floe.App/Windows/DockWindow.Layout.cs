@@ -29,6 +29,8 @@ public partial class DockWindow
 
     private void RebuildIcons()
     {
+        SetFxHover(null);
+        CancelFxSettle(restoreArtwork: false);
         _roomForDecals = GlassSettings.Cyber;
         _slots.Clear();
         IconLayer.Children.Clear();
@@ -109,9 +111,11 @@ public partial class DockWindow
                 grid.Children.Add(stack[layer]);
             }
 
+            var pressScale = new ScaleTransform(1, 1, IconBox / 2.0, IconBox / 2.0);
             var scale = new ScaleTransform(1, 1);
             var translate = new TranslateTransform(0, 0);
             var transformGroup = new TransformGroup();
+            transformGroup.Children.Add(pressScale);
             transformGroup.Children.Add(scale);
             transformGroup.Children.Add(translate);
 
@@ -125,7 +129,7 @@ public partial class DockWindow
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 Padding = new Thickness(0),
-                Template = CreateButtonTemplate(),
+                Template = SharedButtonTemplate,
                 RenderTransformOrigin = new Point(0.5, 1.0),
                 RenderTransform = transformGroup,
             };
@@ -133,7 +137,7 @@ public partial class DockWindow
             var flyer = new Rectangle { Visibility = Visibility.Collapsed, IsHitTestVisible = false, RenderTransformOrigin = new Point(.5, .5) };
             Panel.SetZIndex(flyer, 5);
             grid.Children.Add(flyer);
-            var slot = new IconSlot(button, dot, item, centerLocal, scale, translate) { Stack = stack, Flyer = flyer };
+            var slot = new IconSlot(button, dot, item, centerLocal, pressScale, scale, translate) { Stack = stack, Flyer = flyer };
             _slots.Add(slot);
             IconLayer.Children.Add(button);
             ApplyCyberIcon(slot);
@@ -158,6 +162,8 @@ public partial class DockWindow
         UpdateAura();
     }
 
+    private static readonly ControlTemplate SharedButtonTemplate = CreateButtonTemplate();
+
     private static ControlTemplate CreateButtonTemplate()
     {
         var template = new ControlTemplate(typeof(Button));
@@ -168,6 +174,7 @@ public partial class DockWindow
         presenter.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);
         border.AppendChild(presenter);
         template.VisualTree = border;
+        template.Seal();
         return template;
     }
 
@@ -382,6 +389,12 @@ public partial class DockWindow
 
     private void Bounce(IconSlot slot)
     {
+        if (GlassSettings.Cyber)
+        {
+            PlayCyberLaunch(slot);
+            return;
+        }
+
         var animation = new DoubleAnimationUsingKeyFrames
         {
             Duration = TimeSpan.FromMilliseconds(700),

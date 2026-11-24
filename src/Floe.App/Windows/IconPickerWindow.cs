@@ -52,9 +52,15 @@ public sealed class IconPickerWindow : Window
 
         var actions = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
         actions.Children.Add(Action(Loc.T("Dosyadan seç"), PickFile));
+        if (GlassSettings.Cyber && _item.Icon is not null)
+        {
+            var forged = Action(Loc.T("Akıllı CP77"), () => Finish(() => IconChoices.ChooseForged(_item.App)));
+            forged.ToolTip = Loc.T("Programın kendi ikonunu otomatik CP77 veri kartına çevirir");
+            actions.Children.Add(forged);
+        }
         actions.Children.Add(Action(Loc.T("Gerçek ikon"), () => Finish(() => IconChoices.ChooseReal(_item.App))));
         var automatic = Action(Loc.T("Otomatik"), () => Finish(() => IconChoices.Clear(_item.App)));
-        automatic.ToolTip = Loc.T("Setteki eşi varsa onu, yoksa gerçek ikonu kullanır");
+        automatic.ToolTip = Loc.T("Özel kart, katalog eşleşmesi ya da akıllı CP77 dönüştürme kullanır");
         actions.Children.Add(automatic);
         actions.Children.Add(Action(Loc.T("Vazgeç"), Leave));
         body.Children.Add(actions);
@@ -235,7 +241,7 @@ public sealed class IconPickerWindow : Window
         var button = new Border
         {
             Padding = new Thickness(12, 6, 12, 6),
-            Margin = new Thickness(0, 0, 8, 0),
+            Margin = new Thickness(0, 0, 8, 6),
             BorderBrush = Cold,
             BorderThickness = new Thickness(1),
             Background = Brushes.Transparent,

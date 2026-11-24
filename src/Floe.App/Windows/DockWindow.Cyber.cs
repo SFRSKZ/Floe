@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using Floe.App.Effects.Cyber;
 using Floe.App.Services;
 using Floe.App.ViewModels;
+using Floe.Core.Services;
 
 namespace Floe.App.Windows;
 
@@ -83,11 +84,30 @@ public partial class DockWindow
 
         _secondsTimer.Tick += (_, _) => ShowSeconds();
         _secondsTimer.Start();
+        CardIcons.CacheCleared += OnCardCacheCleared;
+        Closed += (_, _) => CardIcons.CacheCleared -= OnCardCacheCleared;
+    }
+
+    private void OnCardCacheCleared() => Dispatcher.BeginInvoke(() =>
+    {
+        if (!GlassSettings.Cyber) return;
+        CancelFxSettle(restoreArtwork: false);
+        foreach (var slot in _slots) ApplyCyberIcon(slot);
+        MarkCyberSlot(null);
+    });
+
+    private static readonly CubicEase CrossTurnEase = CreateCrossTurnEase();
+
+    private static CubicEase CreateCrossTurnEase()
+    {
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        ease.Freeze();
+        return ease;
     }
 
     private void ShowSeconds()
     {
-        if (!GlassSettings.Cyber) return;
+        if (!GlassSettings.Cyber || !IsVisible || _fullscreenHidden || _trayHidden || _dozeHidden || FxAsleep) return;
         var second = DateTime.Now.Second;
         _clockDivider.Opacity = second % 2;
         var lit = (second + 1) / 10;
@@ -107,7 +127,7 @@ public partial class DockWindow
         _decalCross.Stroke = ten ? on : off;
         if (!ten && second % 2 != 0) return;
         _crossAngle += ten ? 270 : 90;
-        var turn = new DoubleAnimation { To = _crossAngle, Duration = TimeSpan.FromSeconds(ten ? .5 : .22), EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+        var turn = new DoubleAnimation { To = _crossAngle, Duration = TimeSpan.FromSeconds(ten ? .5 : .22), EasingFunction = CrossTurnEase };
         _crossTurn.BeginAnimation(RotateTransform.AngleProperty, turn);
     }
 
@@ -167,15 +187,53 @@ public partial class DockWindow
 
         // the frame's inside is dark on every theme, where the ink would vanish
         var look = CyberLook.Current;
+        var dockInk = CyberLook.Readable(look.Ink, look.Body);
         foreach (var slot in _slots)
         {
-            var color = ReferenceEquals(slot, hovered) ? CyberLook.Readable(look.Accent, FxInk) : look.Ink;
+            bool isHovered = ReferenceEquals(slot, hovered) && GlassSettings.Cyber && !FxAsleep;
+            bool isSettling = ReferenceEquals(slot, _fxSettleSlot) && !isHovered && GlassSettings.Cyber && !FxAsleep;
+            var color = isHovered ? CyberLook.Readable(look.Accent, FxInk) : look.Ink;
             if (slot.LineBrush.Color != color) slot.LineBrush.Color = color;
-            if (slot.Card is { } card && slot.Button.Content is Grid { Children: [Image artwork, ..] })
+            if (slot.Button.Content is Grid { Children: [Image artwork, ..] })
             {
-                var face = ReferenceEquals(slot, hovered) ? card.OnFrame : card.OnDock;
-                if (!ReferenceEquals(artwork.Source, face)) artwork.Source = face;
+                if (slot.Card is { } card)
+                {
+                    if (artwork.Opacity != 1) artwork.Opacity = 1;
+                    ImageSource face;
+                    if (isHovered && CardIcons.ExtractLogo(card.OnFrame) is not null)
+                    {
+                        face = CardIcons.FrameOnly;
+                    }
+                    else if (isSettling && CardIcons.ExtractLogo(card.OnDock) is not null)
+                    {
+                        face = CardIcons.OnBody(CardIcons.FrameOnly, look.Body, dockInk);
+                    }
+                    else
+                    {
+                        face = isHovered ? card.OnFrame : card.OnDock;
+                    }
+
+                    if (!ReferenceEquals(artwork.Source, face)) artwork.Source = face;
+                }
+                else
+                {
+                    if (artwork.Opacity != 1) artwork.Opacity = 1;
+                }
             }
+        }
+    }
+
+    private void RestoreCyberSlotArtwork(IconSlot slot)
+    {
+        if (slot.Button.Content is not Grid { Children: [Image artwork, ..] }) return;
+        if (slot.Card is { } card)
+        {
+            artwork.Opacity = 1;
+            if (!ReferenceEquals(artwork.Source, card.OnDock)) artwork.Source = card.OnDock;
+        }
+        else if (artwork.Opacity != 1)
+        {
+            artwork.Opacity = 1;
         }
     }
 
@@ -264,6 +322,13 @@ public partial class DockWindow
             image.Opacity = cyber ? 1 : 0.82;
         }
 
+        _cyberSettings.Visibility = cyber ? Visibility.Visible : Visibility.Collapsed;
+        _settingsGlyph.Visibility = cyber ? Visibility.Collapsed : Visibility.Visible;
+        if (cyber)
+        {
+            _cyberSettings.Paint(look.Ink, CyberLook.Readable(look.Accent, look.Body));
+        }
+
         if (_weatherCondition is not null) _weatherIcon.Source = WeatherGlyph(_weatherCondition);
         ApplyCyberMedia();
         UpdateStartGlyph();
@@ -274,13 +339,15 @@ public partial class DockWindow
     // the cyber themes draw the apps of the outline set in the ink, as one family; the rest keep their own artwork
     private void ApplyCyberIcon(IconSlot slot)
     {
+        if (ReferenceEquals(slot, _fxSettleSlot)) CancelFxSettle(restoreArtwork: false);
         if (slot.Button.Content is not Grid { Children: [Image artwork, Rectangle line, ..] }) return;
         var mask = ContourMask(slot.Item);
-        var card = CardIcon(slot.Item);
+        var card = CardIcon(slot.Item, out bool preserveLogoColors);
         var look = CyberLook.Current;
-        var onDock = card is null ? null : CardIcons.OnBody(card, look.Body, CyberLook.Readable(look.Ink, look.Body));
+        var onDock = card is null ? null : CardIcons.OnBody(card, look.Body, CyberLook.Readable(look.Ink, look.Body), preserveLogoColors);
         slot.Card = card is null ? null : (onDock!, card);
         artwork.Source = onDock ?? slot.Item.Icon;
+        artwork.Opacity = 1;
         artwork.Width = artwork.Height = IconBox + (card is null ? 0 : 2 * CardBleed);
         artwork.Margin = new Thickness(card is null ? 0 : -CardBleed);
         artwork.Visibility = mask is null ? Visibility.Visible : Visibility.Hidden;
@@ -298,11 +365,25 @@ public partial class DockWindow
         return !IconChoices.HasChoice(item.App) && GlassSettings.IconSet == DockIconSet.Contour ? ContourIcons.Mask(item.Name, item.ProcessName) : null;
     }
 
-    private static ImageSource? CardIcon(DockItemViewModel item)
+    private static ImageSource? CardIcon(DockItemViewModel item) => CardIcon(item, out _);
+
+    private static ImageSource? CardIcon(DockItemViewModel item, out bool preserveLogoColors)
     {
+        preserveLogoColors = false;
         if (!GlassSettings.Cyber) return null;
         if (IconChoices.CardIcon(item.App) is { } file) return CardIcons.Load(file);
-        if (IconChoices.HasChoice(item.App) || GlassSettings.IconSet != DockIconSet.Cards) return null;
+        if (IconChoices.UsesForged(item.App)) return item.Icon is { } forced ? CardIcons.Forge(forced) : null;
+        if (IconChoices.HasChoice(item.App)) return null;
+
+        if (GlassSettings.IconSet == DockIconSet.ColorCards)
+        {
+            var baseCard = CardIcons.Image(item.Name, item.ProcessName) ?? (item.Icon is { } ownIcon ? CardIcons.Forge(ownIcon) : null);
+            if (baseCard is null) return null;
+            preserveLogoColors = true;
+            return CardIcons.ForgeColor(baseCard, item.Icon, item.Name, item.ProcessName);
+        }
+
+        if (GlassSettings.IconSet != DockIconSet.Cards) return null;
         return CardIcons.Image(item.Name, item.ProcessName) ?? (item.Icon is { } own ? CardIcons.Forge(own) : null);
     }
 

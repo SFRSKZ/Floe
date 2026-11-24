@@ -233,13 +233,14 @@ public sealed class MaterialGpuScene : FeedbackGpuScene
                 float laneBand = Band(saturate((wingU * 0.8 + fl * 0.04) + 0.04));
                 float speed = 1.6 + 0.45 * fl;
                 float pktPhase = frac(wingU * (2.6 + 0.4 * fl) - Phase * speed * 0.32 + fl * 0.23);
-                float head = exp(-pow((pktPhase - 0.88) * 26.0, 2.0));
-                float tail = smoothstep(0.20, 0.88, pktPhase) * step(pktPhase, 0.90) * pow(pktPhase, 2.4);
+                // a packet is no shape of its own: a stretch of the trace's own core runs brighter, rising evenly
+                // to its front and dying there, so the wire carries the light without a head bulging out of it
+                float run = smoothstep(0.40, 0.88, pktPhase);
+                float flow = run * run * smoothstep(0.92, 0.88, pktPhase);
 
                 float energy = (0.35 + 0.85 * laneBand + 1.25 * shockWave);
                 col += ColA.rgb * (halo * 0.42 * energy + core * 1.15 * energy);
-                col += ColB.rgb * (halo * 0.55 + core * 1.9) * tail * (0.45 + 0.95 * Level);
-                col += HotCol.rgb * (core * 2.8 + halo * 0.75) * head * (0.55 + 1.1 * Level + 0.8 * Flare);
+                col += lerp(ColB.rgb, HotCol.rgb, flow) * core * flow * 1.5 * (0.55 + 1.1 * Level + 0.8 * Flare);
 
                 // Sculpted circular solder via pads at segment boundaries
                 // a segment's own width in pixels, from the wing it is on: the taskbar's wings differ from the
@@ -358,7 +359,12 @@ public sealed class MaterialGpuScene : FeedbackGpuScene
         #endif
 
             col *= wingEdge * topSoft * botSoft;
+            // Redline keeps no trail: the frames smeared behind a moving packet grew it a tail
+        #if STYLE == 2
+            float3 outCol = col;
+        #else
             float3 outCol = active > 0.5 ? max(col, trail * 0.82) : col;
+        #endif
             return float4(outCol, active > 0.5 ? max(alpha, prev.a * 0.74) : alpha);
         }
         """;

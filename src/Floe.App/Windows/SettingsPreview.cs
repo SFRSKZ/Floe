@@ -24,6 +24,7 @@ public static class SettingsPreview
             if (args.Contains("--settings-dock", StringComparer.OrdinalIgnoreCase)) window.TabDock.IsChecked = true;
             if (args.Contains("--settings-general", StringComparer.OrdinalIgnoreCase)) window.TabGeneral.IsChecked = true;
             if (args.Contains("--settings-visualizer", StringComparer.OrdinalIgnoreCase)) window.TabVisualizer.IsChecked = true;
+            if (args.Contains("--settings-desktop", StringComparer.OrdinalIgnoreCase)) window.TabDesktop.IsChecked = true;
             if (window.Content is not FrameworkElement content) return true;
             window.Content = null;
             var stage = new System.Windows.Controls.Border { Background = new SolidColorBrush(Color.FromRgb(0x1B, 0x20, 0x2A)), Child = content };

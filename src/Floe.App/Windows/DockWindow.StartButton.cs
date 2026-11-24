@@ -26,6 +26,7 @@ public partial class DockWindow
 
     private readonly Grid _start = new() { Width = StartWidth, Height = StartWidth, Background = Brushes.Transparent, Cursor = Cursors.Hand };
     private readonly Image _startGlyph = new() { Width = StartGlyph, Height = StartGlyph, IsHitTestVisible = false };
+    private readonly CyberStartGlyph _cyberStart = new(StartGlyph);
     private readonly Rectangle _startDivider = new() { Width = 1, Height = 34, RadiusX = 0.5, RadiusY = 0.5, IsHitTestVisible = false };
     private readonly ScaleTransform _startScale = new(1, 1);
 
@@ -35,9 +36,27 @@ public partial class DockWindow
         _start.RenderTransformOrigin = new Point(0.5, 0.5);
         _start.RenderTransform = _startScale;
         _start.Children.Add(_startGlyph);
-        _start.MouseLeftButtonUp += (_, _) => DesktopController.OpenStartMenu();
-        _start.MouseEnter += (_, _) => AnimateStart(1.12, 1);
-        _start.MouseLeave += (_, _) => AnimateStart(1, GlassSettings.Cyber ? 1 : 0.82);
+        _start.Children.Add(_cyberStart);
+        _start.MouseLeftButtonUp += (_, _) =>
+        {
+            _cyberStart.Pressed(false);
+            DesktopController.OpenStartMenu();
+        };
+        _start.MouseEnter += (_, _) =>
+        {
+            AnimateStart(GlassSettings.Cyber ? 1 : 1.12, 1);
+            if (GlassSettings.Cyber) _cyberStart.Engage(true);
+        };
+        _start.MouseLeave += (_, _) =>
+        {
+            AnimateStart(1, GlassSettings.Cyber ? 1 : 0.82);
+            _cyberStart.Engage(false);
+            _cyberStart.Pressed(false);
+        };
+        _start.MouseLeftButtonDown += (_, _) =>
+        {
+            if (GlassSettings.Cyber) _cyberStart.Pressed(true);
+        };
         _startGlyph.Opacity = 0.82;
         RenderOptions.SetBitmapScalingMode(_startGlyph, BitmapScalingMode.HighQuality);
 
@@ -57,10 +76,12 @@ public partial class DockWindow
     {
         var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
         bool cyber = GlassSettings.Cyber;
+        _cyberStart.Visibility = cyber ? Visibility.Visible : Visibility.Collapsed;
+        _startGlyph.Visibility = cyber ? Visibility.Collapsed : Visibility.Visible;
         if (cyber)
         {
-            _startGlyph.Source = CyberIcons.Draw("floe-start", CyberFxLayer.Solid(StartGlyphColor));
-            _startGlyph.Opacity = 1;
+            var look = CyberLook.Current;
+            _cyberStart.Paint(StartGlyphColor, CyberLook.Readable(look.Accent, look.Body));
             return;
         }
 

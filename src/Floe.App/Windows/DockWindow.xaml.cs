@@ -591,12 +591,13 @@ public partial class DockWindow : Window
 
     private sealed class IconSlot
     {
-        public IconSlot(Button button, Ellipse dot, DockItemViewModel item, double centerLocal, ScaleTransform scale, TranslateTransform translate)
+        public IconSlot(Button button, Ellipse dot, DockItemViewModel item, double centerLocal, ScaleTransform pressScale, ScaleTransform scale, TranslateTransform translate)
         {
             Button = button;
             Dot = dot;
             Item = item;
             CenterLocal = centerLocal;
+            PressScale = pressScale;
             Scale = scale;
             Translate = translate;
         }
@@ -620,6 +621,8 @@ public partial class DockWindow : Window
         public double CenterLocal { get; }
 
         public double Center { get; set; }
+
+        public ScaleTransform PressScale { get; }
 
         public ScaleTransform Scale { get; }
 

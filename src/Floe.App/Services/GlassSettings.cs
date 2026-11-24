@@ -123,6 +123,7 @@ public enum DockIconSet
 {
     Contour,
     Cards,
+    ColorCards,
     Real,
 }
 
@@ -229,6 +230,9 @@ public static class GlassSettings
 
     public static StrandMotion StrandWallpaperMotion { get; private set; }
 
+    /// <summary>The scene the desktop plays: one of Effects.Gpu.Desktop.DesktopScenes.Names.</summary>
+    public static string DesktopScene { get; private set; } = "Strands";
+
     /// <summary>0 lets the camera go round the shots; 1 to 4 keeps it on that one.</summary>
     public static int StrandWallpaperAngle { get; private set; }
 
@@ -333,6 +337,7 @@ public static class GlassSettings
             VisualizerThemeColours = model.VisualizerThemeColours;
             SignalEqualizer = model.SignalEqualizer;
             StrandWallpaper = model.StrandWallpaper;
+            DesktopScene = Array.Find(Effects.Gpu.Desktop.DesktopScenes.Names, n => string.Equals(n, model.DesktopScene, StringComparison.OrdinalIgnoreCase)) ?? "Strands";
             StrandWallpaperAngle = Math.Clamp(model.StrandWallpaperAngle, 0, 4);
             StrandWallpaperMotion = Enum.TryParse<StrandMotion>(model.StrandWallpaperMotion, true, out var strandMotion) ? strandMotion : StrandMotion.Glide;
             // looks taken off the picker (and "Lamella", the old metal wave) fall back to the stardust
@@ -495,6 +500,18 @@ public static class GlassSettings
         }
 
         StrandWallpaperAngle = angle;
+        Save();
+        Changed?.Invoke();
+    }
+
+    public static void SetDesktopScene(string scene)
+    {
+        if (string.Equals(DesktopScene, scene, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        DesktopScene = scene;
         Save();
         Changed?.Invoke();
     }
@@ -881,6 +898,7 @@ public static class GlassSettings
                 VisualizerThemeColours = VisualizerThemeColours,
                 SignalEqualizer = SignalEqualizer,
                 StrandWallpaper = StrandWallpaper,
+                DesktopScene = DesktopScene,
                 StrandWallpaperMotion = StrandWallpaperMotion.ToString(),
                 StrandWallpaperAngle = StrandWallpaperAngle,
                 VisualizerLook = VisualizerLook.ToString(),
@@ -971,6 +989,8 @@ public static class GlassSettings
         public bool SignalEqualizer { get; set; }
 
         public bool StrandWallpaper { get; set; }
+
+        public string? DesktopScene { get; set; }
 
         public string StrandWallpaperMotion { get; set; } = nameof(StrandMotion.Glide);
 

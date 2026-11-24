@@ -180,7 +180,8 @@ public sealed class BraindanceTimelineGpuScene : FeedbackGpuScene
             if (sp.y >= topY && sp.y < yDiv1 && inTrackX > 0.5)
             {
                 float laneH = max(yDiv1 - topY, 6.0);
-                float heatVal = saturate(band * 0.72 + Noise(float2(tx * 10.0 - Phase * 0.4, 1.5)) * 0.28);
+                // a kick heaves the heat curve where its band is loud, at once, like the Blackwall's flash
+                float heatVal = saturate(band * 0.72 + Noise(float2(tx * 10.0 - Phase * 0.4, 1.5)) * 0.28 + Scrub * band * 0.35);
                 float curveY = yDiv1 - 2.0 * Dip - heatVal * (laneH - 5.0 * Dip);
                 float underCurve = smoothstep(curveY + 8.0 * Dip, curveY, sp.y) * step(curveY, sp.y);
                 float lineTrace = StrokePx(sp.y - curveY, 1.15 * Dip);
@@ -207,9 +208,9 @@ public sealed class BraindanceTimelineGpuScene : FeedbackGpuScene
                 float sampleDist = abs(frac(sp.x / sampleStep + 0.5) - 0.5) * sampleStep;
                 float isBar = StrokePx(sampleDist, 1.0);
                 float mod = 0.42 + 0.58 * sin(sId * 0.72 - Phase * 3.5);
-                float amp = (0.12 + 0.86 * band * mod) * halfH;
+                float amp = saturate(0.08 + 0.80 * band * mod + 0.45 * Scrub * band) * halfH;
                 float inNeedle = step(abs(sp.y - midY), amp) * isBar;
-                col += CyanCol.rgb * inNeedle * (0.65 + 0.55 * band);
+                col += CyanCol.rgb * inNeedle * (0.45 + 0.55 * band + 1.1 * Scrub * band);
                 col += HotCol.rgb * inNeedle * smoothstep(0.65, 0.95, band) * 0.55;
 
                 // Subtle 1px forensic cue clip region bracket
@@ -235,7 +236,8 @@ public sealed class BraindanceTimelineGpuScene : FeedbackGpuScene
                 float2 mD = float2((frac(mCoord) - 0.5) * mSpacing, sp.y - floor((yDiv2 + botY) * 0.5));
                 float dDiamond = (abs(mD.x) + abs(mD.y)) - 2.6 * Dip;
                 float diamond = FillPx(dDiamond) * mLit;
-                col += lerp(AmberCol.rgb, ThermalCol.rgb, step(0.85, Hash(float2(mId, 7.0)))) * diamond * 0.85;
+                // the anomaly pins blink on the snare
+                col += lerp(AmberCol.rgb, ThermalCol.rgb, step(0.85, Hash(float2(mId, 7.0)))) * diamond * (0.55 + 1.2 * exp(-SnareAge * 6.0));
             }
 
             // Surgical 1.5px amber-white playhead needle with small crisp cap triangle
@@ -245,7 +247,7 @@ public sealed class BraindanceTimelineGpuScene : FeedbackGpuScene
             float capTri = step(topY, sp.y) * step(sp.y, topY + 4.5 * Dip)
                          * step(abs(sp.x - playX), (1.0 - capY) * 3.5 * Dip);
             col = lerp(col, AmberCol.rgb, saturate(needle * 0.88 + capTri * 0.95));
-            col += HotCol.rgb * needle * 0.42;
+            col += HotCol.rgb * needle * (0.30 + 0.9 * Scrub);
 
             // Crisp 1px outer frame corner brackets
             float brackets = CornerBracketsPx(sp, float2(x0, topY), float2(x1, botY), floor(8.0 * Dip), 1.0);

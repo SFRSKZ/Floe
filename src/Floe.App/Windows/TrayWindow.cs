@@ -109,10 +109,12 @@ internal sealed class TrayWindow : Window
 
         var process = System.IO.Path.GetFileNameWithoutExtension(app.Path);
         var mask = GlassSettings.Cyber && GlassSettings.IconSet == DockIconSet.Contour ? ContourIcons.Mask(app.Name, process) : null;
-        var card = GlassSettings.Cyber && GlassSettings.IconSet == DockIconSet.Cards ? CardIcons.Image(app.Name, process) : null;
         var real = IconService.GetIcon(new DockApp { Target = app.Path }, 52) ?? app.Icon;
-        if (GlassSettings.Cyber && GlassSettings.IconSet == DockIconSet.Cards && card is null && real is not null) card = CardIcons.Forge(real);
-        if (card is not null) card = CardIcons.OnBody(card, CyberLook.Current.Body, CyberLook.Readable(CyberLook.Current.Ink, CyberLook.Current.Body));
+        bool colorCards = GlassSettings.Cyber && GlassSettings.IconSet == DockIconSet.ColorCards;
+        var card = GlassSettings.Cyber && GlassSettings.IconSet is DockIconSet.Cards or DockIconSet.ColorCards ? CardIcons.Image(app.Name, process) : null;
+        if (GlassSettings.Cyber && GlassSettings.IconSet is DockIconSet.Cards or DockIconSet.ColorCards && card is null && real is not null) card = CardIcons.Forge(real);
+        if (colorCards && card is not null) card = CardIcons.ForgeColor(card, real, app.Name, process);
+        if (card is not null) card = CardIcons.OnBody(card, CyberLook.Current.Body, CyberLook.Readable(CyberLook.Current.Ink, CyberLook.Current.Body), preserveLogoColors: colorCards);
         var icon = card ?? real;
         if (mask is not null)
         {

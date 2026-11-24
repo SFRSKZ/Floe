@@ -140,7 +140,7 @@ public static class Performance
     /// </summary>
     public static void ReportFrame(double gap, double expected)
     {
-        if (Mode != PerformanceMode.Auto || gap <= 0 || gap > PauseGap || expected <= 0)
+        if (_held || Mode != PerformanceMode.Auto || gap <= 0 || gap > PauseGap || expected <= 0)
         {
             return;
         }
@@ -168,6 +168,23 @@ public static class Performance
         {
             ResetWindow();
         }
+    }
+
+    private static bool _held;
+
+    /// <summary>Ignore frame timing while the screen is dark: a sleeping monitor stalls every present.</summary>
+    public static void Hold(bool held)
+    {
+        _held = held;
+        ResetWindow();
+    }
+
+    /// <summary>The screen is back: forget a step down taken while it was going dark.</summary>
+    public static void RestoreStartLevel()
+    {
+        _held = false;
+        if (Mode == PerformanceMode.Auto && _autoLevel != _startLevel) Step(_startLevel, "display on");
+        else ResetWindow();
     }
 
     private static void Step(PerformanceLevel level, string why)

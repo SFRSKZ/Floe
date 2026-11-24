@@ -147,9 +147,9 @@ public sealed class MonowireArcGpuScene : PointCloudGpuScene
             float isCore = 1.0 - saturate((float)strandIdx / 6.0);
             float env = sin(u * 3.14159265); // taut anchor pinning at wing ends
 
-            // Smooth standing wave catenary + travelling whip impulse on kicks
-            float whipFront = KickAge * 1.15;
-            float whipPulse = exp(-pow((acousticU - whipFront) * 9.0, 2.0)) * exp(-KickAge * 3.4);
+            // a kick flares the wire at once wherever its band is loud, as the Blackwall does, instead of a whip
+            // running down it: what lights up is where the song is
+            float whipPulse = exp(-KickAge * 5.0) * saturate(0.25 + band * 1.3);
             float spineY = 0.52 * Size.y
                 + (0.20 * Size.y * env * sin(u * 5.2 - Phase * 1.35 + side * 0.7) * (0.25 + 0.75 * Bass))
                 + (0.10 * Size.y * env * sin(u * 13.0 + Phase * 1.9) * (0.20 + 0.80 * band))
@@ -157,7 +157,8 @@ public sealed class MonowireArcGpuScene : PointCloudGpuScene
 
             // 3D helical strand radius & perspective projection
             float helixAngle = sNorm * 6.2831853 * 2.0 + u * (14.0 + 6.0 * isCore) - Phase * (1.8 + 0.8 * sNorm);
-            float spreadR = lerp(3.2, 22.0, pow(1.0 - isCore, 1.35)) * Dip * env * (0.45 + 0.85 * band + 0.45 * BeatPulse);
+            // the braid opens where the song is loud and lies close where it is quiet; a kick throws it wider there
+            float spreadR = lerp(3.2, 22.0, pow(1.0 - isCore, 1.35)) * Dip * env * (0.30 + 1.10 * band + 1.10 * whipPulse);
             float zDepth = cos(helixAngle);
             float pxX = lerp(xMin, xMax, u) + zDepth * 3.2 * Dip;
             float pxY = spineY + sin(helixAngle) * spreadR;
@@ -171,7 +172,7 @@ public sealed class MonowireArcGpuScene : PointCloudGpuScene
             col = lerp(col, WhiteCol.rgb, smoothstep(0.68, 0.98, isCore * (0.55 + 0.45 * zDepth) + whipPulse * 0.5) * 0.72);
 
             float depthFade = lerp(0.58, 1.15, 0.5 + 0.5 * zDepth);
-            float energy = lerp(0.08, 0.22, isCore) * (0.45 + 0.72 * Level + 0.40 * band + 0.45 * whipPulse) * depthFade;
+            float energy = lerp(0.08, 0.22, isCore) * (0.25 + 0.30 * Level + 1.10 * band + 2.60 * whipPulse) * depthFade;
             o.Color = col * energy;
 
             float radiusPx = lerp(1.00, 1.45, isCore) * Dip * lerp(0.85, 1.15, 0.5 + 0.5 * zDepth);

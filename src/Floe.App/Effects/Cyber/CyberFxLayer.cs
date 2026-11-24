@@ -26,6 +26,7 @@ public sealed class CyberFxLayer : FrameworkElement
     private const string Noise = "#%&/01X$7A";
 
     private readonly List<Run> _runs = new();
+    private Action<DrawingContext, double>? _underlay;
     private Action<DrawingContext, double>? _overlay;
     private bool _hooked, _frozen;
     private double _last = -1, _time;
@@ -38,6 +39,22 @@ public sealed class CyberFxLayer : FrameworkElement
 
     /// <summary>Whether a timed run is showing; those draw above the bar, outside its click-through region.</summary>
     public bool Busy => _runs.Any(run => !run.Inside);
+
+    /// <summary>Elapsed animation clock time in seconds for the active effect layer.</summary>
+    internal double Time => _time;
+
+    /// <summary>Live layer drawn before timed runs (click hex dump) and overlay (slot frame / scan tags).</summary>
+    public Action<DrawingContext, double>? Underlay
+    {
+        get => _underlay;
+        set
+        {
+            if (_underlay == value) return;
+            _underlay = value;
+            if (value is not null) Hook();
+            InvalidateVisual();
+        }
+    }
 
     public Action<DrawingContext, double>? Overlay
     {
@@ -83,6 +100,7 @@ public sealed class CyberFxLayer : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
+        _underlay?.Invoke(dc, _time);
         foreach (var run in _runs) run.Draw?.Invoke(dc, Math.Min(1, run.Elapsed / run.Seconds));
         _overlay?.Invoke(dc, _time);
     }
@@ -119,7 +137,7 @@ public sealed class CyberFxLayer : FrameworkElement
         }
 
         InvalidateVisual();
-        if (_runs.Count == 0 && _overlay is null) Unhook();
+        if (_runs.Count == 0 && _overlay is null && _underlay is null) Unhook();
     }
 
     public static double Segment(double p, double from, double to) => Math.Clamp((p - from) / (to - from), 0, 1);
@@ -143,11 +161,54 @@ public sealed class CyberFxLayer : FrameworkElement
         return new string(chars);
     }
 
+    [ThreadStatic]
+    private static Dictionary<Color, SolidColorBrush>? _brushCache;
+
+    [ThreadStatic]
+    private static Dictionary<(Color Color, int ThicknessMillipx), Pen>? _penCache;
+
+    [ThreadStatic]
+    private static Dictionary<(string Text, int SizeMillipx, Brush Brush, TextAlignment Align, double Dpi), FormattedText>? _textCache;
+
+    private static readonly Typeface CyberBoldTypeface = new(CyberLook.Font, FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
+
     public static SolidColorBrush Solid(Color color)
     {
-        var brush = new SolidColorBrush(color);
+        var cache = _brushCache ??= new Dictionary<Color, SolidColorBrush>(128);
+        if (cache.TryGetValue(color, out var brush))
+        {
+            return brush;
+        }
+
+        if (cache.Count >= 512)
+        {
+            cache.Clear();
+        }
+
+        brush = new SolidColorBrush(color);
         brush.Freeze();
+        cache[color] = brush;
         return brush;
+    }
+
+    public static Pen CachedPen(Color color, double thickness)
+    {
+        var cache = _penCache ??= new Dictionary<(Color, int), Pen>(128);
+        var key = (color, (int)Math.Round(thickness * 1000.0));
+        if (cache.TryGetValue(key, out var pen))
+        {
+            return pen;
+        }
+
+        if (cache.Count >= 512)
+        {
+            cache.Clear();
+        }
+
+        pen = new Pen(Solid(color), thickness);
+        pen.Freeze();
+        cache[key] = pen;
+        return pen;
     }
 
     private const double SlotCut = 9;
@@ -162,13 +223,13 @@ public sealed class CyberFxLayer : FrameworkElement
         var outline = Polygon(new Point(r.Left, r.Top), new Point(r.Right, r.Top), new Point(r.Right, r.Bottom - cut), new Point(r.Right - cut, r.Bottom), new Point(r.Left, r.Bottom));
         dc.DrawGeometry(Solid(ink), null, outline);
 
-        dc.DrawGeometry(null, new Pen(Solid(hot ? cyan : Color.FromArgb(0x80, cyan.R, cyan.G, cyan.B)), hot ? 2 : 1), outline);
+        dc.DrawGeometry(null, CachedPen(hot ? cyan : Color.FromArgb(0x80, cyan.R, cyan.G, cyan.B), hot ? 2 : 1), outline);
 
         dc.DrawRectangle(Solid(accent), null, new Rect(r.Left, r.Top, bar, r.Height));
-        var notch = new Pen(Solid(ink), 1);
+        var notch = CachedPen(ink, 1);
         for (double y = r.Top + 7; y < r.Top + 16; y += tick) dc.DrawLine(notch, new Point(r.Left + 2, y), new Point(r.Left + bar - 2, y));
 
-        var bracket = new Pen(Solid(cyan), 2);
+        var bracket = CachedPen(cyan, 2);
         dc.DrawLine(bracket, new Point(r.Right - 10, r.Top), new Point(r.Right, r.Top));
         dc.DrawLine(bracket, new Point(r.Right, r.Top - 1), new Point(r.Right, r.Top + 6));
         dc.DrawGeometry(Solid(cyan), null, Polygon(new Point(r.Right, r.Bottom - cut - 6), new Point(r.Right, r.Bottom - cut), new Point(r.Right - cut, r.Bottom), new Point(r.Right - cut - 6, r.Bottom)));
@@ -184,14 +245,14 @@ public sealed class CyberFxLayer : FrameworkElement
         const double cut = SlotCut, bar = 5, tick = 3;
         var outline = SlotOutline(r);
         r = Snap(r);
-        dc.DrawGeometry(null, new Pen(Solid(ink), 3), outline);
-        dc.DrawGeometry(null, new Pen(Solid(cyan), 1), outline);
+        var inkPen1 = CachedPen(ink, 1);
+        dc.DrawGeometry(null, CachedPen(ink, 3), outline);
+        dc.DrawGeometry(null, CachedPen(cyan, 1), outline);
 
-        dc.DrawRectangle(Solid(accent), new Pen(Solid(ink), 1), new Rect(r.Left - 2, r.Top, bar, r.Height));
-        var notch = new Pen(Solid(ink), 1);
-        for (double y = r.Top + 7; y < r.Top + 16; y += tick) dc.DrawLine(notch, new Point(r.Left - 2, y), new Point(r.Left - 2 + bar, y));
+        dc.DrawRectangle(Solid(accent), inkPen1, new Rect(r.Left - 2, r.Top, bar, r.Height));
+        for (double y = r.Top + 7; y < r.Top + 16; y += tick) dc.DrawLine(inkPen1, new Point(r.Left - 2, y), new Point(r.Left - 2 + bar, y));
 
-        dc.DrawGeometry(Solid(cyan), new Pen(Solid(ink), 1), Polygon(new Point(r.Right, r.Bottom - cut - 6), new Point(r.Right, r.Bottom - cut), new Point(r.Right - cut, r.Bottom), new Point(r.Right - cut - 6, r.Bottom)));
+        dc.DrawGeometry(Solid(cyan), inkPen1, Polygon(new Point(r.Right, r.Bottom - cut - 6), new Point(r.Right, r.Bottom - cut), new Point(r.Right - cut, r.Bottom), new Point(r.Right - cut - 6, r.Bottom)));
     }
 
     /// <summary>The frame's shape, snapped to whole pixels so the lines stay sharp.</summary>
@@ -206,34 +267,62 @@ public sealed class CyberFxLayer : FrameworkElement
     /// <summary>The icon's silhouette in one colour.</summary>
     public static void Silhouette(DrawingContext dc, ImageSource icon, Rect r, Brush brush)
     {
-        dc.PushOpacityMask(new ImageBrush(icon) { ViewportUnits = BrushMappingMode.Absolute, Viewport = r });
+        var mask = new ImageBrush(icon) { ViewportUnits = BrushMappingMode.Absolute, Viewport = r };
+        mask.Freeze();
+        dc.PushOpacityMask(mask);
         dc.DrawRectangle(brush, null, r);
         dc.Pop();
     }
 
     private static Geometry Polygon(params Point[] points)
     {
-        var figure = new PathFigure { IsClosed = true, IsFilled = true, StartPoint = points[0] };
-        figure.Segments.Add(new PolyLineSegment(points[1..], true));
-        return new PathGeometry(new[] { figure });
+        var geometry = new StreamGeometry();
+        using (var ctx = geometry.Open())
+        {
+            ctx.BeginFigure(points[0], isFilled: true, isClosed: true);
+            for (var i = 1; i < points.Length; i++)
+            {
+                ctx.LineTo(points[i], isStroked: true, isSmoothJoin: false);
+            }
+        }
+        geometry.Freeze();
+        return geometry;
     }
 
     public static Geometry Plate(Rect r, double chamfer)
     {
-        var figure = new PathFigure { IsClosed = true, IsFilled = true, StartPoint = new Point(r.Left + chamfer, r.Top) };
-        figure.Segments.Add(new PolyLineSegment(new[]
+        var geometry = new StreamGeometry();
+        using (var ctx = geometry.Open())
         {
-            new Point(r.Right, r.Top), new Point(r.Right, r.Bottom - chamfer), new Point(r.Right - chamfer, r.Bottom),
-            new Point(r.Left, r.Bottom), new Point(r.Left, r.Top + chamfer),
-        }, true));
-        return new PathGeometry(new[] { figure });
+            ctx.BeginFigure(new Point(r.Left + chamfer, r.Top), isFilled: true, isClosed: true);
+            ctx.LineTo(new Point(r.Right, r.Top), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(new Point(r.Right, r.Bottom - chamfer), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(new Point(r.Right - chamfer, r.Bottom), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(new Point(r.Left, r.Bottom), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(new Point(r.Left, r.Top + chamfer), isStroked: true, isSmoothJoin: false);
+        }
+        geometry.Freeze();
+        return geometry;
     }
 
     public void Text(DrawingContext dc, string text, double x, double y, double size, Brush brush, TextAlignment align = TextAlignment.Left, bool upright = false)
     {
-        var format = new FormattedText(text, Loc.Culture, FlowDirection.LeftToRight,
-            new Typeface(CyberLook.Font, FontStyles.Normal, FontWeights.Bold, FontStretches.Normal), size, brush,
-            VisualTreeHelper.GetDpi(this).PixelsPerDip) { TextAlignment = align };
+        var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        var cache = _textCache ??= new Dictionary<(string, int, Brush, TextAlignment, double), FormattedText>(128);
+        var key = (text, (int)Math.Round(size * 100.0), brush, align, dpi);
+        if (!cache.TryGetValue(key, out var format))
+        {
+            if (cache.Count >= 256)
+            {
+                cache.Clear();
+            }
+
+            format = new FormattedText(text, Loc.Culture, FlowDirection.LeftToRight, CyberBoldTypeface, size, brush, dpi)
+            {
+                TextAlignment = align,
+            };
+            cache[key] = format;
+        }
         // a line of text keeps to its card or band and reads down a side like a book's spine; a glyph or two (a hex
         // byte, a mark) and the clock stand upright
         var turn = upright || text.Length <= 2 ? Upright : Spine;

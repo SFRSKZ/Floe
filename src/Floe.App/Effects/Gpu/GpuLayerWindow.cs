@@ -878,6 +878,8 @@ internal sealed class GpuLayerWindow : IDisposable
         if (_logged) return;
         _logged = true;
         Debug.WriteLine($"[Floe.Gpu] {exception}");
+        try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "floe.log"), $"{DateTime.Now:HH:mm:ss} gpu error {exception.GetType().Name}: {exception.Message}{Environment.NewLine}"); }
+        catch { }
     }
 
     // ---- interop ---------------------------------------------------------------------------------

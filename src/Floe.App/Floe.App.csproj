@@ -34,6 +34,7 @@
     <Resource Include="Assets\CardIcons\names.csv" />
     <Resource Include="Assets\Visualizers\*.jpg" />
     <Resource Include="Assets\Visualizers\*.png" />
+    <EmbeddedResource Include="Assets\Relic\arasaka.svg" LogicalName="Floe.Relic.arasaka.svg" />
   </ItemGroup>
 
   <ItemGroup>

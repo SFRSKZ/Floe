@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Xml.Linq;
 using Floe.Core.Interop;
 using Floe.Core.Models;
 
@@ -167,7 +168,7 @@ public static class IconService
             var (file, index) = ResolveIconSource(app);
             if (file is not null)
             {
-                raw = LoadRawIcon(file, index);
+                raw = LoadRawIcon(file, index) ?? TryLoadAppxPackageIcon(file);
             }
         }
 
@@ -294,9 +295,14 @@ public static class IconService
             return result;
         }
 
-        if (target.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
+        var iconPath = Environment.ExpandEnvironmentVariables(app.IconPath ?? string.Empty).Trim();
+        var shellTarget = target.StartsWith("shell:", StringComparison.OrdinalIgnoreCase)
+            ? target
+            : (iconPath.StartsWith("shell:", StringComparison.OrdinalIgnoreCase) ? iconPath : null);
+
+        if (shellTarget is not null)
         {
-            var hbm = ShellImage.GetHBitmap(target, 256);
+            var hbm = ShellImage.GetHBitmap(shellTarget, 256);
             if (hbm != IntPtr.Zero)
             {
                 try
@@ -315,7 +321,7 @@ public static class IconService
             var (file, index) = ResolveIconSource(app);
             if (file is not null)
             {
-                var raw = LoadRawIcon(file, index);
+                var raw = LoadRawIcon(file, index) ?? TryLoadAppxPackageIcon(file);
                 if (raw is null)
                 {
                     var hbm = ShellImage.GetHBitmap(file, 256);
@@ -424,6 +430,129 @@ public static class IconService
         }
 
         return null;
+    }
+
+    private static BitmapSource? TryLoadAppxPackageIcon(string filePath)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(filePath);
+            string? packageRoot = null;
+            for (int depth = 0; depth < 4 && !string.IsNullOrEmpty(dir); depth++)
+            {
+                if (File.Exists(Path.Combine(dir, "AppxManifest.xml")))
+                {
+                    packageRoot = dir;
+                    break;
+                }
+
+                dir = Path.GetDirectoryName(dir);
+            }
+
+            if (packageRoot is null) return null;
+
+            var doc = XDocument.Load(Path.Combine(packageRoot, "AppxManifest.xml"));
+            var exeName = Path.GetFileName(filePath);
+            var apps = doc.Descendants().Where(e => e.Name.LocalName == "Application").ToList();
+            var matchedApp = apps.FirstOrDefault(a =>
+                string.Equals(Path.GetFileName((string?)a.Attribute("Executable")), exeName, StringComparison.OrdinalIgnoreCase))
+                ?? apps.FirstOrDefault();
+
+            var relCandidates = new List<string>();
+            if (matchedApp is not null)
+            {
+                var ve = matchedApp.Descendants().FirstOrDefault(e => e.Name.LocalName == "VisualElements");
+                if (ve is not null)
+                {
+                    foreach (var attrName in new[] { "Square44x44Logo", "Square150x150Logo", "SmallLogo", "Logo" })
+                    {
+                        var val = (string?)ve.Attribute(attrName);
+                        if (!string.IsNullOrWhiteSpace(val)) relCandidates.Add(val);
+                    }
+                }
+            }
+
+            var propLogo = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "Logo")?.Value;
+            if (!string.IsNullOrWhiteSpace(propLogo)) relCandidates.Add(propLogo);
+
+            foreach (var rel in relCandidates)
+            {
+                var normalizedRel = rel.Replace('/', '\\').TrimStart('\\');
+                var fullBase = Path.Combine(packageRoot, normalizedRel);
+                var assetDir = Path.GetDirectoryName(fullBase);
+                if (string.IsNullOrEmpty(assetDir) || !Directory.Exists(assetDir)) continue;
+
+                var stem = Path.GetFileNameWithoutExtension(fullBase);
+                var ext = Path.GetExtension(fullBase);
+                if (string.IsNullOrEmpty(stem) || string.IsNullOrEmpty(ext)) continue;
+
+                var bestFile = Directory.EnumerateFiles(assetDir, $"{stem}*{ext}")
+                    .Where(f => !f.Contains("contrast-", StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(ScoreAppxAssetFile)
+                    .FirstOrDefault();
+
+                if (bestFile is not null && TryLoadImageFile(bestFile) is { } loaded)
+                {
+                    return loaded;
+                }
+            }
+
+            // Fallback to shell:AppsFolder\<PackageFamilyName>!<AppId> when assets are PRI-embedded.
+            var appId = (string?)matchedApp?.Attribute("Id");
+            var folderParts = Path.GetFileName(packageRoot).Split('_');
+            if (!string.IsNullOrWhiteSpace(appId) && folderParts.Length >= 5)
+            {
+                var family = $"{folderParts[0]}_{folderParts[^1]}";
+                var hbm = ShellImage.GetHBitmap($"shell:AppsFolder\\{family}!{appId}", 256);
+                if (hbm != IntPtr.Zero)
+                {
+                    try
+                    {
+                        return FromHBitmap(hbm);
+                    }
+                    finally
+                    {
+                        ShellImage.DeleteHBitmap(hbm);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore malformed or inaccessible manifest and let callers try remaining fallbacks.
+        }
+
+        return null;
+    }
+
+    private static int ScoreAppxAssetFile(string path)
+    {
+        var name = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
+        int score = 0;
+
+        if (name.Contains("altform-unplated", StringComparison.Ordinal)) score += 10_000;
+        else if (name.Contains("altform-lightunplated", StringComparison.Ordinal)) score += 4_000;
+        else if (name.Contains("targetsize-", StringComparison.Ordinal)) score += 7_000;
+
+        int tsIdx = name.IndexOf("targetsize-", StringComparison.Ordinal);
+        if (tsIdx >= 0)
+        {
+            var span = name[(tsIdx + "targetsize-".Length)..];
+            int len = 0;
+            while (len < span.Length && char.IsDigit(span[len])) len++;
+            if (len > 0 && int.TryParse(span[..len], out int ts)) score += Math.Min(ts, 256) * 20;
+        }
+
+        int scIdx = name.IndexOf("scale-", StringComparison.Ordinal);
+        if (scIdx >= 0)
+        {
+            var span = name[(scIdx + "scale-".Length)..];
+            int len = 0;
+            while (len < span.Length && char.IsDigit(span[len])) len++;
+            if (len > 0 && int.TryParse(span[..len], out int sc)) score += Math.Min(sc, 400) * 10;
+        }
+
+        return score;
     }
 
     private static BitmapSource FromHIcon(IntPtr hIcon)

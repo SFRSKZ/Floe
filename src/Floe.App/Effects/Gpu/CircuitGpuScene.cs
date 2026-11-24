@@ -45,6 +45,8 @@ public sealed class CircuitGpuScene : FeedbackGpuScene
         d[5] = _step ? 1 : 0;
         d[6] = _step && _surge ? 1 : 0;
         d[7] = frame.Audio.Level;
+        // the kick itself, so the loud stretches of the board flash with it as the Blackwall does
+        d[8] = frame.Audio.Kick;
         if (_step) _surge = false;
         PutBands(16, frame);
         Put(40, Lead(Ember));
@@ -193,9 +195,9 @@ public sealed class CircuitGpuScene : FeedbackGpuScene
                 else if (dice < active * (.00014 + (.0036 * e * e * e)) * (.45 + Level)) head = true;
 
                 // a beat blows a few spots of the board at once, loudest where the music is, and runs out from each
-                float2 spot = floor(position.xy / (54 * Dip));
-                bool seed = length(position.xy - ((spot + .5) * 54 * Dip)) < 5 * Dip;
-                if (Surge > .5 && seed && Hash(spot + float2(Tick * .13, 5)) < .12 + (.18 * e)) head = true;
+                float2 spot = floor(position.xy / (36 * Dip));
+                bool seed = length(position.xy - ((spot + .5) * 36 * Dip)) < 5 * Dip;
+                if (Surge > .5 && seed && Hash(spot + float2(Tick * .13, 5)) < .02 + (.6 * e * e)) head = true;
             }
             if (wire > 1.5 && charge <= 0 && dice < active * (.002 + (.03 * Surge)) * (.5 + Level)) head = true;
 
@@ -247,7 +249,7 @@ public sealed class CircuitGpuScene : FeedbackGpuScene
             // the bare board is a hard checker that never goes black, and brightens where the heat has soaked in
             if (wire < .5 && ((cell.x + cell.y) & 1) == 0)
             {
-                color = Hot.rgb * (heat > .3 ? .6 : (heat > .16 ? .32 : (heat > .07 ? .2 : .11)));
+                color = Hot.rgb * (heat > .3 ? .42 : (heat > .16 ? .2 : (heat > .07 ? .11 : .06)));
                 alpha = 1;
             }
 
@@ -259,6 +261,9 @@ public sealed class CircuitGpuScene : FeedbackGpuScene
                     : t < .75 ? Hot.rgb
                     : t < .95 ? float3(1, .52, .16)
                     : float3(1, .94, .78);
+                // a kick lights the traces where the song is loud, and only there
+                float e = Energy(float(pixel.x));
+                color += Hot.rgb * Spare.x * e * e * 1.4;
                 alpha = 1;
             }
 

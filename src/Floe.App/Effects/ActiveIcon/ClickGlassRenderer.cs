@@ -21,6 +21,10 @@ internal sealed class ClickGlassRenderer : IDisposable
         new(CreateInput(icon, size), (BitmapSource)IconField.For(icon, size, solid: true).ImageSource,
             "Floe.ClickPaint.hlsl", "float Progress", "float Hash");
 
+    /// <summary>The dock's liquid glass pass over a backdrop picture (t0).</summary>
+    internal static ClickGlassRenderer Liquid(BitmapSource backdrop) =>
+        new(backdrop, backdrop, CompilePixel("Floe.LiquidGlass.hlsl", "float2 Size", "float Top(float x)"));
+
     internal ClickGlassRenderer(BitmapSource mask, BitmapSource backdrop)
         : this(mask, backdrop, "Floe.DropLens.hlsl", "float2 Box", "float Height") { }
 
@@ -49,7 +53,7 @@ internal sealed class ClickGlassRenderer : IDisposable
             var vertex = ShaderCompiler.CompilePreview(vertex: true);
             Check(Call<CreateShader>(_device, 12)(_device, vertex, (nuint)vertex.Length, IntPtr.Zero, out _vertexShader));
             Check(Call<CreateShader>(_device, 15)(_device, pixel, (nuint)pixel.Length, IntPtr.Zero, out _pixelShader));
-            var buffer = new BufferDescription { ByteWidth = 9 * 16, BindFlags = 4 }; // CONSTANT_BUFFER
+            var buffer = new BufferDescription { ByteWidth = 16 * 16, BindFlags = 4 }; // CONSTANT_BUFFER
             Check(Call<CreateBuffer>(_device, 3)(_device, ref buffer, IntPtr.Zero, out _constants));
             Upload(input, 0);
             Upload(field, 1);
@@ -80,8 +84,8 @@ internal sealed class ClickGlassRenderer : IDisposable
 
     internal BitmapSource Render(float[] constants)
     {
-        if (constants.Length > 36) throw new ArgumentException("At most nine float4 constants are supported.", nameof(constants));
-        var packed = new float[36];
+        if (constants.Length > 64) throw new ArgumentException("At most sixteen float4 constants are supported.", nameof(constants));
+        var packed = new float[64];
         constants.CopyTo(packed, 0);
         Call<Update>(_context, 48)(_context, _constants, 0, IntPtr.Zero, packed, 0, 0);
         Call<Draw>(_context, 13)(_context, 3, 0); // Full-screen triangle from SV_VertexID.

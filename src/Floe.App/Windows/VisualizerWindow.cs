@@ -52,6 +52,7 @@ internal sealed class VisualizerWindow : Window
     private Rect _dockRect;
     private bool _gpuFailed;
     private int _gpuRebuilds;
+    private DateTime _gpuFailedAt;
     private IntPtr _hwnd;
     private IntPtr _dock;
     private Rect _bounds = Rect.Empty;
@@ -628,7 +629,15 @@ internal sealed class VisualizerWindow : Window
 
     private bool Layer(ref GpuLayerWindow? layer, Func<IGpuScene> scene, bool capturable = false, bool needAudio = true)
     {
-        if (_gpuFailed) return false;
+        if (_gpuFailed)
+        {
+            // a fullscreen game or a display change can take the GPU away for a while: try again later
+            if (DateTime.UtcNow - _gpuFailedAt < TimeSpan.FromSeconds(10)) return false;
+            _gpuFailed = false;
+            _gpuRebuilds = 0;
+            GpuLog("gpu retry");
+        }
+
         // a layer that stopped on an error is rebuilt with a fresh scene; one that keeps failing sends the looks
         // to the WPF path for good instead of a rebuild every poll
         if (layer is { Halted: true })
@@ -637,7 +646,7 @@ internal sealed class VisualizerWindow : Window
             layer = null;
             if (++_gpuRebuilds > 3)
             {
-                _gpuFailed = true;
+                GpuFail("gpu layer keeps halting");
                 return false;
             }
         }
@@ -650,7 +659,7 @@ internal sealed class VisualizerWindow : Window
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[Floe.Gpu] layer: {ex.Message}");
+                GpuLog($"gpu layer: {ex.Message}");
             }
 
             // no window means no device or no composition: stay on the WPF path for good
@@ -658,7 +667,7 @@ internal sealed class VisualizerWindow : Window
             {
                 layer?.Dispose();
                 layer = null;
-                _gpuFailed = true;
+                GpuFail("gpu layer has no window");
                 return false;
             }
 
@@ -669,6 +678,19 @@ internal sealed class VisualizerWindow : Window
         }
 
         return true;
+    }
+
+    private void GpuFail(string why)
+    {
+        _gpuFailed = true;
+        _gpuFailedAt = DateTime.UtcNow;
+        GpuLog(why);
+    }
+
+    private static void GpuLog(string line)
+    {
+        try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "floe.log"), $"{DateTime.Now:HH:mm:ss} {line}{Environment.NewLine}"); }
+        catch { }
     }
 
     private void PlaceGpu()

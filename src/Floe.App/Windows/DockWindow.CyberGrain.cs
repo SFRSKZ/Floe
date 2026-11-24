@@ -27,8 +27,10 @@ public partial class DockWindow
         ShapeLayer.Children.Add(_cyberGrain);
         ShapeLayer.Children.Add(_slotFill);
         _grainTimer.Tick += (_, _) => ShiftGrain();
-        GlassSettings.Changed += () => Dispatcher.BeginInvoke(UpdateCyberGrain);
+        GlassSettings.Changed += OnCyberGrainSettingsChanged;
     }
+
+    private void OnCyberGrainSettingsChanged() => Dispatcher.BeginInvoke(UpdateCyberGrain);
 
     private void UpdateCyberGrain()
     {
@@ -46,7 +48,7 @@ public partial class DockWindow
 
     private void ShiftGrain()
     {
-        if (FxAsleep || !IsVisible) return;
+        if (FxAsleep || !IsVisible || _fullscreenHidden || _trayHidden || _dozeHidden) return;
         _grainShift.X = _grainRandom.Next(GrainTile);
         _grainShift.Y = _grainRandom.Next(GrainTile);
     }

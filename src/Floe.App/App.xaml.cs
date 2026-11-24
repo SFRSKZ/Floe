@@ -82,6 +82,7 @@ public partial class App : Application
         if (Effects.ActiveIcon.ClickGlassPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.LedScreenPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Chromatic.ChromaticPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Glass.LiquidGlassPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Glass.DropLensPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.MetalRim.MetalRimPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.VisualizerPreview.TryRender(e.Args)) { Shutdown(); return; }
@@ -100,9 +101,12 @@ public partial class App : Application
         if (Effects.Visualizer.DozeDissolvePreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.CubesIntroPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Derezz.DerezzPreview.TryRender(e.Args)) { Shutdown(); return; }
+        if (Effects.Derezz.ParticlePreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Services.DotMatrixIconsPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.GpuOffscreen.TryRenderTest(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.GpuOffscreen.TryRenderLook(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.GpuOffscreen.TryRenderDesktop(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.GpuOffscreen.TryBenchDesktop(e.Args)) { Shutdown(); return; }
 
         if (TryRenderSettings(e.Args))
         {

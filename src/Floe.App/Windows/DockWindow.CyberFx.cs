@@ -1,11 +1,14 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Floe.App.Effects.Cyber;
 using Floe.App.Services;
 using Floe.App.ViewModels;
+using Floe.Core.Services;
 
 namespace Floe.App.Windows;
 
@@ -29,6 +32,17 @@ public partial class DockWindow
     private DockItemViewModel? _noticed;
     private IconSlot? _fxHover;
     private double _fxHoverStart = double.NaN;
+    private double _fxCursorX;
+    private double _fxCursorY;
+    private IconSlot? _fxSettleSlot;
+    private double _fxSettleFromAge;
+    private double _fxSettleCursorX;
+    private double _fxSettleCursorY;
+    private CyberFxLayer.Run? _fxSettleRun;
+    private IconSlot? _glitchSlot;
+    private CyberFxLayer.Run? _glitchRun;
+    private UIElement? _glitchHidden;
+    private CyberFxLayer.Run? _warpRun;
     private (ImageSource Icon, ImageBrush? Mask, Point At)? _fxGhost;
 
     private const double CoverSquare = 56;
@@ -43,7 +57,7 @@ public partial class DockWindow
     private double FxRoomAbove => _fx.Busy ? FxRoom : 0;
 
     // the dock is on its way out, gone, or still playing the sleep run: no effect may draw over it then
-    private bool FxAsleep => _dozeHidden || _dozing || _sleepRun is not null;
+    private bool FxAsleep => _dozeHidden || _dozing || _sleepRun is not null || _particleRun is not null || _particleHiding || _particleHidden;
 
     private void InitializeCyberFx()
     {
@@ -79,7 +93,251 @@ public partial class DockWindow
     private void PlayCyberClick(DockItemViewModel item)
     {
         if (_slots.FirstOrDefault(s => ReferenceEquals(s.Item, item)) is not { } slot) return;
-        PlayHexDump(slot);
+        PressDetent(slot);
+        if (AuraSettings.CyberClick == CyberClickStyle.Hex)
+        {
+            PlayHexDump(slot);
+            PlayCyberClickRing(slot);
+        }
+        else
+        {
+            PlayGlitchClick(slot, AuraSettings.CyberClick);
+        }
+    }
+
+    private void StopGlitchClick()
+    {
+        if (_glitchRun is { } run)
+        {
+            _glitchRun = null;
+            _fx.Cancel(run);
+        }
+
+        if (_glitchHidden is not null) _glitchHidden.Opacity = 1;
+        _glitchHidden = null;
+        _glitchSlot = null;
+    }
+
+    private void PlayGlitchClick(IconSlot slot, CyberClickStyle style)
+    {
+        StopGlitchClick();
+        if (FxAsleep || slot.Button.Content is not Grid { Children: [Image artwork, ..] } grid) return;
+
+        bool isCard = slot.Card is not null;
+        ImageSource? snapshot = isCard
+            ? slot.Card!.Value.OnFrame
+            : slot.Item.Icon is { } icon && artwork.Visibility == Visibility.Visible
+                ? icon
+                : null;
+        if (snapshot is null)
+        {
+            PlayHexDump(slot);
+            PlayCyberClickRing(slot);
+            return;
+        }
+
+        Brush?[]? grid48 = style == CyberClickStyle.Datamosh ? CyberGlitchClick.Sample(snapshot, 48) : null;
+        if (style == CyberClickStyle.BitCrush)
+        {
+            foreach (int n in new[] { 4, 8, 12, 16, 24 })
+            {
+                CyberGlitchClick.Sample(snapshot, n);
+            }
+        }
+
+        grid.Opacity = 0;
+        _glitchHidden = grid;
+        _glitchSlot = slot;
+
+        double baseSeconds = style == CyberClickStyle.Datamosh ? 0.82 : 0.80;
+        double seconds = baseSeconds / AuraSettings.ClickSpeed;
+        _glitchRun = _fx.Play(seconds, (dc, p) =>
+        {
+            if (!Root.IsAncestorOf(slot.Button)) return;
+            try
+            {
+                var box = SlotBounds(slot);
+                var at = isCard
+                    ? Rect.Inflate(box, CardBleed * (box.Width / IconBox), CardBleed * (box.Width / IconBox))
+                    : box;
+                bool popped = PushUprightAbout(dc, at);
+                switch (style)
+                {
+                    case CyberClickStyle.Datamosh:
+                        CyberGlitchClick.DrawDatamosh(dc, snapshot, grid48!, at, p);
+                        break;
+                    case CyberClickStyle.BitCrush:
+                        CyberGlitchClick.DrawBitCrush(dc, snapshot, n => CyberGlitchClick.Sample(snapshot, n), at, p);
+                        break;
+                    default:
+                        CyberGlitchClick.Draw(dc, snapshot, at, SlotFrameBounds(slot), p, FxCyan, FxRed, FxInk, (ctx, txt, x, y, sz, br) => _fx.Text(ctx, txt, x, y, sz, br));
+                        break;
+                }
+                if (popped) dc.Pop();
+            }
+            catch (InvalidOperationException)
+            {
+                // Visual disconnected mid-frame
+            }
+        }, done: StopGlitchClick);
+    }
+
+    private void PlayCyberClickRing(IconSlot slot)
+    {
+        _fx.Play(0.36 / Math.Max(0.7, AuraSettings.ClickSpeed), (dc, p) =>
+        {
+            if (!Root.IsAncestorOf(slot.Button)) return;
+            var look = CyberLook.Current;
+            CyberLaunchEffect.DrawClickRing(dc, SlotFrameBounds(slot), p, CyberLook.Readable(look.Accent, FxInk), FxCyan);
+        });
+    }
+
+    private void PlayWindowWarp(IconSlot slot, bool forward, int windowIndex, int windowCount)
+    {
+        if (FxAsleep) return;
+        if (_warpRun is { } previous)
+        {
+            _warpRun = null;
+            _fx.Cancel(previous);
+        }
+
+        PressDetent(slot);
+        bool isCard = slot.Card is not null;
+        ImageSource? icon = isCard ? slot.Card!.Value.OnFrame : slot.Item.Icon;
+        double dir = forward ? 1.0 : -1.0;
+
+        _warpRun = _fx.Play(0.44, (dc, p) =>
+        {
+            if (!Root.IsAncestorOf(slot.Button)) return;
+            try
+            {
+                var box = SlotBounds(slot);
+                var at = isCard
+                    ? Rect.Inflate(box, CardBleed * (box.Width / IconBox), CardBleed * (box.Width / IconBox))
+                    : box;
+                double cx = box.X + (box.Width * 0.5);
+                double cy = box.Y + (box.Height * 0.5);
+                var look = CyberLook.Current;
+                var accent = CyberLook.Readable(look.Accent, FxInk);
+                if (accent == FxCyan) accent = Color.FromRgb(0xFC, 0xEE, 0x0A);
+
+                double flare = p < 0.22 ? p / 0.22 : Math.Pow(1.0 - ((p - 0.22) / 0.78), 1.65);
+
+                // 1) Teleporting radial bloom halo (white-hot core -> electric cyan -> transparent)
+                if (flare > 0.01)
+                {
+                    double bloomR = box.Width * (0.68 + (0.48 * Math.Sin(p * Math.PI * 0.75)));
+                    var bloom = new RadialGradientBrush(new GradientStopCollection
+                    {
+                        new GradientStop(Color.FromArgb((byte)(230 * flare), 0xF2, 0xFF, 0xFF), 0.0),
+                        new GradientStop(Color.FromArgb((byte)(175 * flare), FxCyan.R, FxCyan.G, FxCyan.B), 0.36),
+                        new GradientStop(Color.FromArgb((byte)(70 * flare), accent.R, accent.G, accent.B), 0.68),
+                        new GradientStop(Color.FromArgb(0, FxCyan.R, FxCyan.G, FxCyan.B), 1.0),
+                    });
+                    bloom.Freeze();
+                    dc.DrawEllipse(bloom, null, new Point(cx, cy), bloomR, bloomR);
+                }
+
+                // 2) Directional teleport silhouette streak (forward = right/up, backward = left/down)
+                if (icon is not null && p < 0.78)
+                {
+                    double gp = p / 0.78;
+                    double eased = 1.0 - Math.Pow(1.0 - gp, 3.0);
+                    double gAlpha = Math.Pow(1.0 - gp, 1.4) * 0.85;
+                    var ghostRect = at;
+                    ghostRect.Offset(dir * 16.0 * eased, -5.0 * Math.Sin(gp * Math.PI));
+                    var ghostBrush = CyberFxLayer.Solid(Color.FromArgb((byte)(255 * gAlpha), FxCyan.R, FxCyan.G, FxCyan.B));
+                    CyberFxLayer.Silhouette(dc, icon, ghostRect, ghostBrush);
+                }
+
+                // 3) Vertical teleport energy beam cutting through the icon
+                if (p < 0.56)
+                {
+                    double bp = p / 0.56;
+                    double beamFade = Math.Sin(bp * Math.PI);
+                    double beamX = cx + (dir * (bp - 0.35) * box.Width * 0.85);
+                    double beamH = box.Height * (1.15 + (0.55 * beamFade));
+                    double outerW = 10.0 * beamFade;
+                    double coreW = 2.6 * beamFade;
+                    var outerBrush = new LinearGradientBrush(
+                        Color.FromArgb(0, FxCyan.R, FxCyan.G, FxCyan.B),
+                        Color.FromArgb((byte)(185 * beamFade), FxCyan.R, FxCyan.G, FxCyan.B),
+                        new Point(0.5, 0), new Point(0.5, 1))
+                    {
+                        GradientStops =
+                        {
+                            new GradientStop(Color.FromArgb(0, FxCyan.R, FxCyan.G, FxCyan.B), 0.0),
+                            new GradientStop(Color.FromArgb((byte)(190 * beamFade), FxCyan.R, FxCyan.G, FxCyan.B), 0.5),
+                            new GradientStop(Color.FromArgb(0, FxCyan.R, FxCyan.G, FxCyan.B), 1.0),
+                        }
+                    };
+                    outerBrush.Freeze();
+                    dc.DrawRectangle(outerBrush, null, new Rect(beamX - (outerW * 0.5), cy - (beamH * 0.5), outerW, beamH));
+                    dc.DrawRectangle(CyberFxLayer.Solid(Color.FromArgb((byte)(245 * beamFade), 0xFF, 0xFF, 0xFF)), null, new Rect(beamX - (coreW * 0.5), cy - (beamH * 0.42), coreW, beamH * 0.84));
+                }
+
+                // 4) Crisp window index pips along top of slot so you know which window is now active
+                if (windowCount > 1 && windowIndex >= 0)
+                {
+                    int shown = Math.Min(windowCount, 6);
+                    int activePip = windowIndex % shown;
+                    double pipFade = p < 0.72 ? 1.0 : (1.0 - ((p - 0.72) / 0.28));
+                    const double pipW = 8.0, pipH = 3.5, gap = 3.0;
+                    double totalW = (shown * pipW) + ((shown - 1) * gap);
+                    double startX = cx - (totalW * 0.5);
+                    double pipY = box.Top - 9.0;
+                    for (int i = 0; i < shown; i++)
+                    {
+                        bool active = i == activePip;
+                        double px = startX + (i * (pipW + gap));
+                        var bg = CyberFxLayer.Solid(Color.FromArgb((byte)(210 * pipFade), FxInk.R, FxInk.G, FxInk.B));
+                        dc.DrawRectangle(bg, null, new Rect(px - 1, pipY - 1, pipW + 2, pipH + 2));
+                        var fg = active
+                            ? CyberFxLayer.Solid(Color.FromArgb((byte)(255 * pipFade), 0xE8, 0xFF, 0xFF))
+                            : CyberFxLayer.Solid(Color.FromArgb((byte)(115 * pipFade), FxCyan.R, FxCyan.G, FxCyan.B));
+                        dc.DrawRectangle(fg, null, new Rect(px, pipY, pipW, pipH));
+                    }
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // Visual disconnected mid-frame
+            }
+        }, done: () => _warpRun = null);
+    }
+
+    private void PlayCyberLaunch(IconSlot slot)
+    {
+        PressDetent(slot);
+        if (FxAsleep || NoFx.Contains("click", StringComparison.OrdinalIgnoreCase)) return;
+
+        double seconds = 0.78 / Math.Max(0.6, Math.Sqrt(AuraSettings.ClickSpeed));
+        _fx.Play(seconds, (dc, p) =>
+        {
+            if (!Root.IsAncestorOf(slot.Button)) return;
+            var look = CyberLook.Current;
+            CyberLaunchEffect.DrawLaunch(
+                dc,
+                SlotFrameBounds(slot),
+                _windowWidth,
+                p,
+                CyberLook.Readable(look.Accent, FxInk),
+                FxCyan,
+                look.Strip,
+                FxInk,
+                (ctx, txt, x, y, sz, br) => _fx.Text(ctx, txt, x, y, sz, br));
+        });
+    }
+
+    private static void PressDetent(IconSlot slot)
+    {
+        var press = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(165) };
+        var easeOut = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+        press.KeyFrames.Add(new EasingDoubleKeyFrame(0.89, KeyTime.FromPercent(0.32), easeOut));
+        press.KeyFrames.Add(new EasingDoubleKeyFrame(1.02, KeyTime.FromPercent(0.74), easeOut));
+        press.KeyFrames.Add(new EasingDoubleKeyFrame(1.00, KeyTime.FromPercent(1.00)));
+        slot.PressScale.BeginAnimation(ScaleTransform.ScaleXProperty, press);
+        slot.PressScale.BeginAnimation(ScaleTransform.ScaleYProperty, press);
     }
 
     // the icon turns cell by cell into its raw bytes, each in the colour of the pixels it stands for
@@ -138,12 +396,134 @@ public partial class DockWindow
     private void SetFxHover(IconSlot? slot)
     {
         if (ReferenceEquals(_fxHover, slot)) return;
+        var prev = _fxHover;
+        double prevAge = double.IsNaN(_fxHoverStart) ? 0 : Math.Max(0, _fx.Time - _fxHoverStart);
+        double prevCx = _fxCursorX;
+        double prevCy = _fxCursorY;
+
+        CancelFxSettle(restoreArtwork: true);
+
         _fxHover = slot;
         _fxHoverStart = double.NaN;
+        _fxCursorX = 0;
+        _fxCursorY = 0;
+
+        if (prev is { Card: not null } && GlassSettings.Cyber && !FxAsleep && !_isDragging && Root.IsAncestorOf(prev.Button) && prevAge > 0.03)
+        {
+            _fxSettleSlot = prev;
+            _fxSettleFromAge = prevAge;
+            _fxSettleCursorX = prevCx;
+            _fxSettleCursorY = prevCy;
+            _fxSettleRun = _fx.Play(0.18, draw: null, tick: null, done: () => CancelFxSettle(restoreArtwork: true), inside: true);
+        }
+
         UpdateFxOverlay();
     }
 
-    private void UpdateFxOverlay() => _fx.Overlay = _fxHover is not null || _fxGhost is not null ? DrawFxOverlay : null;
+    private void CancelFxSettle(bool restoreArtwork = true)
+    {
+        var run = _fxSettleRun;
+        var settling = _fxSettleSlot;
+        _fxSettleRun = null;
+        _fxSettleSlot = null;
+        if (run is not null) _fx.Cancel(run);
+        if (restoreArtwork && settling is not null && !ReferenceEquals(settling, _fxHover))
+        {
+            RestoreCyberSlotArtwork(settling);
+        }
+
+        UpdateFxOverlay();
+    }
+
+    private void UpdateFxOverlay()
+    {
+        _fx.Underlay = (_fxHover is { Card: not null } || _fxSettleSlot is { Card: not null }) && !FxAsleep ? DrawFxUnderlay : null;
+        _fx.Overlay = _fxHover is not null || _fxGhost is not null ? DrawFxOverlay : null;
+    }
+
+    private void DrawFxUnderlay(DrawingContext dc, double time)
+    {
+        if (FxAsleep) return;
+
+        if (_fxSettleSlot is { } settling && _fxSettleRun is { } run && Root.IsAncestorOf(settling.Button) && !ReferenceEquals(settling, _glitchSlot))
+        {
+            double p = Math.Clamp(run.Elapsed / Math.Max(0.01, run.Seconds), 0, 1);
+            DrawSlotAnimatedLogo(dc, settling, isSettling: true, _fxSettleFromAge + run.Elapsed, _fxSettleCursorX, _fxSettleCursorY, p);
+        }
+
+        if (_fxHover is not { } slot || !Root.IsAncestorOf(slot.Button)) return;
+        if (double.IsNaN(_fxHoverStart)) _fxHoverStart = time;
+
+        double age = Math.Max(0, time - _fxHoverStart);
+        UpdateHoverCursorParallax(slot);
+        if (!ReferenceEquals(slot, _glitchSlot))
+        {
+            DrawSlotAnimatedLogo(dc, slot, isSettling: false, age, _fxCursorX, _fxCursorY, settleProgress: 0);
+        }
+    }
+
+    private void UpdateHoverCursorParallax(IconSlot slot)
+    {
+        if (IsMouseOver)
+        {
+            var pt = Mouse.GetPosition(Root);
+            var box = SlotBounds(slot);
+            double rawCx = Math.Clamp((pt.X - (box.X + (box.Width * 0.5))) / Math.Max(8.0, box.Width * 0.5), -1.0, 1.0);
+            double rawCy = Math.Clamp((pt.Y - (box.Y + (box.Height * 0.5))) / Math.Max(8.0, box.Height * 0.5), -1.0, 1.0);
+            if (double.IsFinite(rawCx) && double.IsFinite(rawCy))
+            {
+                _fxCursorX += (rawCx - _fxCursorX) * 0.22;
+                _fxCursorY += (rawCy - _fxCursorY) * 0.22;
+                return;
+            }
+        }
+
+        _fxCursorX *= 0.85;
+        _fxCursorY *= 0.85;
+    }
+
+    private void DrawSlotAnimatedLogo(
+        DrawingContext dc,
+        IconSlot slot,
+        bool isSettling,
+        double age,
+        double cursorX,
+        double cursorY,
+        double settleProgress)
+    {
+        var look = CyberLook.Current;
+        var accent = CyberLook.Readable(look.Accent, FxInk);
+        var backdrop = isSettling ? look.Body : FxInk;
+        var box = SlotBounds(slot);
+        var kind = AnimatedIconCatalog.Match(slot.Item.Name, slot.Item.ProcessName);
+
+        if (slot.Card is { } card && CardIcons.ExtractLogo(isSettling ? card.OnDock : card.OnFrame) is { } logo)
+        {
+            double scale = box.Width / IconBox;
+            var cardRect = Rect.Inflate(box, CardBleed * scale, CardBleed * scale);
+            double inset = cardRect.Width * (43.0 / 192.0);
+            double logoSize = cardRect.Width * (106.0 / 192.0);
+            var logoRect = new Rect(cardRect.X + inset, cardRect.Y + inset, logoSize, logoSize);
+            var clipRect = Rect.Inflate(logoRect, logoRect.Width * 0.22, logoRect.Height * 0.22);
+
+            bool popped = PushUprightAbout(dc, logoRect);
+            CyberAnimatedIcons.DrawAnimatedLogo(dc, logo, kind, logoRect, clipRect, age, accent, FxCyan, isCard: true, cursorX, cursorY, settleProgress, backdrop);
+            if (popped) dc.Pop();
+        }
+    }
+
+    private bool PushUprightAbout(DrawingContext dc, Rect bounds)
+    {
+        if (_fx.Upright.IsIdentity) return false;
+        double cx = bounds.X + (bounds.Width * 0.5);
+        double cy = bounds.Y + (bounds.Height * 0.5);
+        var m = Matrix.Identity;
+        m.Translate(-cx, -cy);
+        m.Append(_fx.Upright);
+        m.Translate(cx, cy);
+        dc.PushTransform(new MatrixTransform(m));
+        return true;
+    }
 
     private void DrawFxOverlay(DrawingContext dc, double time)
     {
@@ -415,6 +795,7 @@ public partial class DockWindow
     // sleep is a relic malfunction: the bar tears, strobes black and red, blocks eat it, and it rains away in red code
     private void CyberSleep()
     {
+        CancelFxSettle(restoreArtwork: true);
         string text = Loc.T("KRİTİK SİSTEM HATASI");
         var look = CyberLook.Current;
         var rect = CapsuleRect();
@@ -718,6 +1099,11 @@ public partial class DockWindow
         switch (name)
         {
             case "hex": PlayHexDump(slot); break;
+            case "glitch": PlayGlitchClick(slot, CyberClickStyle.Glitch); break;
+            case "datamosh": PlayGlitchClick(slot, CyberClickStyle.Datamosh); break;
+            case "bitcrush": PlayGlitchClick(slot, CyberClickStyle.BitCrush); break;
+            case "warp": PlayWindowWarp(slot, forward: true, windowIndex: 1, windowCount: 3); break;
+            case "launch": PlayCyberLaunch(slot); break;
             case "cubes": PlayClickCubes(slot); break;
             case "cubes1": PlayClickCubes(_slots[1]); break;
             case "hover":
@@ -747,6 +1133,19 @@ public partial class DockWindow
                 SetCyberLock(slot);
                 UpdateLayout();
                 _lockMark.Preview(name, progress);
+                UpdateLayout();
+                return;
+            case "sidestripe" or "focuspop" or "chroma" or "runner":
+                AuraSettings.PreviewCyberActive(name switch
+                {
+                    "sidestripe" => CyberActiveStyle.SideStripe,
+                    "focuspop" => CyberActiveStyle.FocusPop,
+                    "chroma" => CyberActiveStyle.ChromaticEcho,
+                    _ => CyberActiveStyle.PerimeterRunner,
+                });
+                SetCyberLock(slot);
+                UpdateLayout();
+                _lockMark.Preview("rest", progress);
                 UpdateLayout();
                 return;
         }

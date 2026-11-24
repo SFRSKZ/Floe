@@ -45,6 +45,7 @@ public partial class DockWindow
         InitializeCyberFx();
         if (_glassPreview) return;
         InitializeDerezz();
+        InitializeParticles();
         _dozeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = AwakePoll };
         _dozeTimer.Tick += (_, _) => DozeTick();
         _dozeTimer.Start();
@@ -93,7 +94,7 @@ public partial class DockWindow
 
     private void PreviewDoze()
     {
-        if (_dozing || _dozePreview || _dozeHidden || _dozeField is not null || !IsVisible || !_shown) return;
+        if (_dozing || _dozePreview || _dozeHidden || _dozeField is not null || _particleRun is not null || _particleHiding || !IsVisible || !_shown) return;
         _dozePreview = true;
         Derezz();
     }
@@ -118,7 +119,7 @@ public partial class DockWindow
     private void SinkBelowVisualizer()
     {
         // the cyber sleep plays on the dock itself, so the dock stays on top until it is over
-        if (_dozing && _sleepRun is null && _visualizerWindow is { Showing: true } visualizer)
+        if (_dozing && _sleepRun is null && _particleRun is null && _visualizerWindow is { Showing: true } visualizer)
             WindowStyling.PlaceBelow(_hwnd, visualizer.TopHandle);
     }
 
@@ -136,6 +137,12 @@ public partial class DockWindow
         {
             // no grab, no cube field: a plain fade ends in the same hidden state
             Fade(0);
+            return;
+        }
+
+        if (ParticlesOn)
+        {
+            ParticleSleep();
             return;
         }
 
@@ -176,6 +183,12 @@ public partial class DockWindow
     // Waking during the derezz rewinds it; waking a hidden dock rezzes it back from under the cursor.
     private void Rezz()
     {
+        if (_particleRun is not null || (ParticlesOn && _dozeHidden))
+        {
+            ParticleWake();
+            return;
+        }
+
         if (_dozeField is not null && !_dozeRezz && _dozeDirection == 1)
         {
             _dozeDirection = -1;
@@ -221,6 +234,7 @@ public partial class DockWindow
 
     private void HideDozedDock()
     {
+        CancelFxSettle(restoreArtwork: true);
         _dozeHidden = true;
         Root.Opacity = 0;
         Root.OpacityMask = null;

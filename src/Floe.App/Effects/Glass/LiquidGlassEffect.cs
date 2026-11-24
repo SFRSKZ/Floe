@@ -6,7 +6,10 @@ using Floe.App.Effects.MetalRim;
 
 namespace Floe.App.Effects.Glass;
 
-/// <summary>The vibrancy pass plus a refracting bevel: the capsule's rim bends in the scene from just outside it.</summary>
+/// <summary>
+/// The vibrancy pass plus a refracting bevel: the capsule's rim bends in the scene from just outside it, splits it into
+/// a spectrum, mirrors a window in its curl and wears a thin oil-film rainbow.
+/// </summary>
 internal sealed class LiquidGlassEffect : ShaderEffect
 {
     private static readonly Lazy<PixelShader?> Shader = new(() => ShaderCompiler.LoadShader("Floe.LiquidGlass.hlsl"));
@@ -30,16 +33,20 @@ internal sealed class LiquidGlassEffect : ShaderEffect
     public double Sigma { get => (double)GetValue(SigmaProperty); set => SetValue(SigmaProperty, value); }
     public static readonly DependencyProperty RefractionProperty = Register(nameof(Refraction), 16.0, 7);
     public double Refraction { get => (double)GetValue(RefractionProperty); set => SetValue(RefractionProperty, value); }
-    public static readonly DependencyProperty DispersionProperty = Register(nameof(Dispersion), 0.1, 8);
+    public static readonly DependencyProperty DispersionProperty = Register(nameof(Dispersion), 0.35, 8);
     public double Dispersion { get => (double)GetValue(DispersionProperty); set => SetValue(DispersionProperty, value); }
     public static readonly DependencyProperty BevelProperty = Register(nameof(Bevel), 18.0, 9);
     public double Bevel { get => (double)GetValue(BevelProperty); set => SetValue(BevelProperty, value); }
+    public static readonly DependencyProperty IridescenceProperty = Register(nameof(Iridescence), 1.0, 10);
+    public double Iridescence { get => (double)GetValue(IridescenceProperty); set => SetValue(IridescenceProperty, value); }
+    public static readonly DependencyProperty SpecularProperty = Register(nameof(Specular), 1.0, 11);
+    public double Specular { get => (double)GetValue(SpecularProperty); set => SetValue(SpecularProperty, value); }
 
     internal LiquidGlassEffect()
     {
         PixelShader = Shader.Value;
         foreach (var property in new[] { InputProperty, SizeProperty, CapsuleProperty, RadiusProperty, HoverProperty, BulgeProperty,
-                     PlateauProperty, SigmaProperty, RefractionProperty, DispersionProperty, BevelProperty })
+                     PlateauProperty, SigmaProperty, RefractionProperty, DispersionProperty, BevelProperty, IridescenceProperty, SpecularProperty })
             UpdateShaderValue(property);
     }
 

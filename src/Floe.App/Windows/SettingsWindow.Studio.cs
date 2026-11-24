@@ -109,7 +109,8 @@ public partial class SettingsWindow
         var iconSets = new WrapPanel();
         foreach (var (set, name, tip) in new[]
         {
-            (DockIconSet.Cards, "Cyberpunk", "Gri logolar, veri kartı çerçevesinde"),
+            (DockIconSet.Cards, "Cyberpunk", "Tüm uygulamalar için akıllı CP77 veri kartları (katalog + otomatik dönüştürme)"),
+            (DockIconSet.ColorCards, "Renkli Kart", "CP77 veri kartı çerçevesi içinde uygulamaların kendi renkli ikonları"),
             (DockIconSet.Real, "Gerçek", "Uygulamaların kendi ikonları"),
         })
         {
@@ -117,6 +118,19 @@ public partial class SettingsWindow
             option.Checked += (_, _) => GlassSettings.SetIconSet(set);
             iconSets.Children.Add(option);
         }
+
+        var refreshCards = new Button
+        {
+            Style = (Style)FindResource("GlassButton"),
+            Content = "Kartları yenile",
+            ToolTip = "Otomatik üretilen CP77 ikon önbelleğini temizler ve yeniden oluşturur",
+            Padding = new Thickness(10, 4, 10, 4),
+            Margin = new Thickness(6, 0, 0, 0),
+            Foreground = CloseButton.Foreground,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        refreshCards.Click += (_, _) => CardIcons.ClearForgedCache();
+        iconSets.Children.Add(refreshCards);
 
         var reset = new Button { Style = (Style)FindResource("GlassButton"), Content = "Otomatik", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 3, 12, 3), Margin = new Thickness(0, 4, 0, 0), Foreground = CloseButton.Foreground };
         _studioReset = reset;
@@ -134,8 +148,37 @@ public partial class SettingsWindow
         StudioHost.Children.Add(StudioTitle("Şekil"));
         StudioHost.Children.Add(StudioRow("Köşe kesimi", cut));
         StudioHost.Children.Add(StudioRow("Gren miktarı", grain));
-        StudioHost.Children.Add(StudioTitle("İkonlar"));
-        StudioHost.Children.Add(iconSets);
+        // which icons the dock wears belongs with the other icon choices
+        var iconTitle = StudioTitle("İkon seti");
+        iconTitle.Margin = new Thickness(2, 0, 0, 6);
+        iconSets.Margin = new Thickness(0, 0, 0, 6);
+        IconsPage.Children.Insert(0, iconTitle);
+        IconsPage.Children.Insert(1, iconSets);
+
+        var activeTitle = StudioTitle("Aktif pencere efekti");
+        activeTitle.Margin = new Thickness(2, 4, 0, 6);
+        var activeRow = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
+        foreach (var (style, label) in new[]
+        {
+            (CyberActiveStyle.GlitchLines, "Glitch hat"),
+            (CyberActiveStyle.SideStripe, "Yan şerit"),
+            (CyberActiveStyle.FocusPop, "Odak parlaması"),
+            (CyberActiveStyle.ChromaticEcho, "Kromatik ikiz"),
+            (CyberActiveStyle.PerimeterRunner, "Kenar koşusu"),
+        })
+        {
+            var option = new RadioButton
+            {
+                GroupName = "CyberActive",
+                Style = (Style)FindResource("ModeToggle"),
+                Content = label,
+                IsChecked = AuraSettings.CyberActive == style,
+            };
+            option.Checked += (_, _) => AuraSettings.SetCyberActive(style);
+            activeRow.Children.Add(option);
+        }
+        IconsPage.Children.Insert(2, activeTitle);
+        IconsPage.Children.Insert(3, activeRow);
 
         _studioTabs[StudioPart.Body].IsChecked = true;
         DrawStudioPacks();

@@ -4,14 +4,15 @@ using Colors = System.Windows.Media.Colors;
 namespace Floe.App.Effects.Gpu.Cp77;
 
 /// <summary>
-/// Canto Daemon (3D Mikoshi Neural Vault Point-Cloud): 30,720 GPU-instanced micro-particles crystalize in a
-/// staggered 3D perspective geodesic hex-vault curving over black void. Calm concentric EMP waves ripple through
-/// the lattice as localized neural pockets shift seamlessly across sapphire void, netrunner cyan, cobalt blue,
-/// and rogue-daemon crimson-magenta.
+/// Canto Daemon: 30,720 GPU-instanced grains on a desert of dunes seen in 3D perspective. The grains are really there:
+/// each has its own depth and is blown out from the middle to its edge across the sand, near ones faster than far
+/// ones, the lit windward faces carrying the colour and the lee sides falling into sapphire shade. A kick throws the
+/// grains of the loud bands into the air and they fall back onto the dunes. A focal plane drifts through the depth: grains in it are hard points, the rest open into small, dimmer
+/// discs. The field runs the whole strip, behind the dock too.
 /// </summary>
 public sealed class CantoBreachGpuScene : PointCloudGpuScene
 {
-    private const int ParticleCount = 30720; // 2 wings * 160 cols * 96 geodesic rows
+    private const int ParticleCount = 30720;
     private const int ConstantFloats = 64;
 
     private static readonly Color IceCyan = Color.FromRgb(0x00, 0xEA, 0xDC);
@@ -22,7 +23,7 @@ public sealed class CantoBreachGpuScene : PointCloudGpuScene
 
     private float _phase, _kickAge = 9f, _snareAge = 9f, _seed = 1f;
 
-    public CantoBreachGpuScene() : base(ParticleCount, ConstantFloats, VertexShader)
+    public CantoBreachGpuScene() : base(ParticleCount, ConstantFloats, VertexShader, ParticlePs, FullEdgeCompositePs)
     {
     }
 
@@ -40,24 +41,23 @@ public sealed class CantoBreachGpuScene : PointCloudGpuScene
             else _kickAge = 0f;
         }
 
-        if (frame.Audio.Level > .015f)
-        {
-            _phase = (_phase + (dt * (.14f + (.32f * Smoother.Level) + (.18f * Smoother.Bass)))) % 10000f;
-        }
+        // the cloud keeps drifting slowly in silence; music drives it on
+        float drive = frame.Audio.Level > .015f ? (.30f * Smoother.Level) + (.22f * Smoother.Bass) : 0f;
+        _phase = (_phase + (dt * (.10f + drive))) % 10000f;
     }
 
     protected override void Fill(GpuFrame frame)
     {
         var d = Data;
-        bool crown = frame.DockLeft >= frame.DockRight;
         d[0] = frame.Width;
         d[1] = frame.Height;
         d[2] = frame.PixelsPerDip;
         d[3] = Math.Clamp(frame.Fade, 0f, 1f);
-        d[4] = crown ? 1f : Math.Clamp(frame.DockLeft, .05f, .9f);
-        d[5] = crown ? 0f : Math.Clamp(frame.DockRight, d[4] + .02f, .95f);
+        // no gap for the dock: these are only kept for the shared constant layout
+        d[4] = 1f;
+        d[5] = 0f;
         d[6] = Smoother.Level;
-        d[7] = crown ? 1f : 0f;
+        d[7] = 1f;
         d[8] = Smoother.Bass;
         d[9] = Smoother.Treble;
         d[10] = _phase;
@@ -104,91 +104,206 @@ public sealed class CantoBreachGpuScene : PointCloudGpuScene
             float4 PearlCol;
         };
 
-        """ + SharedHeader + """
-
-        float VaultHeight(float u, float v, float band, float emp)
+        struct VSOut
         {
-            // Geodesic hexagonal wave folding across curved vault
-            float hex1 = sin(u * 20.0 - Phase * 1.1 + v * 6.0) * cos(v * 14.0 + Phase * 0.85);
-            float hex2 = sin(u * 11.0 + v * 9.0 - Phase * 0.7);
-            float arch = sin(v * 3.14159);
-            float n = Noise(float2(u * 6.0 + Phase * 0.25, v * 5.0 - Phase * 0.20));
-            return saturate((0.24 + 0.54 * band + 0.20 * Bass + 0.24 * emp) * (0.45 + 0.35 * (0.5 + 0.5 * hex1) + 0.25 * n) * (0.4 + 0.6 * arch));
+            float4 Pos : SV_Position;
+            float2 LocalUv : TEXCOORD0;
+            float3 Color : COLOR0;
+            float Blur : TEXCOORD1;
+        };
+
+        float Hash(float2 p)
+        {
+            float3 q = frac(p.xyx * .1031);
+            q += dot(q, q.yzx + 33.33);
+            return frac((q.x + q.y) * q.z);
+        }
+
+        float Band(float u)
+        {
+            float f = saturate(u) * 22.99;
+            int i = (int)f;
+            int j = i + 1;
+            return lerp(Bands[i / 4][i % 4], Bands[j / 4][j % 4], f - i);
+        }
+
+        float3 Palette(float t)
+        {
+            // cyan -> cobalt -> daemon crimson -> cyan again: a closed loop, so the run never jumps
+            t = frac(t) * 3.0;
+            float3 a = lerp(CyanCol.rgb, CobaltCol.rgb, smoothstep(0.0, 1.0, saturate(t)));
+            float3 b = lerp(CobaltCol.rgb, DaemonCol.rgb, smoothstep(0.0, 1.0, saturate(t - 1.0)));
+            float3 c = lerp(DaemonCol.rgb, CyanCol.rgb, smoothstep(0.0, 1.0, saturate(t - 2.0)));
+            return t < 1.0 ? a : (t < 2.0 ? b : c);
+        }
+
+        static const float2 Corners[6] =
+        {
+            float2(-1.0, -1.0), float2( 1.0, -1.0), float2(-1.0,  1.0),
+            float2(-1.0,  1.0), float2( 1.0, -1.0), float2( 1.0,  1.0),
+        };
+
+        float Noise(float2 p)
+        {
+            float2 i = floor(p);
+            float2 f = p - i;
+            f = f * f * (3.0 - (2.0 * f));
+            return lerp(lerp(Hash(i), Hash(i + float2(1.0, 0.0)), f.x),
+                        lerp(Hash(i + float2(0.0, 1.0)), Hash(i + float2(1.0, 1.0)), f.x), f.y);
+        }
+
+        // desert dunes: a long gentle windward climb, a short steep lee, fine ripples over both
+        float Dune(float u, float v, out float lit)
+        {
+            float warp = Noise(float2(u * 3.0 + Phase * 0.02, v * 2.5)) * 0.9;
+            float r = frac(u * 6.0 + v * 1.4 + warp - Phase * 0.015);
+            float crest = r < 0.78 ? r / 0.78 : (1.0 - r) / 0.22;
+            crest = crest * crest * (3.0 - 2.0 * crest);
+            float ripple = 0.5 + 0.5 * sin(u * 120.0 + v * 30.0 + warp * 7.0 - Phase * 0.6);
+            // the windward face takes the light, brightest just under the crest; the lee falls into shadow
+            lit = r < 0.78 ? 0.25 + 0.75 * pow(r / 0.78, 1.6) : 0.10;
+            return 0.82 * crest + 0.18 * ripple;
         }
 
         VSOut main(uint vid : SV_VertexID, uint iid : SV_InstanceID)
         {
             VSOut o;
-            const uint COLS = 160u;
-            const uint ROWS = 96u;
-            uint perWing = COLS * ROWS;
-            uint wingIdx = min(iid / perWing, 1u);
-            uint rem = iid - wingIdx * perWing;
-            uint cIdx = rem % COLS;
-            uint rIdx = rem / COLS;
+            float fi = (float)iid;
+            float h1 = Hash(float2(fi * 0.137 + 0.5, 1.7));
+            float h2 = Hash(float2(fi * 0.291 + 3.1, 7.3));
+            float h3 = Hash(float2(fi * 0.073 + 11.0, 2.9));
+            float h4 = Hash(float2(fi * 0.417 + 5.5, 13.1));
+            float h5 = Hash(float2(fi * 0.191 + 9.2, 4.4));
+            float h6 = Hash(float2(fi * 0.353 + 1.3, 17.7));
 
-            float xMin, xMax, side, totalCols;
-            if (CrownMode > 0.5)
-            {
-                xMin = 0.0;
-                xMax = Size.x;
-                side = 1.0;
-                cIdx = wingIdx * COLS + cIdx;
-                totalCols = (float)(COLS * 2u);
-            }
-            else if (wingIdx == 0u)
-            {
-                xMin = 0.0;
-                xMax = DockLeft * Size.x;
-                side = -1.0;
-                totalCols = (float)COLS;
-            }
-            else
-            {
-                xMin = DockRight * Size.x;
-                xMax = Size.x;
-                side = 1.0;
-                totalCols = (float)COLS;
-            }
+            // depth: 0 at the glass, 1 at the far ridge; more sand far back where the view is compressed
+            float z = sqrt(h1);
+            float near = 1.0 - z;
+            float side = h3 < 0.5 ? -1.0 : 1.0;
 
-            // Geodesic stagger creates crystalline diagonal/hexagonal point alignment
-            float stagger = ((rIdx & 1u) != 0u) ? 0.5 : 0.0;
-            float u = ((float)cIdx + stagger + 0.25) / totalCols;
-            float v = ((float)rIdx + 0.5) / (float)ROWS;
+            // every grain is blown out from the middle to its edge, the near ones faster (parallax)
+            float speed = (0.012 + 0.040 * near) * (0.75 + 0.5 * h6);
+            float s = frac(h2 + Phase * speed);
+            float u = 0.5 + side * 0.5 * s;
+            float band = Band(saturate(s * 0.92 + 0.04));
 
-            float acousticU = (CrownMode > 0.5) ? abs(u - 0.5) * 2.0 : (wingIdx == 0u ? (1.0 - u) : u);
-            float band = Band(saturate(acousticU * 0.92 + 0.04));
+            float a = KickAge * 7.0;
+            float burst = a * exp(1.0 - a);
+            float kick = burst * saturate(0.20 + band * 1.5);
+            // a kick swells the dunes (shape only: no flash of light)
+            float swell = exp(-KickAge * 6.0) * saturate(0.25 + band * 1.6);
 
-            float empDist = length(float2(acousticU - KickAge * 0.85, (v - 0.48) * 0.55));
-            float emp = exp(-pow(empDist * 8.5, 2.0)) * exp(-KickAge * 3.2);
-
-            float h = VaultHeight(u, v, band, emp);
-            float hBack = VaultHeight(u, saturate(v + 0.03), band, emp);
-            float slope = saturate(0.5 + (h - hBack) * 5.2);
-
-            float depthZ = lerp(0.95, 2.50, v);
+            // --- the dunes: a 3D field seen in perspective, grains resting on it
+            float lit;
+            float dune = Dune(u, z, lit);
+            float arch = sin(z * 3.14159);
+            // the dunes breathe with the music: quiet bands lie low, loud ones rise steep
+            float hgt = saturate((0.26 + 0.85 * band + 0.30 * Bass + 0.35 * swell) * dune * (0.45 + 0.55 * arch));
+            // a kick throws grains off the sand; they fall back onto it
+            float hop = kick * saturate(0.30 + band * 1.5) * (0.25 + 0.75 * h5) * 0.95;
+            float depthZ = lerp(0.95, 2.50, z);
             float persp = 1.0 / depthZ;
-            float wingW = max(xMax - xMin, 10.0);
-            float domeArc = 0.06 * sin(u * 3.14159);
-            float pxX = 0.5 * (xMin + xMax) + (u - 0.5) * wingW * lerp(1.0, 0.72, v);
-            float groundY = lerp(Size.y * 0.90, Size.y * (0.34 - domeArc), pow(v, 0.88));
-            float pxY = groundY - h * Size.y * 0.74 * persp;
+            float groundY = lerp(1.0, 0.30, pow(z, 0.88));
+            float anchor = smoothstep(0.0, 0.22, z);
+            float duneY = groundY - (hgt + hop) * 0.74 * persp * anchor - (h5 - 0.5) * 0.012;
 
-            // Localized neural breach color pockets shifting across sapphire, cyan, cobalt and daemon crimson
-            float breachPatch = Noise(float2(u * 3.8 + Phase * 0.14 + (float)wingIdx * 4.7, v * 3.4 - Phase * 0.11));
-            float isBreach = smoothstep(0.54, 0.80, breachPatch + emp * 0.35);
-            float cobaltShift = smoothstep(0.32, 0.68, Noise(float2(u * 5.0 - Phase * 0.12, v * 4.2)));
+            float y01 = duneY;
+            float x01 = u;
 
-            float3 baseCol = lerp(ShadowCol.rgb, lerp(CyanCol.rgb, CobaltCol.rgb, cobaltShift * 0.65), smoothstep(0.10, 0.54, h + slope * 0.32));
-            baseCol = lerp(baseCol, DaemonCol.rgb, isBreach * 0.88);
-            baseCol = lerp(baseCol, PearlCol.rgb, smoothstep(0.66, 0.94, h * slope + emp * 0.4) * 0.72);
+            // colour runs out along the strip through cyan, cobalt and daemon crimson
+            float hueT = s * 0.9 - Phase * 0.07 + z * 0.25;
+            float3 tint = Palette(hueT);
+            // on the dunes it is light and shade: lit faces carry the colour, lee sides sink to sapphire
+            float3 duneCol = lerp(ShadowCol.rgb, tint, lit);
+            duneCol = lerp(duneCol, PearlCol.rgb, smoothstep(0.80, 1.0, dune) * lit * 0.55);
+            float3 col = duneCol;
 
-            float energy = (0.14 + 0.42 * pow(slope, 1.25) + 0.28 * h + 0.24 * emp) * persp * lerp(1.25, 0.62, v);
-            o.Color = baseCol * energy * (0.50 + 0.78 * Level);
+            float life = smoothstep(0.0, 0.004, s) * smoothstep(1.0, 0.90, s);
+            float duneE = (0.10 + 0.70 * lit * (0.3 + hgt) * (0.55 + 0.9 * band) + 0.3 * hop) * lerp(1.30, 0.55, z) * 1.5;
+            float energy = duneE
+                * (0.55 + 0.75 * h6) * life * (0.55 + 0.70 * Level);
 
-            float radiusPx = lerp(1.75, 1.05, v) * Dip * (0.90 + 0.28 * h);
-            o.Pos = ProjectParticle(float2(pxX, pxY), radiusPx, vid, o.LocalUv);
+            // focus: a plane drifting through the depth; a kick pulls it forward
+            float focus = 0.22 + 0.36 * (0.5 + 0.5 * sin(Phase * 0.23)) - 0.14 * exp(-KickAge * 3.0);
+            float coc = saturate((abs(z - focus) - 0.12) * 2.2);
+            float baseR = lerp(1.9, 0.85, z);
+            float blurR = coc * coc * 1.5;
+            float r = baseR + blurR;
+            energy *= (baseR * baseR) / (r * r);
+            o.Color = col * energy;
+            o.Blur = coc;
+
+            float2 c = float2(x01 * Size.x, y01 * Size.y);
+            float radiusPx = r * Dip;
+            o.LocalUv = Corners[min(vid, 5u)];
+            if (energy <= 0.0005 || c.y < -radiusPx || c.y > Size.y + radiusPx)
+            {
+                o.Pos = float4(2.0, 2.0, 2.0, 1.0);
+                return o;
+            }
+
+            float2 p = c + o.LocalUv * radiusPx;
+            o.Pos = float4((p.x / Size.x) * 2.0 - 1.0, 1.0 - (p.y / Size.y) * 2.0, 0.0, 1.0);
             return o;
+        }
+        """;
+
+    private const string ParticlePs = """
+        struct VSOut
+        {
+            float4 Pos : SV_Position;
+            float2 LocalUv : TEXCOORD0;
+            float3 Color : COLOR0;
+            float Blur : TEXCOORD1;
+        };
+
+        float4 main(VSOut inp) : SV_Target
+        {
+            float r2 = dot(inp.LocalUv, inp.LocalUv);
+            if (r2 > 1.0) discard;
+            // in focus: a hard point; off it: a flat disc with a soft rim
+            float sharp = pow(1.0 - r2, 1.85);
+            float disc = saturate((1.0 - r2) * 2.2) * 0.85;
+            float core = lerp(sharp, disc, inp.Blur);
+            // coverage follows the light, so a dim disc never lays a dark ring over the desktop
+            float lum = max(inp.Color.r, max(inp.Color.g, inp.Color.b));
+            return float4(inp.Color * core, core * saturate(lum * 2.5) * 0.65);
+        }
+        """;
+
+    private const string FullEdgeCompositePs = """
+        cbuffer PointCompositeCb : register(b0)
+        {
+            float2 Size;
+            float Dip;
+            float Fade;
+            float DockLeft;
+            float DockRight;
+            float Level;
+            float CrownMode;
+        };
+
+        Texture2D HdrTex : register(t0);
+        SamplerState Linear : register(s0);
+
+        float4 main(float4 position : SV_Position) : SV_Target
+        {
+            float2 sp = position.xy;
+            float2 uv = sp / Size;
+            // the cloud runs the whole strip, behind the dock too; only the screen's ends fade
+            float edge = smoothstep(0.0, 0.01, uv.x) * smoothstep(1.0, 0.99, uv.x);
+
+            float4 c0 = HdrTex.Load(int3((int2)sp, 0));
+            float3 hdr = c0.rgb;
+            float peak = max(hdr.r, max(hdr.g, hdr.b));
+
+            float3 graded = saturate((hdr * (2.51 * hdr + 0.03)) / (hdr * (2.43 * hdr + 0.59) + 0.14));
+            graded = saturate(graded + smoothstep(1.15, 3.6, peak) * float3(0.32, 0.24, 0.30));
+
+            float topSoft = smoothstep(0.0, 0.12, uv.y);
+            float colPeak = max(graded.r, max(graded.g, graded.b));
+            float alpha = saturate(max(smoothstep(0.004, 0.14, colPeak), smoothstep(0.01, 0.25, c0.a) * 0.72)) * edge * topSoft * Fade;
+            return float4(graded * alpha, alpha);
         }
         """;
 }

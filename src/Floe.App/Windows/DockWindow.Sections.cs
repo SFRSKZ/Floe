@@ -59,6 +59,8 @@ public partial class DockWindow
     private readonly Rectangle _sectionDivider = new() { Width = 1, Height = 34 };
 
     private readonly Grid _quickSettings = new() { Width = StartWidth, Height = StartWidth, Background = Brushes.Transparent, Cursor = Cursors.Hand };
+    private readonly Image _settingsGlyph = new() { Width = StartGlyph, Height = StartGlyph, IsHitTestVisible = false };
+    private readonly CyberSettingsGlyph _cyberSettings = new(StartGlyph);
     private readonly Rectangle _settingsDivider = new() { Width = 1, Height = 34 };
     private readonly BarcodeTag _barcodeTag = new(34) { Visibility = Visibility.Collapsed };
 
@@ -67,7 +69,7 @@ public partial class DockWindow
     private readonly Rectangle _desktopDivider = new() { Width = 1, Height = 34 };
     private readonly Grid _showDesktop = new() { Width = DesktopWidth, Height = StartWidth, Background = Brushes.Transparent, Cursor = Cursors.Hand };
     private readonly Image _desktopGlyph = new() { Width = StartGlyph, Height = StartGlyph, IsHitTestVisible = false };
-    private readonly DesktopSlabGlyph _desktopSlab = new(DesktopWidth) { Margin = new Thickness(0, 0, 3, 0) };
+    private readonly DesktopSlabGlyph _desktopSlab = new(DesktopWidth, StartWidth);
     private readonly Border _desktopEdgeBar = new() { Width = 3, Height = 26, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
 
     private LiquidDropWindow? _dropWindow;
@@ -134,6 +136,7 @@ public partial class DockWindow
         Closed += (_, _) =>
         {
             DesktopButtonSettings.Changed -= OnDesktopButtonSettingsChanged;
+            GlassSettings.WeatherCityChanged -= OnWeatherCityChanged;
             DpiChanged -= OnDesktopDpiChanged;
             _mediaTimer.Stop();
             _weatherTimer.Stop();
@@ -143,8 +146,10 @@ public partial class DockWindow
 
         _ = RefreshMediaAsync();
         _ = RefreshWeatherAsync();
-        GlassSettings.WeatherCityChanged += () => _ = RefreshWeatherAsync();
+        GlassSettings.WeatherCityChanged += OnWeatherCityChanged;
     }
+
+    private void OnWeatherCityChanged() => _ = RefreshWeatherAsync();
 
     private void BuildMedia()
     {
@@ -248,16 +253,25 @@ public partial class DockWindow
 
     private void BuildSettings()
     {
-        var glyph = Glyph("settings", StartGlyph);
-        _inkGlyphs.Add((glyph, "settings", StartGlyph));
-        glyph.Opacity = 0.82;
+        _settingsGlyph.Source = DotMatrixIcons.Render("settings", StartGlyph, GlyphColor, DpiScale);
+        _inkGlyphs.Add((_settingsGlyph, "settings", StartGlyph));
+        _settingsGlyph.Opacity = 0.82;
         _quickSettings.ToolTip = Loc.T("Hızlı ayarlar");
         _quickSettings.RenderTransformOrigin = new Point(0.5, 0.5);
         var scale = new ScaleTransform(1, 1);
         _quickSettings.RenderTransform = scale;
-        _quickSettings.Children.Add(glyph);
-        _quickSettings.MouseEnter += (_, _) => AnimateGlyph(scale, glyph, 1.12, 1);
-        _quickSettings.MouseLeave += (_, _) => AnimateGlyph(scale, glyph, 1, 0.82);
+        _quickSettings.Children.Add(_settingsGlyph);
+        _quickSettings.Children.Add(_cyberSettings);
+        _quickSettings.MouseEnter += (_, _) =>
+        {
+            AnimateGlyph(scale, _settingsGlyph, 1.12, 1);
+            if (GlassSettings.Cyber) _cyberSettings.Engage(true);
+        };
+        _quickSettings.MouseLeave += (_, _) =>
+        {
+            AnimateGlyph(scale, _settingsGlyph, 1, GlassSettings.Cyber ? 1 : 0.82);
+            _cyberSettings.Engage(false);
+        };
         _quickSettings.MouseLeftButtonUp += (_, _) =>
         {
             var center = _quickSettings.PointToScreen(new Point(StartWidth / 2, StartWidth / 2));
@@ -281,8 +295,10 @@ public partial class DockWindow
         {
             var duration = TimeSpan.FromMilliseconds(160);
             var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
-            scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.12, duration) { EasingFunction = ease });
-            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.12, duration) { EasingFunction = ease });
+            // the hairline glyph stays on the pixel grid: no grow on hover in Cyber
+            double grow = GlassSettings.Cyber ? 1 : 1.12;
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(grow, duration) { EasingFunction = ease });
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(grow, duration) { EasingFunction = ease });
             _desktopGlyph.BeginAnimation(OpacityProperty, new DoubleAnimation(1, duration) { EasingFunction = ease });
             _desktopEdgeBar.BeginAnimation(OpacityProperty, new DoubleAnimation(1, duration) { EasingFunction = ease });
             _desktopSlab.Peek(true);
@@ -296,10 +312,13 @@ public partial class DockWindow
             _desktopGlyph.BeginAnimation(OpacityProperty, new DoubleAnimation(0.82, duration) { EasingFunction = ease });
             _desktopEdgeBar.BeginAnimation(OpacityProperty, new DoubleAnimation(0.75, duration) { EasingFunction = ease });
             _desktopSlab.Peek(false);
+            _desktopSlab.Pressed(false);
         };
+        _showDesktop.MouseLeftButtonDown += (_, _) => _desktopSlab.Pressed(true);
         _showDesktop.MouseLeftButtonUp += (_, e) =>
         {
             e.Handled = true;
+            _desktopSlab.Pressed(false);
             DesktopController.ShowDesktop();
         };
         UpdateDesktopGlyph();
@@ -313,7 +332,7 @@ public partial class DockWindow
     {
         bool cyber = GlassSettings.Cyber;
         _desktopSlab.Visibility = cyber ? Visibility.Visible : Visibility.Collapsed;
-        _desktopEdgeBar.Visibility = cyber ? Visibility.Visible : Visibility.Collapsed;
+        _desktopEdgeBar.Visibility = Visibility.Collapsed; // the hairline glyph draws its own one pixel rail
         _desktopGlyph.Visibility = cyber ? Visibility.Collapsed : Visibility.Visible;
         if (cyber)
         {

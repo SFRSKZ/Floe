@@ -297,7 +297,8 @@
             <UniformGrid Columns="3" Margin="0,0,-8,6">
                 <RadioButton x:Name="TabLook" GroupName="Tabs" Style="{StaticResource ModeToggle}" Content="Görünüm" />
                 <RadioButton x:Name="TabIcons" GroupName="Tabs" Style="{StaticResource ModeToggle}" Content="İkonlar" />
-                <RadioButton x:Name="TabVisualizer" GroupName="Tabs" Style="{StaticResource ModeToggle}" Content="Görselleştirici" />
+                <RadioButton x:Name="TabVisualizer" GroupName="Tabs" Style="{StaticResource ModeToggle}" Content="Müzik" />
+                <RadioButton x:Name="TabDesktop" GroupName="Tabs" Style="{StaticResource ModeToggle}" Content="Masaüstü" />
                 <RadioButton x:Name="TabDock" GroupName="Tabs" Style="{StaticResource ModeToggle}" Content="Dock" />
                 <RadioButton x:Name="TabGeneral" GroupName="Tabs" Style="{StaticResource ModeToggle}" Content="Genel" />
             </UniformGrid>
@@ -539,32 +540,6 @@
 
                 <CheckBox x:Name="VisualizerThemeToggle" Style="{StaticResource GlassToggle}" Content="Tema rengini kullan" Margin="0,8,0,0"
                           ToolTip="Görselleştirici kendi renkleri yerine Stüdyo'daki renklerle oynar" />
-                <CheckBox x:Name="StrandWallpaperToggle" Style="{StaticResource GlassToggle}" Content="Masaüstünde tel perde" Margin="0,8,0,0"
-                          ToolTip="Tel perde ana ekranın masaüstünde, ikonların arkasında oynar; tam ekran bir pencere açıkken durur" />
-                <WrapPanel x:Name="StrandAngleRow" Margin="0,6,0,0">
-                    <RadioButton x:Name="StrandAngleAuto" GroupName="StrandAngle" Style="{StaticResource ModeToggle}" Content="Otomatik"
-                                 ToolTip="Kamera dört açıyı sırayla dolaşır, geçiş aşağıdaki seçime göre olur" />
-                    <RadioButton x:Name="StrandAngle1" GroupName="StrandAngle" Style="{StaticResource ModeToggle}" Content="Soldan"
-                                 ToolTip="Perdeye soldan geniş bakış" />
-                    <RadioButton x:Name="StrandAngle2" GroupName="StrandAngle" Style="{StaticResource ModeToggle}" Content="Çapraz"
-                                 ToolTip="Yakından, çapraz ışık bandı" />
-                    <RadioButton x:Name="StrandAngle3" GroupName="StrandAngle" Style="{StaticResource ModeToggle}" Content="Karşıdan"
-                                 ToolTip="Tam karşıdan yakın, yatay ışık bandı" />
-                    <RadioButton x:Name="StrandAngle4" GroupName="StrandAngle" Style="{StaticResource ModeToggle}" Content="Sağdan"
-                                 ToolTip="Perdeye sağdan geniş bakış" />
-                </WrapPanel>
-                <WrapPanel x:Name="StrandMotionRow" Margin="0,6,0,0">
-                    <RadioButton x:Name="StrandMotionGlide" GroupName="StrandMotion" Style="{StaticResource ModeToggle}" Content="Kayma"
-                                 ToolTip="Kamera bir sonraki çekime düz kayar, ışık arada erir" />
-                    <RadioButton x:Name="StrandMotionFocus" GroupName="StrandMotion" Style="{StaticResource ModeToggle}" Content="Odak"
-                                 ToolTip="Odak kayar, perde bokeh noktalarına dağılır, yeni çekim netleşerek gelir" />
-                    <RadioButton x:Name="StrandMotionFlight" GroupName="StrandMotion" Style="{StaticResource ModeToggle}" Content="Uçuş"
-                                 ToolTip="Kamera hiç durmadan bütün çekimlerin içinden geçen yumuşak bir yolda süzülür" />
-                    <RadioButton x:Name="StrandMotionDive" GroupName="StrandMotion" Style="{StaticResource ModeToggle}" Content="Dalış"
-                                 ToolTip="Kamera perdeye atılır, tellerin yanından geçip yeni çekime çıkar" />
-                    <RadioButton x:Name="StrandMotionFocusFlight" GroupName="StrandMotion" Style="{StaticResource ModeToggle}" Content="Odak + Uçuş"
-                                 ToolTip="Kesintisiz uçuş, çekim değişirken bir de odak kayması" />
-                </WrapPanel>
                 <CheckBox x:Name="SignalEqualizerToggle" Style="{StaticResource GlassToggle}" Content="Yatay ekolayzer" Margin="0,8,0,0"
                           ToolTip="Şeritler yerine ortadan yanlara uzanan ince çizgiler" />
                 <CheckBox x:Name="GlyphNegativeToggle" Style="{StaticResource GlassToggle}" Content="Negatif renk" Margin="0,8,0,0"
@@ -675,6 +650,48 @@
                 </StackPanel>
             </StackPanel>
 
+            <StackPanel x:Name="DesktopPage">
+                <CheckBox x:Name="StrandWallpaperToggle" Style="{StaticResource GlassToggle}" Content="Masaüstü sahnesi"
+                          ToolTip="Seçilen sahne ana ekranın masaüstünde, ikonların arkasında müzikle oynar; oyun ya da tam ekran bir pencere açıkken durur" />
+                <StackPanel x:Name="DesktopOptions">
+                <TextBlock Text="Sahne" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
+                <WrapPanel x:Name="DesktopSceneRow">
+                    <RadioButton x:Name="DesktopSceneStrands" GroupName="DesktopScene" Style="{StaticResource ModeToggle}" Content="Tel perde"
+                                 ToolTip="Müzikle dalgalanan noktalı tellerden bir perde, kamera açıları dolaşır" />
+                    <RadioButton x:Name="DesktopSceneBlackwall" GroupName="DesktopScene" Style="{StaticResource ModeToggle}" Content="Blackwall"
+                                 ToolTip="Kırmızı ışık tellerinden dev duvar; her vuruş noktalı zeminde bir dalga yollar, çarptığı yerde duvar yanar" />
+                    <RadioButton x:Name="DesktopSceneRelic" GroupName="DesktopScene" Style="{StaticResource ModeToggle}" Content="Relic"
+                                 ToolTip="Relic biyoçipi: vuruşta ışık devre izlerinde akar, hücreleri ateşler ve dendrit liflerine yayılır" />
+                </WrapPanel>
+                <TextBlock x:Name="StrandAngleTitle" Text="Kamera açısı" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
+                <WrapPanel x:Name="StrandAngleRow">
+                    <RadioButton x:Name="StrandAngleAuto" GroupName="StrandAngle" Style="{StaticResource ModeToggle}" Content="Otomatik"
+                                 ToolTip="Kamera dört açıyı sırayla dolaşır, geçiş aşağıdaki seçime göre olur" />
+                    <RadioButton x:Name="StrandAngle1" GroupName="StrandAngle" Style="{StaticResource ModeToggle}" Content="Soldan"
+                                 ToolTip="Perdeye soldan geniş bakış" />
+                    <RadioButton x:Name="StrandAngle2" GroupName="StrandAngle" Style="{StaticResource ModeToggle}" Content="Çapraz"
+                                 ToolTip="Yakından, çapraz ışık bandı" />
+                    <RadioButton x:Name="StrandAngle3" GroupName="StrandAngle" Style="{StaticResource ModeToggle}" Content="Karşıdan"
+                                 ToolTip="Tam karşıdan yakın, yatay ışık bandı" />
+                    <RadioButton x:Name="StrandAngle4" GroupName="StrandAngle" Style="{StaticResource ModeToggle}" Content="Sağdan"
+                                 ToolTip="Perdeye sağdan geniş bakış" />
+                </WrapPanel>
+                <TextBlock x:Name="StrandMotionTitle" Text="Açı geçişi" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
+                <WrapPanel x:Name="StrandMotionRow">
+                    <RadioButton x:Name="StrandMotionGlide" GroupName="StrandMotion" Style="{StaticResource ModeToggle}" Content="Kayma"
+                                 ToolTip="Kamera bir sonraki çekime düz kayar, ışık arada erir" />
+                    <RadioButton x:Name="StrandMotionFocus" GroupName="StrandMotion" Style="{StaticResource ModeToggle}" Content="Odak"
+                                 ToolTip="Odak kayar, perde bokeh noktalarına dağılır, yeni çekim netleşerek gelir" />
+                    <RadioButton x:Name="StrandMotionFlight" GroupName="StrandMotion" Style="{StaticResource ModeToggle}" Content="Uçuş"
+                                 ToolTip="Kamera hiç durmadan bütün çekimlerin içinden geçen yumuşak bir yolda süzülür" />
+                    <RadioButton x:Name="StrandMotionDive" GroupName="StrandMotion" Style="{StaticResource ModeToggle}" Content="Dalış"
+                                 ToolTip="Kamera perdeye atılır, tellerin yanından geçip yeni çekime çıkar" />
+                    <RadioButton x:Name="StrandMotionFocusFlight" GroupName="StrandMotion" Style="{StaticResource ModeToggle}" Content="Odak + Uçuş"
+                                 ToolTip="Kesintisiz uçuş, çekim değişirken bir de odak kayması" />
+                </WrapPanel>
+                </StackPanel>
+            </StackPanel>
+
             <StackPanel x:Name="DockPage">
                 <TextBlock Text="Ekran kenarı" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
                 <WrapPanel>
@@ -685,8 +702,8 @@
                     <RadioButton x:Name="EdgeRight" GroupName="DockEdge" Style="{StaticResource ModeToggle}" Content="Sağ"
                                  ToolTip="İkonlar alt alta dizilir; çalan şarkı ve hava durumu bu kenarda gösterilmez" />
                 </WrapPanel>
-                <TextBlock Text="Görev çubuğu modu yalnızca alt kenarda çalışır." Foreground="#8AFFFFFF" FontSize="11" Margin="2,6,0,12" TextWrapping="Wrap" />
-                <TextBlock Text="Görev çubuğu modu" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
+                <TextBlock Text="Görev çubuğu modu" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6"
+                           ToolTip="Yalnızca alt kenarda çalışır. Görselleştirici çubuğun içinde oynar; Windows görev çubuğu, gizleme seçeneği açık değilse görünür kalır ve çubuk onun üstüne yerleşir." />
                 <WrapPanel>
                     <RadioButton x:Name="TaskbarOff" GroupName="TaskbarLayout" Style="{StaticResource ModeToggle}" Content="Dock" />
                     <RadioButton x:Name="TaskbarStrip" GroupName="TaskbarLayout" Style="{StaticResource ModeToggle}" Content="Cam şerit"
@@ -694,9 +711,7 @@
                     <RadioButton x:Name="TaskbarCrown" GroupName="TaskbarLayout" Style="{StaticResource ModeToggle}" Content="Taç"
                                  ToolTip="Tam genişlikte çubuk: ikonlar solda, çalan şarkı sağda saatin yanında" />
                 </WrapPanel>
-                <TextBlock Text="Görev çubuğu modunda görselleştirici çubuğun içinde oynar. Windows görev çubuğu, aşağıdaki gizleme seçeneği açık değilse görünür kalır ve çubuk onun üstüne yerleşir."
-                           Foreground="#8AFFFFFF" FontSize="11" Margin="2,6,0,12" TextWrapping="Wrap" />
-                <TextBlock Text="Dock boyutu" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,0,0,6" />
+                <TextBlock Text="Dock boyutu" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
                 <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -706,6 +721,7 @@
                             TickFrequency="0.05" IsSnapToTickEnabled="True" Value="1" />
                     <TextBlock x:Name="DockScaleValue" Grid.Column="1" Width="44" TextAlignment="Right" VerticalAlignment="Center" Foreground="#F2FFFFFF" FontSize="12" />
                 </Grid>
+                <TextBlock Text="Gizleme" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,2,0,6" />
                 <CheckBox x:Name="AutoHideToggle"
                           Style="{StaticResource GlassToggle}"
                           Content="Dock'u otomatik gizle"
@@ -724,14 +740,18 @@
                           Style="{StaticResource GlassToggle}"
                           Content="Windows görev çubuğunu gizle"
                           ToolTip="Kapalıyken Windows görev çubuğu açık kalır; dock kapanınca görev çubuğu geri gösterilir." />
-                <TextBlock Text="Görev çubuğu varsayılan olarak açık kalır."
-                           Foreground="#8AFFFFFF" FontSize="11" Margin="2,6,0,0" TextWrapping="Wrap" />
                 <TextBlock Text="Uyku efekti" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
                 <CheckBox x:Name="DerezzToggle"
                           Style="{StaticResource GlassToggle}"
                           Content="Küplere ayrılarak uyu" />
                 <StackPanel x:Name="DerezzOptions">
-                <TextBlock Text="Hız" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,2,0,6" />
+                <TextBlock x:Name="DerezzStyleTitle" Text="Stil" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,8,0,6" />
+                <WrapPanel x:Name="DerezzStyleRow">
+                    <RadioButton x:Name="DerezzStyleClassic" GroupName="DerezzStyle" Style="{StaticResource ModeToggle}" Content="Küpler" />
+                    <RadioButton x:Name="DerezzStyleParticles" GroupName="DerezzStyle" Style="{StaticResource ModeToggle}" Content="Parçacık"
+                                 ToolTip="Dock parçacık nehrine dönüşüp akarak dağılır; otomatik gizlemede de oynar" />
+                </WrapPanel>
+                <TextBlock Text="Hız" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,8,0,6" />
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />

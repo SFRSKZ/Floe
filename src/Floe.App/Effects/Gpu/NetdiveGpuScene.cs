@@ -4,11 +4,10 @@ using Colors = System.Windows.Media.Colors;
 namespace Floe.App.Effects.Gpu;
 
 /// <summary>
-/// Deep-net corridor dive: on each wing the camera plunges down a volumetric cyber-tunnel whose vanishing core sits at
-/// the dock edge. Sculpted, beveled obsidian-cyan data monoliths line the tunnel walls with illuminated circuit cores
-/// and depth-fog shading, while luminous floor and ceiling data highways rush outward. A kick surges the dive and
-/// launches blazing magenta holographic ICE portal gates toward the viewer; a snare ignites bright telemetry lanes.
-/// In silence the dive freezes cleanly with its volumetric tunnel intact.
+/// Deep-net corridor dive: on each wing the camera plunges down a dark wireframe tunnel whose vanishing point sits at
+/// the dock edge. Its ribs, wall rows and floor lanes are one pixel lines that fade out before they crowd into a moire;
+/// a few wall panels glow with the song. A kick speeds the dive, lights the ribs where the song is loud and sends a
+/// hard edged magenta ICE gate frame toward the viewer; a snare lights the floor lanes. In silence the dive stops.
 /// </summary>
 public sealed class NetdiveGpuScene : FeedbackGpuScene
 {
@@ -155,6 +154,15 @@ public sealed class NetdiveGpuScene : FeedbackGpuScene
         """;
 
     private const string FeedbackPs = """
+        // a one pixel line on a repeating coordinate, faded out where the lines crowd closer than a few pixels so
+        // the vanishing point goes dark instead of turning into a moire
+        float GridLine(float c, float widthPx)
+        {
+            float fw = max(fwidth(c), 1e-5);
+            float d = abs(frac(c - 0.5) - 0.5) / fw;
+            return saturate(widthPx + 0.5 - d) * saturate(1.0 - fw * 3.5);
+        }
+
         float4 main(float4 position : SV_Position) : SV_Target
         {
             float2 uv = position.xy / Size;
@@ -164,100 +172,72 @@ public sealed class NetdiveGpuScene : FeedbackGpuScene
                 return float4(0, 0, 0, 0);
             }
 
-            float active = step(0.015, Level);
-            float4 prev = Last.Sample(Linear, uv);
-            float3 trail = prev.rgb * (active > 0.5 ? Decay : 0.94);
-
-            // Perspective corridor coordinates: vanishing point sits near the dock edge (wingU = 0)
+            // Perspective corridor: the vanishing point sits at the dock edge (wingU = 0)
             float2 vp = float2(0.04, 0.52);
             float2 rel = float2(wingU - vp.x, (uv.y - vp.y) * 0.95);
             float radialX = max(rel.x, 0.018);
-            float radialY = abs(rel.y);
-
-            // Distance along tunnel (depth z: large near dock vanishing point, small at outer screen edge)
+            float radialY = max(abs(rel.y), 0.02);
             float wallZ = 1.15 / radialX;
-            float floorZ = 0.42 / max(radialY, 0.02);
-            bool isWall = wallZ < floorZ * 1.45;
-            float z = isWall ? wallZ : floorZ;
-
+            float floorZ = 0.42 / radialY;
+            float isWall = step(wallZ, floorZ * 1.45);
+            float z = lerp(floorZ, wallZ, isWall);
             float worldZ = z + Travel;
-            float depthFog = exp(-z * 0.14);
-            float farCore = exp(-length(float2(rel.x * 3.8, rel.y * 2.4)) * 3.2);
+            float fog = exp(-z * 0.16);
             float band = Band(saturate(wingU * 0.92 + 0.04));
+            float kick = Surge * Surge;
 
-            float3 col = FaceColor.rgb * (0.45 + 0.65 * depthFog);
-            // Warm golden-cyan vanishing core at the dock edge
-            col += lerp(RainColor.rgb, FarColor.rgb, 0.55) * farCore * (0.55 + 0.75 * Bass + 0.9 * Surge);
+            // every coordinate's derivative is taken here, outside any branch
+            // the depth jumps where wall meets floor, so each surface's lines take their own smooth depth
+            float rib = lerp(GridLine((floorZ + Travel) * 0.9, 0.55), GridLine((wallZ + Travel) * 0.9, 0.55), isWall);
+            float seamC = log(wallZ / (floorZ * 1.45));
+            float corner = saturate(1.0 - abs(seamC) / max(fwidth(seamC), 1e-5)) * saturate(1.0 - fwidth(seamC) * 2.0);
+            float wallRow = GridLine(rel.y * wallZ * 2.2, 0.5);
+            float floorLane = GridLine(rel.x / radialY * 12.0, 0.5);
+            float cellZ = floor(worldZ * 0.9);
 
-            if (isWall)
-            {
-                // Sculpted beveled data monolith panels along the rushing tunnel wall
-                float zCell = floor(worldZ * 1.25);
-                float zFrac = frac(worldZ * 1.25);
-                float yScaled = (uv.y - 0.08) * 3.4;
-                float yCell = floor(yScaled);
-                float yFrac = frac(yScaled);
+            // a dark tunnel; the wall's panels are flat faces a shade apart, some of them lit by the song
+            float3 col = FaceColor.rgb * (0.18 + 0.30 * fog);
+            float row = floor(rel.y * wallZ * 2.2);
+            float h = Hash(float2(cellZ, row + side * 9.0));
+            float panelBand = Band(saturate(frac(h * 3.7) * 0.85 + 0.05));
+            float panelLit = isWall * step(0.62, h) * saturate((panelBand - 0.12) * 2.2);
+            col += RainColor.rgb * panelLit * (0.03 + 0.10 * kick) * fog;
 
-                float hPanel = Hash(float2(zCell, yCell + side * 9.0));
-                float panelBand = Band(saturate(frac(hPanel * 3.7) * 0.85 + 0.05));
+            // the frame of the tunnel: ribs rush toward you, rows on the walls and lanes on the floor run to the core
+            float lines = max(rib, lerp(floorLane, wallRow, isWall) * 0.75);
+            col *= 1.0 - saturate(lines * 2.0) * 0.6;
+            float3 ink = lerp(RainColor.rgb, HotColor.rgb, saturate(kick * band * 1.5));
+            col += ink * rib * (0.30 + 0.9 * band + 1.6 * kick * band) * fog;
+            col += RainColor.rgb * corner * (0.35 + 0.6 * band) * saturate(fog * 2.0);
+            col += RainColor.rgb * lerp(floorLane * (0.30 + 0.9 * SnareFlash), wallRow * 0.22, isWall) * saturate(fog * 1.6);
 
-                // Beveled panel inset & glowing circuit seam
-                float edgeZ = min(zFrac, 1.0 - zFrac);
-                float edgeY = min(yFrac, 1.0 - yFrac);
-                float bevel = smoothstep(0.02, 0.14, min(edgeZ, edgeY));
-                float seamGlow = exp(-min(edgeZ, edgeY) * 28.0);
-
-                // Illuminated internal data bars on active panels
-                float dataBar = smoothstep(0.18, 0.35, yFrac) * smoothstep(0.82, 0.65, yFrac)
-                    * step(0.35, hPanel) * smoothstep(0.15, 0.85, sin(zFrac * 18.0 + hPanel * 6.0) * 0.5 + 0.5);
-
-                float3 panelFace = FaceColor.rgb * (0.65 + 0.85 * bevel * (0.6 + 0.4 * hPanel));
-                panelFace += RainColor.rgb * (seamGlow * (0.48 + 0.85 * panelBand) + dataBar * (0.28 + 0.75 * panelBand));
-                panelFace += HotColor.rgb * seamGlow * dataBar * (0.4 + 0.8 * Surge);
-                panelFace += GateColor.rgb * step(0.82, hPanel) * bevel * (0.25 + 0.75 * band);
-
-                col = lerp(col, panelFace * (0.42 + 0.78 * depthFog), 0.92);
-            }
-            else
-            {
-                // Perspective floor & ceiling data highways
-                float laneU = rel.x / max(radialY, 0.03) * 0.45;
-                float laneLine = exp(-abs(frac(laneU * 2.2) - 0.5) * 28.0);
-                float crossLine = exp(-abs(frac(worldZ * 0.9) - 0.5) * 24.0);
-                float highway = max(laneLine * 0.85, crossLine * 0.65);
-
-                col += RainColor.rgb * highway * depthFog * (0.42 + 0.85 * band + 0.95 * SnareFlash);
-                col += HotColor.rgb * laneLine * crossLine * depthFog * (0.55 + 1.1 * SnareFlash);
-            }
-
-            // Blazing magenta holographic ICE portal gates rushing past on every kick
+            // a kick sends a hard edged ICE gate frame down the tunnel toward you
             float gateArr[4] = { GateDist.x, GateDist.y, GateDist.z, GateDist.w };
             float fadeArr[4] = { GateFade.x, GateFade.y, GateFade.z, GateFade.w };
+            float fz = max(lerp(fwidth(floorZ), fwidth(wallZ), isWall), 1e-4);
             [unroll]
             for (int g = 0; g < 4; g++)
             {
                 float gd = gateArr[g];
                 if (gd > 0.05)
                 {
-                    float gPlane = exp(-abs(z - gd) * 3.8) * fadeArr[g];
-                    float frameEdge = smoothstep(0.12, 0.44, abs(uv.y - 0.52)) + exp(-abs(z - gd) * 14.0);
-                    col += GateColor.rgb * gPlane * (0.55 + 1.35 * frameEdge);
-                    col += HotColor.rgb * exp(-abs(z - gd) * 18.0) * fadeArr[g] * 1.25;
+                    float frame = saturate(1.6 - abs(z - gd) / fz);
+                    float inner = saturate(1.6 - abs(z - gd * 1.08) / fz) * 0.5;
+                    col += GateColor.rgb * (frame + inner) * fadeArr[g] * 1.4 * saturate(fog * 2.5);
                 }
             }
 
-            // Floating volumetric speed motes
+            // speed motes: short hard dashes streaking out of the core
             float moteRow = floor(uv.y * 16.0);
             float motePhase = frac(wingU * 7.0 - Travel * (0.55 + 0.35 * Hash(float2(moteRow, side))) + Hash(float2(moteRow, 3.1)));
-            float mote = exp(-pow((motePhase - 0.5) * 34.0, 2.0)) * exp(-abs(frac(uv.y * 16.0) - 0.5) * 18.0);
-            col += lerp(RainColor.rgb, HotColor.rgb, 0.6) * mote * (0.35 + 0.85 * Level + 0.9 * Surge);
+            float rowPx = abs(frac(uv.y * 16.0) - 0.5) * Size.y / 16.0;
+            float mote = step(0.965, motePhase) * saturate(0.6 * Dip + 0.5 - rowPx) * step(0.55, Hash(float2(moteRow, floor(wingU * 7.0 - Travel * (0.55 + 0.35 * Hash(float2(moteRow, side))) + Hash(float2(moteRow, 3.1))))));
+            col += lerp(RainColor.rgb, HotColor.rgb, 0.4) * mote * (0.12 + 0.4 * Level + 0.5 * Surge);
 
             float topSoft = smoothstep(0.0, 0.14, uv.y);
             col *= wingEdge * topSoft;
-
-            float3 outCol = active > 0.5 ? max(col, trail * 0.80) : col;
-            float alpha = saturate((0.76 + 0.18 * depthFog) * wingEdge * topSoft);
-            return float4(outCol, active > 0.5 ? max(alpha, prev.a * 0.74) : alpha);
+            float alpha = saturate(0.88 * wingEdge * topSoft);
+            return float4(col, alpha);
         }
         """;
 
@@ -271,7 +251,7 @@ public sealed class NetdiveGpuScene : FeedbackGpuScene
                 return float4(0, 0, 0, 0);
             }
 
-            float ca = (0.45 + 3.2 * Surge + 2.0 * SnareFlash) * Dip / Size.x;
+            float ca = 0;
             float4 c0 = Last.Sample(Linear, uv);
             float r = Last.Sample(Linear, saturate(uv + float2(ca, 0))).r;
             float b = Last.Sample(Linear, saturate(uv - float2(ca, 0))).b;
@@ -283,7 +263,6 @@ public sealed class NetdiveGpuScene : FeedbackGpuScene
             bloom += Last.Sample(Linear, saturate(uv - float2(px.x * 4.0, 0))).rgb * 0.25;
             bloom += Last.Sample(Linear, saturate(uv + float2(0, px.y * 2.5))).rgb * 0.25;
             bloom += Last.Sample(Linear, saturate(uv - float2(0, px.y * 2.5))).rgb * 0.25;
-            hdr += max(bloom - 0.45, 0.0) * 0.55;
 
             float grain = (Hash(floor(position.xy) + floor(Travel * 16.0)) - 0.5) * 0.014;
             float3 graded = AcesTone(pow(max(hdr, 0.0), 1.34) * 1.42) + grain;

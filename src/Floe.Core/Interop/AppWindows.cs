@@ -100,6 +100,8 @@ public static class AppWindows
 
     // exe paths never change for a live process; the creation time keeps reused PIDs distinct
     private static readonly Dictionary<uint, (long Created, string Path)> ProcessPathCache = new();
+    private static readonly Dictionary<uint, (long Created, string AppId)> ProcessAppIdCache = new();
+    private static readonly Dictionary<(IntPtr Hwnd, uint ProcessId), (string AppId, byte Checks)> WindowAppIdCache = new();
 
     private static readonly HashSet<string> IgnoredClasses = new(StringComparer.Ordinal)
     {
@@ -207,9 +209,52 @@ public static class AppWindows
             if (string.IsNullOrEmpty(name)) return null;
         }
 
-        var appId = WindowAppId(hWnd);
-        if (appId.Length == 0) appId = ProcessAppId(processId);
+        var appId = GetCachedWindowAppId(hWnd, processId);
+        if (appId.Length == 0) appId = GetCachedProcessAppId(processId);
         return (name, path, appId);
+    }
+
+    private static string GetCachedWindowAppId(IntPtr hWnd, uint processId)
+    {
+        var key = (hWnd, processId);
+        if (WindowAppIdCache.TryGetValue(key, out var cached) && (cached.AppId.Length > 0 || cached.Checks >= 2))
+        {
+            return cached.AppId;
+        }
+
+        var appId = WindowAppId(hWnd);
+        if (WindowAppIdCache.Count > 256)
+        {
+            WindowAppIdCache.Clear();
+        }
+
+        var nextChecks = (byte)Math.Min(2, (cached.Checks) + 1);
+        WindowAppIdCache[key] = (appId, nextChecks);
+        return appId;
+    }
+
+    private static string GetCachedProcessAppId(uint processId)
+    {
+        if (ProcessPathCache.TryGetValue(processId, out var pathInfo)
+            && pathInfo.Created != 0
+            && ProcessAppIdCache.TryGetValue(processId, out var cached)
+            && cached.Created == pathInfo.Created)
+        {
+            return cached.AppId;
+        }
+
+        var appId = ProcessAppId(processId);
+        if (pathInfo.Created != 0)
+        {
+            if (ProcessAppIdCache.Count > 256)
+            {
+                ProcessAppIdCache.Clear();
+            }
+
+            ProcessAppIdCache[processId] = (pathInfo.Created, appId);
+        }
+
+        return appId;
     }
 
     private static uint FrameContent(IntPtr frame, uint frameProcess)

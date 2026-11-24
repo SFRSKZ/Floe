@@ -175,6 +175,133 @@ public static class GpuOffscreen
 
     private static float[]? _lookClear;
 
+    /// <summary>
+    /// Handles <c>--render-desktop=Scene;dir;frames;start;width;height</c>: renders a desktop wallpaper scene
+    /// offscreen (3840x2160 by default) against the mock track, a frame every 1/30 s from <c>start</c>.
+    /// </summary>
+    public static bool TryRenderDesktop(string[] args)
+    {
+        const string option = "--render-desktop=";
+        var argument = args.FirstOrDefault(a => a.StartsWith(option, StringComparison.OrdinalIgnoreCase));
+        if (argument is null) return false;
+
+        var parts = argument[option.Length..].Split(';');
+        string name = parts[0].Trim();
+        string folder = parts.Length > 1 && parts[1].Length > 0 ? Path.GetFullPath(parts[1]) : Path.Combine(Path.GetTempPath(), "floe-desktop-" + name);
+        static float Part(string[] p, int i, float fallback) => p.Length > i
+            && float.TryParse(p[i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
+        int frames = Math.Max(1, (int)Part(parts, 2, 30));
+        float start = Part(parts, 3, 8f);
+        int width = (int)Part(parts, 4, 3840), height = (int)Part(parts, 5, 2160);
+        try
+        {
+            using var scene = Desktop.DesktopScenes.Create(name);
+            if (scene is null)
+            {
+                Directory.CreateDirectory(folder);
+                File.WriteAllText(Path.Combine(folder, "render-error.txt"), $"unknown desktop scene: {name}");
+                Environment.ExitCode = 2;
+                return true;
+            }
+
+            RenderFrames(scene, width, height, height / 1440f * 1.5f, frames, (frame, index) => MockFrame(frame, start + (index / 30f)), folder);
+        }
+        catch (Exception ex)
+        {
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, "render-error.txt"), ex.ToString());
+            Environment.ExitCode = 1;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Handles <c>--bench-desktop=Scene;frames;width;height</c>: times a desktop wallpaper scene on the GPU as the
+    /// wallpaper runs it (1 px per dip, no readback), waiting for each frame to finish, and writes the average and
+    /// the 95th percentile milliseconds to <c>%TEMP%loe-bench-desktop.txt</c>.
+    /// </summary>
+    public static bool TryBenchDesktop(string[] args)
+    {
+        const string option = "--bench-desktop=";
+        var argument = args.FirstOrDefault(a => a.StartsWith(option, StringComparison.OrdinalIgnoreCase));
+        if (argument is null) return false;
+
+        var parts = argument[option.Length..].Split(';');
+        string name = parts[0].Trim();
+        static int Part(string[] p, int i, int fallback) => p.Length > i && int.TryParse(p[i], out var v) ? v : fallback;
+        int frames = Math.Max(10, Part(parts, 1, 300));
+        int width = Part(parts, 2, 3840), height = Part(parts, 3, 2160);
+        string output = Path.Combine(Path.GetTempPath(), "floe-bench-desktop.txt");
+        try
+        {
+            using var scene = Desktop.DesktopScenes.Create(name) ?? throw new ArgumentException("unknown desktop scene: " + name);
+            var device = GpuDevice.Create();
+            try
+            {
+                var context = device.ImmediateContext;
+                using var texture = device.CreateTexture2D(new Texture2DDescription(Format.B8G8R8A8_UNorm, (uint)width, (uint)height, 1, 1,
+                    BindFlags.RenderTarget, ResourceUsage.Default, CpuAccessFlags.None, 1, 0, ResourceOptionFlags.None));
+                using var target = device.CreateRenderTargetView(texture, null);
+                using var done = device.CreateQuery(new QueryDescription(QueryType.Event));
+                using var disjoint = device.CreateQuery(new QueryDescription(QueryType.TimestampDisjoint));
+                using var t0 = device.CreateQuery(new QueryDescription(QueryType.Timestamp));
+                using var t1 = device.CreateQuery(new QueryDescription(QueryType.Timestamp));
+                var gpu = new double[frames];
+                scene.Initialize(device);
+                scene.Resize(width, height);
+                var frame = new GpuFrame();
+                var times = new double[frames];
+                for (int index = -30; index < frames; index++)
+                {
+                    float time = 8f + (Math.Max(0, index) / 60f);
+                    frame.Dt = 1f / 60f;
+                    frame.Time = time;
+                    frame.Fade = 1;
+                    frame.Width = width;
+                    frame.Height = height;
+                    frame.PixelsPerDip = 1;
+                    MockFrame(frame, time);
+                    long begin = System.Diagnostics.Stopwatch.GetTimestamp();
+                    context.Begin(disjoint);
+                    context.End(t0);
+                    context.ClearRenderTargetView(target, new Color4(0, 0, 0, 1));
+                    scene.Render(context, target, frame);
+                    context.End(t1);
+                    context.End(disjoint);
+                    context.End(done);
+                    while (!context.IsDataAvailable(done)) System.Threading.Thread.SpinWait(50);
+                    if (index >= 0)
+                    {
+                        times[index] = (System.Diagnostics.Stopwatch.GetTimestamp() - begin) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                        while (!context.IsDataAvailable(disjoint)) System.Threading.Thread.SpinWait(50);
+                        var dj = context.GetData<QueryDataTimestampDisjoint>(disjoint, AsyncGetDataFlags.None);
+                        ulong a = context.GetData<ulong>(t0, AsyncGetDataFlags.None), b = context.GetData<ulong>(t1, AsyncGetDataFlags.None);
+                        gpu[index] = dj.Disjoint ? double.NaN : (b - a) * 1000.0 / dj.Frequency;
+                    }
+                }
+
+                scene.ReleaseDevice();
+                Array.Sort(times);
+                var clean = gpu.Where(v => !double.IsNaN(v)).OrderBy(v => v).ToArray();
+                string g = clean.Length == 0 ? "gpu=?" : $"gpu avg={clean.Average():F2}ms p95={clean[(int)(clean.Length * .95)]:F2}ms";
+                File.AppendAllText(output, $"{name} {width}x{height} wall avg={times.Average():F2}ms p95={times[(int)(frames * .95)]:F2}ms {g}{Environment.NewLine}");
+            }
+            finally
+            {
+                device.ImmediateContext.ClearState();
+                device.Dispose();
+            }
+        }
+        catch (Exception ex)
+        {
+            File.AppendAllText(output, $"{name} error {ex.Message}{Environment.NewLine}");
+            Environment.ExitCode = 1;
+        }
+
+        return true;
+    }
+
     public static bool TryRenderLook(string[] args)
     {
         if (args.FirstOrDefault(a => a.StartsWith("--clear=", StringComparison.OrdinalIgnoreCase)) is { } clearArg)

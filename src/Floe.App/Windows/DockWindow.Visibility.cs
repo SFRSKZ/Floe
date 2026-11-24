@@ -86,6 +86,7 @@ public partial class DockWindow
         else _visualizerWindow?.PlaceBelowDock(_hwnd);
         _tronLayer?.PlaceBelowDock(_hwnd);
         _outsideTicks = 0;
+        if (ParticleShow()) return;
         AnimateDockToEdge(shown: true);
     }
 
@@ -99,6 +100,7 @@ public partial class DockWindow
         _shown = false;
         Log("autohide slid the dock away");
         UpdateEffectVisibility();
+        if (ParticleHide()) return;
         AnimateDockToEdge(shown: false);
     }
 

@@ -24,6 +24,8 @@ public partial class PreviewWindow : Window
 
     private readonly List<DwmThumbnail.Thumbnail> _thumbnails = new();
     private readonly List<IntPtr> _sources = new();
+    private readonly List<(IntPtr Source, Action<bool> SetActive)> _cards = new();
+    private IntPtr _activeSource;
     private EventHooks.Hook? _destroyHook;
 
     public event Action? WindowActivated;
@@ -91,6 +93,7 @@ public partial class PreviewWindow : Window
     {
         ApplyTheme();
         ClearThumbnails();
+        _activeSource = ScreenInput.GetForegroundHandle();
 
         var hwnd = new WindowInteropHelper(this).Handle;
         var placed = new List<(DwmThumbnail.Thumbnail Thumb, IntPtr Source, int Width, int X)>();
@@ -152,8 +155,11 @@ public partial class PreviewWindow : Window
         bool cyber = GlassSettings.Cyber;
         var size = new Size(thumbWidth + (2 * Pad), Caption + ThumbHeight + Pad);
         var look = CyberLook.Current;
-        var hot = cyber ? new SolidColorBrush(CyberLook.Readable(look.Accent, CyberLook.PanelInk)) : new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF));
-        var cold = cyber ? new SolidColorBrush(CyberLook.Readable(look.Strip, CyberLook.PanelInk)) : new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
+        var hotColor = CyberLook.Readable(look.Accent, CyberLook.PanelInk);
+        var coldColor = CyberLook.Readable(look.Strip, CyberLook.PanelInk);
+        if (hotColor == coldColor) hotColor = DockWindow.FxCyan;
+        var hot = cyber ? new SolidColorBrush(hotColor) : new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF));
+        var cold = cyber ? new SolidColorBrush(coldColor) : new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
         var fill = new SolidColorBrush(cyber ? CyberLook.PanelInk : Color.FromArgb(0xE0, 0x16, 0x16, 0x1A));
 
         var title = new TextBlock
@@ -195,17 +201,31 @@ public partial class PreviewWindow : Window
 
         card.Children.Add(new Decorator { Child = title, Margin = new Thickness(Pad + 4, 0, Pad + 28, 0), VerticalAlignment = VerticalAlignment.Top });
         card.Children.Add(CloseButton(source, title.Foreground, new SolidColorBrush(cyber ? DockWindow.FxRed : Color.FromRgb(0xC4, 0x2B, 0x1C))));
-        card.MouseEnter += (_, _) => show(true);
-        card.MouseLeave += (_, _) => show(false);
+        bool hovered = false;
+        bool active = source == _activeSource;
+        void RefreshState() => show(hovered || active);
+        card.MouseEnter += (_, _) => { hovered = true; RefreshState(); };
+        card.MouseLeave += (_, _) => { hovered = false; RefreshState(); };
         card.MouseLeftButtonUp += (_, e) =>
         {
             if (WindowActivator.Activate(source)) WindowActivated?.Invoke();
             e.Handled = true;
         };
+        _cards.Add((source, on => { active = on; RefreshState(); }));
+        RefreshState();
 
         Canvas.SetLeft(card, left);
         Canvas.SetTop(card, Inset);
         Cards.Children.Add(card);
+    }
+
+    public void SetActiveSource(IntPtr source)
+    {
+        _activeSource = source;
+        foreach (var (cardSource, setActive) in _cards)
+        {
+            setActive(cardSource == source);
+        }
     }
 
     // the X in the card's caption; it sits above the thumbnail, which would paint over it
@@ -277,6 +297,7 @@ public partial class PreviewWindow : Window
 
         _thumbnails.Clear();
         _sources.Clear();
+        _cards.Clear();
         Cards.Children.Clear();
     }
 

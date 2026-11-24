@@ -27,6 +27,11 @@ public partial class DockWindow
 
     private void UpdateForeground()
     {
+        if (_fullscreenHidden || _trayHidden || !IsVisible)
+        {
+            return;
+        }
+
         var info = ScreenInput.GetForegroundInfo();
         if (IsIgnoredForeground(info.ProcessName))
         {
@@ -113,6 +118,11 @@ public partial class DockWindow
 
     private void UpdateAmbient()
     {
+        if (GlassSettings.Cyber || !HasSeparator || _fullscreenHidden || _trayHidden || _dozeHidden || !IsVisible)
+        {
+            return;
+        }
+
         var cpu = SystemMetrics.GetCpuUsage();
         _ambientLevel += (cpu - _ambientLevel) * 0.35;
         var opacity = 0.5 + (0.5 * (_ambientLevel / 100.0));

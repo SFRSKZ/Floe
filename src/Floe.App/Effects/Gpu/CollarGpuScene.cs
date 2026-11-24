@@ -168,9 +168,13 @@ public sealed class CollarGpuScene : FeedbackGpuScene
             float3 color = Hide * (.45 + crease) * fog * lerp(.55, 1, seam);
 
             float4 chip = Chip(tube, right, depth);
-            float glow = .04 + saturate(pow(chip.r, .7) * 1.3);
+            // a kick lights every tube at once where its stretch of the song is loud, as the Blackwall does, so the
+            // flash is heard in the same instant rather than seconds later when the climbing light reaches the eye
+            float loud = Band(saturate((depth / ((1 / Far) - 1)) * .85 + (tube * .02)));
+            float flash = Surge * Surge * saturate((loud - .1) * 1.6);
+            float glow = .04 + saturate((pow(chip.r, .7) * 1.3) + (flash * .4));
             // the song's waves run ice blue, a kick's front burns magenta, a snare's turns the tube red
-            float3 hue = lerp(lerp(Ice, Hot, smoothstep(.22, .5, chip.r)), Alarm, chip.g * .7);
+            float3 hue = lerp(lerp(Ice, Hot, smoothstep(.22, .5, chip.r + (flash * .2))), Alarm, chip.g * .7);
 
             // the leather only catches the light on the ridges of its creases, as hard glints, never as a haze
             float near = exp(-max(abs(t) - 1, 0) * .55);

@@ -37,10 +37,43 @@ public partial class SettingsWindow : Window
         }
 
         TabLook.Content = "Stüdyo";
-        ClickEffectToggle.Content = "Hex dökümü";
+        ClickEffectToggle.Content = "Tıklama efekti";
+        if (ClickEffectToggle.Parent is Panel clickParent)
+        {
+            var cyberClickRow = new WrapPanel
+            {
+                Margin = new Thickness(0, 6, 0, 0),
+                Visibility = AuraSettings.ClickEffect ? Visibility.Visible : Visibility.Collapsed,
+            };
+            var clickStyles = new (CyberClickStyle Style, string Label)[]
+            {
+                (CyberClickStyle.Glitch, "Relic glitch"),
+                (CyberClickStyle.Datamosh, "Sütun akması"),
+                (CyberClickStyle.BitCrush, "Bit crush"),
+                (CyberClickStyle.Hex, "Hex dökümü"),
+            };
+            foreach (var (clickStyle, label) in clickStyles)
+            {
+                var option = new RadioButton
+                {
+                    GroupName = "CyberClick",
+                    Style = ClickDark.Style,
+                    Content = label,
+                    IsChecked = AuraSettings.CyberClick == clickStyle,
+                };
+                option.Checked += (_, _) => AuraSettings.SetCyberClick(clickStyle);
+                cyberClickRow.Children.Add(option);
+            }
+            clickParent.Children.Insert(clickParent.Children.IndexOf(ClickEffectToggle) + 1, cyberClickRow);
+            ClickEffectToggle.Checked += (_, _) => cyberClickRow.Visibility = Visibility.Visible;
+            ClickEffectToggle.Unchecked += (_, _) => cyberClickRow.Visibility = Visibility.Collapsed;
+        }
         ClickSoundToggle.Content = "Tıklama sesi";
         // no cubes here, but the sleep itself can still be turned off so the dock stays
         DerezzToggle.Content = "Boşta kalınca uyu";
+        // the particle sleep belongs to the glass dock
+        DerezzStyleTitle.Visibility = Visibility.Collapsed;
+        DerezzStyleRow.Visibility = Visibility.Collapsed;
         VisualizerLookHologram.Visibility = Visibility.Collapsed;
         VisualizerLookStardust.Visibility = Visibility.Collapsed;
         VisualizerLookDustWave.Visibility = Visibility.Collapsed;
@@ -89,9 +122,9 @@ public partial class SettingsWindow : Window
         VisualizerLookCyberDogtownFlir.Visibility = Visibility.Collapsed;
         VisualizerLookCyberMonowire.Visibility = Visibility.Collapsed;
         VisualizerLookCyberStrands.Visibility = Visibility.Collapsed;
-        StrandWallpaperToggle.Visibility = Visibility.Collapsed;
-        StrandMotionRow.Visibility = Visibility.Collapsed;
-        StrandAngleRow.Visibility = Visibility.Collapsed;
+        // the desktop scenes are the Cyber dock's alone
+        TabDesktop.Visibility = Visibility.Collapsed;
+        DesktopPage.Visibility = Visibility.Collapsed;
 #endif
         ApplyChrome();
         GlassSettings.Changed += ApplyChromeOnUi;
@@ -445,8 +478,8 @@ public partial class SettingsWindow : Window
 
     private void BuildTabs()
     {
-        var tabs = new[] { TabLook, TabIcons, TabVisualizer, TabDock, TabGeneral };
-        var pages = new FrameworkElement[] { LookPage, IconsPage, VisualizerPage, DockPage, GeneralPage };
+        var tabs = new[] { TabLook, TabIcons, TabVisualizer, TabDesktop, TabDock, TabGeneral };
+        var pages = new FrameworkElement[] { LookPage, IconsPage, VisualizerPage, DesktopPage, DockPage, GeneralPage };
         for (var i = 0; i < tabs.Length; i++)
         {
             var index = i;
@@ -548,6 +581,27 @@ public partial class SettingsWindow : Window
         }
 
         StrandMotionRow.IsEnabled = GlassSettings.StrandWallpaperAngle == 0;
+        // the angle and the moves are the strand curtain's; the other scenes keep their own camera
+        void ShowStrandRows()
+        {
+            var strands = GlassSettings.DesktopScene == "Strands" ? Visibility.Visible : Visibility.Collapsed;
+            StrandAngleTitle.Visibility = strands;
+            StrandAngleRow.Visibility = strands;
+            StrandMotionTitle.Visibility = strands;
+            StrandMotionRow.Visibility = strands;
+        }
+
+        foreach (var (toggle, scene) in new[] { (DesktopSceneStrands, "Strands"), (DesktopSceneBlackwall, "Blackwall"), (DesktopSceneRelic, "Relic") })
+        {
+            toggle.IsChecked = GlassSettings.DesktopScene == scene;
+            toggle.Checked += (_, _) =>
+            {
+                GlassSettings.SetDesktopScene(scene);
+                ShowStrandRows();
+            };
+        }
+
+        if (Floe.Core.Services.Product.Cp77) ShowStrandRows();
         foreach (var (toggle, motion) in new[] { (StrandMotionGlide, StrandMotion.Glide), (StrandMotionFocus, StrandMotion.Focus),
             (StrandMotionFlight, StrandMotion.Flight), (StrandMotionDive, StrandMotion.Dive), (StrandMotionFocusFlight, StrandMotion.FocusFlight) })
         {
@@ -555,8 +609,18 @@ public partial class SettingsWindow : Window
             toggle.Checked += (_, _) => GlassSettings.SetStrandWallpaperMotion(motion);
         }
 
-        StrandWallpaperToggle.Checked += (_, _) => GlassSettings.SetStrandWallpaper(true);
-        StrandWallpaperToggle.Unchecked += (_, _) => GlassSettings.SetStrandWallpaper(false);
+        // with the scene off its choices stay readable but dimmed
+        DesktopOptions.IsEnabled = GlassSettings.StrandWallpaper;
+        StrandWallpaperToggle.Checked += (_, _) =>
+        {
+            GlassSettings.SetStrandWallpaper(true);
+            DesktopOptions.IsEnabled = true;
+        };
+        StrandWallpaperToggle.Unchecked += (_, _) =>
+        {
+            GlassSettings.SetStrandWallpaper(false);
+            DesktopOptions.IsEnabled = false;
+        };
         SignalEqualizerToggle.IsChecked = GlassSettings.SignalEqualizer;
         SignalEqualizerToggle.Checked += (_, _) => GlassSettings.SetSignalEqualizer(true);
         SignalEqualizerToggle.Unchecked += (_, _) => GlassSettings.SetSignalEqualizer(false);
@@ -668,6 +732,20 @@ public partial class SettingsWindow : Window
         {
             AuraSettings.SetDerezzSpeed(e.NewValue);
             DerezzSpeedValue.Text = AuraSettings.DerezzSpeed.ToString("0.0") + "x";
+            derezzPreview.Stop();
+            derezzPreview.Start();
+        };
+        DerezzStyleClassic.IsChecked = !AuraSettings.DerezzParticles;
+        DerezzStyleParticles.IsChecked = AuraSettings.DerezzParticles;
+        DerezzStyleClassic.Checked += (_, _) =>
+        {
+            AuraSettings.SetDerezzParticles(false);
+            derezzPreview.Stop();
+            derezzPreview.Start();
+        };
+        DerezzStyleParticles.Checked += (_, _) =>
+        {
+            AuraSettings.SetDerezzParticles(true);
             derezzPreview.Stop();
             derezzPreview.Start();
         };

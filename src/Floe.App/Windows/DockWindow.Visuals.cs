@@ -572,6 +572,17 @@ public partial class DockWindow
         {
             if (text.Effect is DropShadowEffect halo) halo.Opacity = surface == DockSurface.Classic ? .6 : .15;
         }
+        if (_liquid is not null)
+        {
+            // the liquid rim shines fully on the clear glass; the calmer surfaces keep it quieter
+            (_liquid.Specular, _liquid.Iridescence) = surface switch
+            {
+                DockSurface.Classic => (1.0, 1.0),
+                DockSurface.Mica => (.55, .45),
+                DockSurface.Frost => (.7, .6),
+                _ => (0.0, 0.0),
+            };
+        }
         _sheen.Opacity = surface switch
         {
             DockSurface.Classic => 1,

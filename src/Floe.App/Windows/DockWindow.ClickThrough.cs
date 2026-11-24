@@ -39,8 +39,16 @@ public partial class DockWindow
     private void UpdateClickThrough()
     {
         if (_hwnd == IntPtr.Zero) return;
+        if (_fullscreenHidden || _trayHidden || _dozeHidden || !IsVisible)
+        {
+            if (_clickThroughTimer is not null && _clickThroughTimer.Interval.TotalMilliseconds < 250)
+            {
+                _clickThroughTimer.Interval = TimeSpan.FromMilliseconds(250);
+            }
+            return;
+        }
         // a drag, a held button or an open menu keep the window solid until they end
-        bool solid = !IsVisible || _isDragging || _menuOpen || Mouse.Captured is not null || CursorOverSolid();
+        bool solid = _isDragging || _menuOpen || Mouse.Captured is not null || CursorOverSolid();
         SetClickThrough(!solid);
     }
 
@@ -72,11 +80,14 @@ public partial class DockWindow
         if (IconLayer.InputHitTest(TranslatePoint(point, IconLayer)) is not null) return true;
 
         // the narrow gaps between magnified icons, so sliding along their tops does not drop the hover
-        foreach (var slot in _slots)
+        if (_currentBulge > 0.1 && HoverMaxScale > 1.01)
         {
-            var bounds = slot.Button.TransformToAncestor(Root).TransformBounds(new Rect(slot.Button.RenderSize));
-            bounds.Inflate(6, 0);
-            if (bounds.Contains(local)) return true;
+            foreach (var slot in _slots)
+            {
+                var bounds = slot.Button.TransformToAncestor(Root).TransformBounds(new Rect(slot.Button.RenderSize));
+                bounds.Inflate(6, 0);
+                if (bounds.Contains(local)) return true;
+            }
         }
         return false;
     }

@@ -77,10 +77,18 @@ public partial class DockWindow
         var margin = (active ? 12.0 : 6.0) / _dockScale;
         var left = _capsuleLeft - margin;
         var right = _capsuleLeft + _capsuleWidth + margin;
-        var top = RestTop;
-        if (active)
+        var top = active
+            ? Math.Max(0, RestTop - (EffectiveBulge * BulgeProfile(position.X - _currentHoverX)))
+            : RestTop;
+
+        if (position.X >= left && position.X <= right
+            && position.Y >= top - margin && position.Y <= RestTop + RestBarHeight + margin)
         {
-            top = Math.Max(0, RestTop - (EffectiveBulge * BulgeProfile(position.X - _currentHoverX)));
+            return true;
+        }
+
+        if (active && HoverMaxScale > 1.01)
+        {
             foreach (var slot in _slots)
             {
                 var bounds = slot.Button.TransformToAncestor(Root).TransformBounds(new Rect(slot.Button.RenderSize));
@@ -89,8 +97,7 @@ public partial class DockWindow
             }
         }
 
-        return position.X >= left && position.X <= right
-            && position.Y >= top - margin && position.Y <= RestTop + RestBarHeight + margin;
+        return false;
     }
 
     private void LeaveHover()
