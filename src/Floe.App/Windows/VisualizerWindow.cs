@@ -581,9 +581,11 @@ internal sealed class VisualizerWindow : Window
             return;
         }
 
+        HangWatch.Mark("visualizer glass");
         ApplyPanelSettings();
         ApplySceneColours();
         ApplyLedScreen();
+        HangWatch.Mark("visualizer glass done");
     }
 
     // A feedback scene reads its colours on the render thread; this hands it the current ones from the UI thread.

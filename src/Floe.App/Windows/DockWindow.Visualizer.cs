@@ -101,6 +101,7 @@ public partial class DockWindow
 
     private void ApplyVisualizerState()
     {
+        HangWatch.Mark("visualizer state");
         if (!_visualizerRunning && _visualizerWindow is null)
         {
             return;

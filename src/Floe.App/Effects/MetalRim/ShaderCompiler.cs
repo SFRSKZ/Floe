@@ -118,6 +118,19 @@ internal static class ShaderCompiler
 
     internal static byte[] CompileBytes(byte[] bytes, string target)
     {
+        // compiled at build time (tools/compile-shaders.py): the HLSL compiler takes seconds and runs on the UI thread
+        var key = Floe.Core.Services.ShaderKey.For(bytes, target);
+        using (var built = typeof(ShaderCompiler).Assembly.GetManifestResourceStream($"Floe.ShaderCache.{key}.cso"))
+        {
+            if (built is not null)
+            {
+                var blob = new byte[built.Length];
+                built.ReadExactly(blob);
+                return blob;
+            }
+        }
+
+        Log($"shader {key} {target} not prebuilt, compiling");
         IntPtr code = IntPtr.Zero, errors = IntPtr.Zero;
         try
         {

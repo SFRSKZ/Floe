@@ -248,6 +248,7 @@ public partial class App : Application
             Services.DockSettings.PreviewEdge(edge);
         }
 
+        if (renderPath is null) Services.HangWatch.Start(Dispatcher);
         var dock = new DockWindow
         {
             AutoHide = renderPath is null && autoHide,

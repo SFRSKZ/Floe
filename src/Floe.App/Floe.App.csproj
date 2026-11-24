@@ -27,6 +27,8 @@
     <EmbeddedResource Include="Effects\Glass\DozeGhost.hlsl" LogicalName="Floe.DozeGhost.hlsl" />
     <EmbeddedResource Include="Effects\Glass\LiquidGlass.hlsl" LogicalName="Floe.LiquidGlass.hlsl" />
     <EmbeddedResource Include="Effects\Visualizer\LedScreen.hlsl" LogicalName="Floe.LedScreen.hlsl" />
+    <!-- the pixel shaders, compiled once by tools/compile-shaders.py -->
+    <EmbeddedResource Include="Effects\ShaderCache\*.cso" LogicalName="Floe.ShaderCache.%(Filename)%(Extension)" />
     <Resource Include="Assets\Fonts\*.ttf" />
     <Resource Include="Assets\ContourIcons\*.png" />
     <Resource Include="Assets\ContourIcons\names.csv" />

@@ -250,7 +250,9 @@ public partial class DockWindow
     private void OnGlassSettingsChanged()
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(OnGlassSettingsChanged)); return; }
+        HangWatch.Mark("dock glass apply");
         ApplyGlassSettings();
+        HangWatch.Mark("dock glass icons");
         if (_appliedIconSet != GlassSettings.IconSet)
         {
             _appliedIconSet = GlassSettings.IconSet;
@@ -265,10 +267,13 @@ public partial class DockWindow
         if (_appliedShrink != GlassSettings.Shrink)
         {
             _appliedShrink = GlassSettings.Shrink;
+            HangWatch.Mark("dock glass appbar");
             ApplyAppBarPosition(); // the reserved strip follows the dock's resting size
         }
         _shapeHover = double.NaN; // bulge style may have changed
+        HangWatch.Mark("dock glass shape");
         UpdateShape();
+        HangWatch.Mark("dock glass done");
     }
 
     private void ApplyGlassSettings()

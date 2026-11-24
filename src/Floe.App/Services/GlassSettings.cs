@@ -184,6 +184,27 @@ public static class GlassSettings
 
     public static event Action? Changed;
 
+    // each listener in turn, named for the hang watch, and a slow one leaves its time in the log
+    private static void RaiseChanged()
+    {
+        if (Changed is not { } changed) return;
+        foreach (Action listener in changed.GetInvocationList())
+        {
+            var name = $"glass {listener.Method.DeclaringType?.Name}.{listener.Method.Name}";
+            HangWatch.Mark(name);
+            long start = System.Diagnostics.Stopwatch.GetTimestamp();
+            listener();
+            double ms = System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            if (ms > 150)
+            {
+                try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "floe.log"), $"{DateTime.Now:HH:mm:ss} slow {name} {ms:F0}ms{Environment.NewLine}"); }
+                catch { /* logging must never throw */ }
+            }
+        }
+
+        HangWatch.Mark("glass done");
+    }
+
     public static RimStyle Rim { get; private set; } = RimStyle.Plain;
 
     public static bool Visualizer { get; private set; } = true;
@@ -452,7 +473,7 @@ public static class GlassSettings
 
         Rim = rim;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetSurface(DockSurface surface)
@@ -464,7 +485,7 @@ public static class GlassSettings
 
         Surface = surface;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetGlyphNegative(bool enabled)
@@ -476,7 +497,7 @@ public static class GlassSettings
 
         GlyphNegative = enabled;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetVisualizerThemeColours(bool enabled)
@@ -488,7 +509,7 @@ public static class GlassSettings
 
         VisualizerThemeColours = enabled;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetStrandWallpaperAngle(int angle)
@@ -501,7 +522,7 @@ public static class GlassSettings
 
         StrandWallpaperAngle = angle;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetDesktopScene(string scene)
@@ -513,7 +534,7 @@ public static class GlassSettings
 
         DesktopScene = scene;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetStrandWallpaperMotion(StrandMotion motion)
@@ -525,7 +546,7 @@ public static class GlassSettings
 
         StrandWallpaperMotion = motion;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetStrandWallpaper(bool enabled)
@@ -537,7 +558,7 @@ public static class GlassSettings
 
         StrandWallpaper = enabled;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetSignalEqualizer(bool enabled)
@@ -549,7 +570,7 @@ public static class GlassSettings
 
         SignalEqualizer = enabled;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetLanguage(AppLanguage language)
@@ -561,7 +582,7 @@ public static class GlassSettings
 
         Language = language;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     /// <summary>Shows a set in a --render frame without touching the saved settings.</summary>
@@ -576,7 +597,7 @@ public static class GlassSettings
 
         IconSet = set;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetFilmGrain(bool enabled)
@@ -588,7 +609,7 @@ public static class GlassSettings
 
         FilmGrain = enabled;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetShrink(bool enabled)
@@ -600,7 +621,7 @@ public static class GlassSettings
 
         Shrink = enabled;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetVisualizer(bool enabled)
@@ -612,7 +633,7 @@ public static class GlassSettings
 
         Visualizer = enabled;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     /// <summary>
@@ -634,7 +655,7 @@ public static class GlassSettings
         }
 
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetCyberColours(Color? body, Color? accent, Color? strip, Color? ink)
@@ -645,7 +666,7 @@ public static class GlassSettings
         CyberStrip = strip;
         CyberInk = ink;
         SaveSoon();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     // the mark reads it on its next step, so the dock is not repainted for it
@@ -669,7 +690,7 @@ public static class GlassSettings
         if (CyberCut == cut) return;
         CyberCut = cut;
         SaveSoon();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetGrainAmount(double amount)
@@ -677,7 +698,7 @@ public static class GlassSettings
         if (GrainAmount == amount) return;
         GrainAmount = amount;
         SaveSoon();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetDockColor(Color? color)
@@ -685,7 +706,7 @@ public static class GlassSettings
         if (DockColor == color) return;
         DockColor = color;
         SaveSoon();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetOledColour(bool enabled)
@@ -693,7 +714,7 @@ public static class GlassSettings
         if (OledColour == enabled) return;
         OledColour = enabled;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetLedOverlay(bool enabled)
@@ -701,7 +722,7 @@ public static class GlassSettings
         if (LedOverlay == enabled) return;
         LedOverlay = enabled;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetWeatherCity(string name, double latitude, double longitude)
@@ -722,7 +743,7 @@ public static class GlassSettings
 
         GpuVisualizer = enabled;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetBulge(BulgeStyle bulge)
@@ -734,7 +755,7 @@ public static class GlassSettings
 
         Bulge = bulge;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetVisualizerLook(VisualizerStyle look)
@@ -746,7 +767,7 @@ public static class GlassSettings
 
         VisualizerLook = look;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetPlugin(string id)
@@ -758,7 +779,7 @@ public static class GlassSettings
 
         PluginId = id;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetHologramTint(HologramColor tint)
@@ -771,7 +792,7 @@ public static class GlassSettings
         HologramTint = tint;
         ColorVersion++;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     // Diagnostic override for offscreen renders; the user's choice is not persisted.
@@ -790,7 +811,7 @@ public static class GlassSettings
 
         Intro = intro;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetOledEffect(int effect)
@@ -803,7 +824,7 @@ public static class GlassSettings
 
         OledEffect = effect;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     public static void SetDustColors(DustPalette palette)
@@ -816,7 +837,7 @@ public static class GlassSettings
         DustColors = palette;
         ColorVersion++;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     // Diagnostic override for offscreen renders; the user's choice is not persisted.
@@ -870,7 +891,7 @@ public static class GlassSettings
 
         CubeSize = size;
         Save();
-        Changed?.Invoke();
+        RaiseChanged();
     }
 
     private static void Save()
