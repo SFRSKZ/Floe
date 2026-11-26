@@ -161,6 +161,9 @@ public partial class DockWindow
         _preview?.Close3();
     }
 
+    // ticks the cursor has been off both the dock and the preview
+    private int _previewAway;
+
     private void StartPreviewHideTimer()
     {
         if (_preview?.IsVisible != true)
@@ -168,20 +171,33 @@ public partial class DockWindow
             return;
         }
 
-        _previewHideTimer.Stop();
+        _previewAway = 0;
         _previewHideTimer.Start();
     }
 
+    // Runs for as long as the preview is up: a single look used to stop for good when the cursor happened to be
+    // over the dock, and the preview then stayed open after the cursor left.
     private void FinishPreviewHide()
     {
-        _previewHideTimer.Stop();
-        if (_preview?.IsVisible != true || CursorOverDock() || _preview.IsCursorOver)
+        if (_preview?.IsVisible != true)
         {
+            _previewHideTimer.Stop();
             return;
         }
 
+        if (_menuOpen || CursorOverDock() || _preview.IsCursorOver)
+        {
+            _previewAway = 0;
+            return;
+        }
+
+        // the way up from the icon to the preview crosses the gap between them
+        if (++_previewAway < 3) return;
         HidePreview();
     }
+
+    // high enough above the icon to clear the cyber scan frame round the lifted icon
+    private double PreviewGap => GlassSettings.Cyber ? 34 : 18;
 
     private void ShowPreview(IconSlot slot)
     {
@@ -193,17 +209,17 @@ public partial class DockWindow
             _preview.SourcesGone += HidePreview;
             _preview.SourcesChanged += () =>
             {
-                if (_previewSlot is { } shown) PlacePopover(_preview, DockAnchor(shown.Center), SettingsWindow.GetWorkArea(this));
+                if (_previewSlot is { } shown) PlacePopover(_preview, DockAnchor(shown.Center), SettingsWindow.GetWorkArea(this), PreviewGap);
             };
             _previewHideTimer.Tick += (_, _) => FinishPreviewHide();
         }
 
-        _previewHideTimer.Stop();
         _previewSlot = slot;
         _preview.Show();
         _preview.ShowFor(slot.Item.Windows);
 
-        PlacePopover(_preview, DockAnchor(slot.Center), SettingsWindow.GetWorkArea(this));
+        PlacePopover(_preview, DockAnchor(slot.Center), SettingsWindow.GetWorkArea(this), PreviewGap);
+        StartPreviewHideTimer();
     }
 
     private void ShowTooltip()

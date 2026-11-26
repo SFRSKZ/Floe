@@ -107,6 +107,39 @@ public static class AppLauncher
         }
     }
 
+    /// <summary>A desktop program can be started elevated; a packaged or shell target cannot.</summary>
+    public static bool CanRunAsAdmin(DockApp app)
+    {
+        var target = ResolveTarget(app);
+        return target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            && !target.Contains(@"\WindowsApps\", StringComparison.OrdinalIgnoreCase)
+            && File.Exists(target);
+    }
+
+    public static LaunchResult RunAsAdmin(DockApp app)
+    {
+        var target = ResolveTarget(app);
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = target,
+                Arguments = app.Arguments ?? string.Empty,
+                WorkingDirectory = string.IsNullOrWhiteSpace(app.WorkingDirectory)
+                    ? Path.GetDirectoryName(target) ?? string.Empty
+                    : Environment.ExpandEnvironmentVariables(app.WorkingDirectory),
+                UseShellExecute = true,
+                Verb = "runas",
+            });
+            return new LaunchResult($"launched-admin:{target}", true);
+        }
+        catch (Exception ex)
+        {
+            // declining the UAC prompt lands here too
+            return new LaunchResult($"launch-failed:{ex.Message}", false);
+        }
+    }
+
     public static string ResolveTarget(DockApp app)
     {
         var target = Environment.ExpandEnvironmentVariables(app.Target ?? string.Empty).Trim().Trim('"');

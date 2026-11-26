@@ -51,6 +51,11 @@ public partial class DockWindow
         var actions = new List<(string Label, Action Run)>
         {
             (Loc.T("Aç"), () => AppLauncher.LaunchOrActivate(item.App)),
+        };
+        if (item.IsRunning) actions.Add((Loc.T("Yeni pencere"), () => AppLauncher.LaunchFresh(item.App)));
+        if (AppLauncher.CanRunAsAdmin(item.App)) actions.Add((Loc.T("Yönetici olarak çalıştır"), () => AppLauncher.RunAsAdmin(item.App)));
+        actions.AddRange(new List<(string Label, Action Run)>
+        {
             (Loc.T(item.IsPinned ? "Kaldır" : "Sabitle"), () =>
             {
                 if (item.IsPinned)
@@ -65,7 +70,7 @@ public partial class DockWindow
             (Loc.T("Dosya konumunu aç"), () => OpenLocation(item.App)),
             (Loc.T("İkonu değiştir"), () => OpenIconPicker(item)),
             (Loc.T("Kapat"), () => CloseApp(item)),
-        };
+        });
 
         HidePreview();
         _tooltipTimer.Stop();
@@ -94,6 +99,28 @@ public partial class DockWindow
         var anchor = DockAnchor(slot.Center);
         if (DockSettings.Edge == DockEdge.Bottom) anchor.Y = Top + IconBottom - (IconBox * HoverMaxScale) + 2;
         _iconMenu.ShowFor(item.Name, item.Icon, actions, anchor, DockSettings.Edge, work);
+        ShowJumpList(item);
+    }
+
+    // the app's own list (tasks, recent files, its own groups) comes from the shell off the UI thread
+    private int _jumpRequest;
+
+    private async void ShowJumpList(DockItemViewModel item)
+    {
+        int request = ++_jumpRequest;
+        var window = item.Windows.Count > 0 ? item.Windows[0] : IntPtr.Zero;
+        var target = AppLauncher.ResolveTarget(item.App);
+        try
+        {
+            var groups = await JumpLists.ReadAsync(window, target);
+            if (request != _jumpRequest || _iconMenu is null || !_menuOpen) return;
+            var owner = new WindowInteropHelper(this).Handle;
+            _iconMenu.SetJumpList(groups, id => JumpLists.Invoke(id, owner));
+        }
+        catch (Exception ex)
+        {
+            Log($"jumplist failed {ex.Message}");
+        }
     }
 
     private void OpenIconPicker(DockItemViewModel item) => new IconPickerWindow(item, () =>

@@ -107,6 +107,14 @@ public partial class App : Application
         if (Effects.Gpu.GpuOffscreen.TryRenderLook(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.GpuOffscreen.TryRenderDesktop(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.GpuOffscreen.TryBenchDesktop(e.Args)) { Shutdown(); return; }
+        if (e.Args.FirstOrDefault(a => a.StartsWith("--diag-jumplist=", StringComparison.OrdinalIgnoreCase)) is { } jumpArg)
+        {
+            // the Jump List of a dock target (exe, .lnk or shell:AppsFolder), written next to the log
+            var text = Services.JumpLists.Describe(IntPtr.Zero, jumpArg["--diag-jumplist=".Length..]);
+            System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "floe-jumplist.txt"), text + Environment.NewLine);
+            Shutdown();
+            return;
+        }
 
         if (TryRenderSettings(e.Args))
         {

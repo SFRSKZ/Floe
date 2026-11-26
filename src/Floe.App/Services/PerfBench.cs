@@ -30,7 +30,7 @@ internal static class PerfBench
         if (Value(args, "--render-icon-menu=") is { } menuShot)
         {
             GlassSettings.Load();
-            MenuShot(Path.GetFullPath(menuShot));
+            MenuShot(Path.GetFullPath(menuShot), Value(args, "--render-icon-menu-target="));
             return true;
         }
 
@@ -170,11 +170,14 @@ internal static class PerfBench
 
     // --render-icon-menu=<png>: an icon's right-click menu at the top left of the primary screen for a moment, grabbed off
     // the screen with whatever is behind it (run with FLOE_NOFX=exclude, or the glass keeps itself out of screen grabs)
-    private static void MenuShot(string file)
+    // --render-icon-menu-target=<exe|lnk|shell:...> adds that app's Jump List
+    private static void MenuShot(string file, string? target)
     {
         var menu = new IconMenuWindow { KeepOpen = true };
-        var actions = new List<(string, Action)> { ("Aç", () => { }), ("Sabitle", () => { }), ("Dosya konumunu aç", () => { }), ("Kapat", () => { }) };
-        menu.ShowFor("Google Chrome", null, actions, new Point(200, 260), DockEdge.Bottom, SystemParameters.WorkArea);
+        var actions = new List<(string, Action)> { ("Aç", () => { }), ("Yeni pencere", () => { }), ("Kaldır", () => { }), ("Dosya konumunu aç", () => { }), ("Kapat", () => { }) };
+        var work = SystemParameters.WorkArea;
+        menu.ShowFor(target is null ? "Google Chrome" : Path.GetFileNameWithoutExtension(target), null, actions, new Point(260, work.Bottom - 20), DockEdge.Bottom, work);
+        if (target is not null) menu.SetJumpList(JumpLists.ReadAsync(IntPtr.Zero, target).GetAwaiter().GetResult(), _ => { });
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
         timer.Tick += (_, _) =>
         {
