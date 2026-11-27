@@ -17,7 +17,7 @@ namespace Floe.App.Effects.Gpu;
 /// Renders a scene offscreen to PNG frames, for previews and diagnostics. No window, no dock state:
 /// the frames come back through a staging texture and are composited over the dock's backdrop colour.
 /// </summary>
-public static class GpuOffscreen
+public static partial class GpuOffscreen
 {
     // The dock's backdrop, so a transparent strip looks like it does on screen; FLOE_GPU_BACKDROP=RRGGBB
     // swaps it for a lighter wallpaper, where dark effects show.
@@ -118,7 +118,7 @@ public static class GpuOffscreen
                 else
                 {
                     scene.Render(context, target, frame);
-                    if (feather is not null) feather.Apply(context, target, width, height, _lookClear!, (float)(40 * pixelsPerDip));
+                    if (feather is not null) feather.Apply(context, target, width, height, _lookClear!, (float)(40 * pixelsPerDip), _lookClearTop * height, 4 * pixelsPerDip);
                 }
 
                 context.CopyResource(staging, targetTexture);
@@ -174,6 +174,7 @@ public static class GpuOffscreen
             && Enum.TryParse<Floe.Core.Models.DockEdge>(arg["--edge=".Length..], true, out var edge) ? (int)edge : 0;
 
     private static float[]? _lookClear;
+    private static float _lookClearTop;
 
     /// <summary>
     /// Handles <c>--render-desktop=Scene;dir;frames;start;width;height</c>: renders a desktop wallpaper scene
@@ -304,6 +305,10 @@ public static class GpuOffscreen
 
     public static bool TryRenderLook(string[] args)
     {
+        // --clear-top=f: the spans start that far down the strip (0..1), as over the taskbar
+        if (args.FirstOrDefault(a => a.StartsWith("--clear-top=", StringComparison.OrdinalIgnoreCase)) is { } topArg
+            && float.TryParse(topArg["--clear-top=".Length..], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var clearTop))
+            _lookClearTop = Math.Clamp(clearTop, 0, 1);
         if (args.FirstOrDefault(a => a.StartsWith("--clear=", StringComparison.OrdinalIgnoreCase)) is { } clearArg)
         {
             _lookClear = clearArg["--clear=".Length..].Split(',')
@@ -358,9 +363,12 @@ public static class GpuOffscreen
                 && float.TryParse(p[i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
             int width = (int)Part(parts, 4, 3840), height = (int)Part(parts, 5, 126);
             float ppd = Part(parts, 6, 1.5f), dockLeft = Part(parts, 7, .37f), dockRight = Part(parts, 8, .63f);
+            // --calm: the mock track through AudioCalm, as the live layer hands the music to its scene
+            var calm = args.Any(x => x.Equals("--calm", StringComparison.OrdinalIgnoreCase)) ? new Floe.Core.Interop.AudioCalm() : null;
             RenderFrames(scene, width, height, ppd, frames, (frame, index) =>
             {
                 MockFrame(frame, start + (index / 30f));
+                calm?.Apply(frame.Audio, 1f / 30f);
                 frame.DockLeft = dockLeft;
                 frame.DockRight = dockRight;
             }, folder, LookEdge(args));

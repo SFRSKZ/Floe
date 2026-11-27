@@ -79,6 +79,7 @@ public partial class App : Application
 
         // the benchmarks run their own windows and quit when done
         if (Services.PerfBench.TryStart(e.Args)) return;
+        if (Floe.App.Windows.ButtonGlyphPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.ActiveIcon.ClickGlassPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Visualizer.LedScreenPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Chromatic.ChromaticPreview.TryRender(e.Args)) { Shutdown(); return; }
@@ -105,6 +106,8 @@ public partial class App : Application
         if (Services.DotMatrixIconsPreview.TryRender(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.GpuOffscreen.TryRenderTest(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.GpuOffscreen.TryRenderLook(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.GpuOffscreen.TryRenderMove(e.Args)) { Shutdown(); return; }
+        if (Effects.Gpu.GpuOffscreen.TryBenchLook(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.GpuOffscreen.TryRenderDesktop(e.Args)) { Shutdown(); return; }
         if (Effects.Gpu.GpuOffscreen.TryBenchDesktop(e.Args)) { Shutdown(); return; }
         if (e.Args.FirstOrDefault(a => a.StartsWith("--diag-jumplist=", StringComparison.OrdinalIgnoreCase)) is { } jumpArg)

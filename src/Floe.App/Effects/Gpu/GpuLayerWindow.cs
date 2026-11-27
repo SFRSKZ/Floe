@@ -27,7 +27,17 @@ internal sealed class GpuLayerWindow : IDisposable
     private const double FadeOutSeconds = .40;
     private static readonly MediaColor BasePrimary = MediaColor.FromRgb(0x5C, 0xA8, 0xFF);
 
-    private readonly IGpuScene _scene;
+    private IGpuScene _scene;
+    // a scene handed over by ChangeScene, picked up by the render thread; the old one keeps drawing until the move ends
+    private readonly object _sceneGate = new();
+    private IGpuScene? _pendingScene;
+    private SceneTransition _pendingMove;
+    private IGpuScene? _outgoing;
+    private SceneTransition _move;
+    private double _moveStart;
+    private SceneTransitionPass? _transitionPass;
+    private bool _transitionUnavailable;
+    private const double MoveSeconds = 1.6;
     private readonly bool _needAudio;
     private readonly Thread _thread;
     private readonly AutoResetEvent _wake = new(false);
@@ -124,6 +134,30 @@ internal sealed class GpuLayerWindow : IDisposable
     public IntPtr Handle => Volatile.Read(ref _hwnd);
 
     /// <summary>
+    /// Swaps in another scene without tearing the layer down: the current one keeps drawing while the new one zooms
+    /// or pushes it out over <see cref="MoveSeconds"/>. The layer owns <paramref name="next"/> from here on.
+    /// </summary>
+    public void ChangeScene(IGpuScene next, SceneTransition move)
+    {
+        if (_disposed)
+        {
+            next.Dispose();
+            return;
+        }
+
+        IGpuScene? dropped;
+        lock (_sceneGate)
+        {
+            dropped = _pendingScene;
+            _pendingScene = next;
+            _pendingMove = move;
+        }
+
+        dropped?.Dispose();
+        _wake.Set();
+    }
+
+    /// <summary>
     /// Frames a second this layer draws at, overriding the visualizer pacing (0 keeps it); a layer that moves with
     /// the dock asks for the monitor's rate, so it never steps slower than the dock beside it.
     /// </summary>
@@ -176,7 +210,15 @@ internal sealed class GpuLayerWindow : IDisposable
     /// Spans along the strip (0..1, left and right) wiped back to transparent after every frame: on the taskbar the
     /// strip lies over the bar, and the icons, the start button and the clock must stay readable under it.
     /// </summary>
-    public void SetClear(float[] spans) => Volatile.Write(ref _clearSpans, spans);
+    /// <param name="top">How far down the strip (0..1) the clearing starts: the strip reaches up past the bar so the
+    /// light's peaks show, and above the bar nothing needs to stay readable.</param>
+    public void SetClear(float[] spans, float top = 0)
+    {
+        Volatile.Write(ref _clearTop, Math.Clamp(top, 0, 1));
+        Volatile.Write(ref _clearSpans, spans);
+    }
+
+    private float _clearTop;
 
     /// <summary>The screen edge the strip lies on: 0 bottom, 1 top, 2 left, 3 right (Floe.Core.Models.DockEdge).</summary>
     public void SetEdge(int edge)
@@ -197,7 +239,7 @@ internal sealed class GpuLayerWindow : IDisposable
     // the spans in pixels, worked out again only when the spans or the strip's size change
     private Vortice.RawRect[] _clearRects = Array.Empty<Vortice.RawRect>();
     private float[]? _clearRectsFor;
-    private int _clearRectsWidth, _clearRectsHeight;
+    private int _clearRectsWidth, _clearRectsHeight, _clearRectsTop;
 
     private void ClearSpans()
     {
@@ -210,7 +252,7 @@ internal sealed class GpuLayerWindow : IDisposable
             _featherPass ??= CreateFeatherPass();
             if (_featherPass is not null)
             {
-                _featherPass.Apply(_context, _renderTarget, _width, _height, spans, (float)(ClearFeatherDip * _ppd));
+                _featherPass.Apply(_context, _renderTarget, _width, _height, spans, (float)(ClearFeatherDip * _ppd), Volatile.Read(ref _clearTop) * _height, (float)(4 * _ppd));
                 return;
             }
         }
@@ -223,20 +265,22 @@ internal sealed class GpuLayerWindow : IDisposable
             return;
         }
 
-        if (!ReferenceEquals(spans, _clearRectsFor) || _clearRectsWidth != _width || _clearRectsHeight != _height)
+        int clearTop = (int)MathF.Floor(Volatile.Read(ref _clearTop) * _height);
+        if (!ReferenceEquals(spans, _clearRectsFor) || _clearRectsWidth != _width || _clearRectsHeight != _height || _clearRectsTop != clearTop)
         {
             var rects = new List<Vortice.RawRect>(spans.Length / 2);
             for (int i = 0; i + 1 < spans.Length; i += 2)
             {
                 int left = (int)MathF.Floor(Math.Clamp(spans[i], 0, 1) * _width);
                 int right = (int)MathF.Ceiling(Math.Clamp(spans[i + 1], 0, 1) * _width);
-                if (right > left) rects.Add(new Vortice.RawRect(left, 0, right, _height));
+                if (right > left) rects.Add(new Vortice.RawRect(left, clearTop, right, _height));
             }
 
             _clearRects = rects.ToArray();
             _clearRectsFor = spans;
             _clearRectsWidth = _width;
             _clearRectsHeight = _height;
+            _clearRectsTop = clearTop;
         }
 
         if (_clearRects.Length > 0) _context1.ClearView(_renderTarget, new Color4(0, 0, 0, 0), _clearRects);
@@ -313,7 +357,17 @@ internal sealed class GpuLayerWindow : IDisposable
         if (_thread.IsAlive) _thread.Join(TimeSpan.FromSeconds(3));
         bool stopped = !_thread.IsAlive;
 
-        if (stopped) _scene.Dispose();
+        if (stopped)
+        {
+            _scene.Dispose();
+            _outgoing?.Dispose();
+            _outgoing = null;
+            lock (_sceneGate)
+            {
+                _pendingScene?.Dispose();
+                _pendingScene = null;
+            }
+        }
 
         if (hwnd != IntPtr.Zero)
         {
@@ -355,6 +409,22 @@ internal sealed class GpuLayerWindow : IDisposable
             _ready.Set();
         }
 
+        // the scene is built after the owner stopped waiting: its shaders may still have to compile (seconds for the
+        // big looks the first time), and the dock's UI thread must not stand still for that
+        if (_hwnd != IntPtr.Zero && _device is not null && !_halted)
+        {
+            try
+            {
+                _scene.Initialize(_device);
+                _scene.Resize(SceneWidth, SceneHeight);
+            }
+            catch (Exception ex)
+            {
+                _halted = true;
+                Log(ex);
+            }
+        }
+
         if (_hwnd != IntPtr.Zero && _device is not null && !_halted)
         {
             try { RenderLoop(); }
@@ -365,6 +435,7 @@ internal sealed class GpuLayerWindow : IDisposable
         try { _audio?.Dispose(); } catch (Exception ex) { Log(ex); }
         _audio = null;
         try { _scene.ReleaseDevice(); } catch (Exception ex) { Log(ex); }
+        try { _outgoing?.ReleaseDevice(); } catch (Exception ex) { Log(ex); }
         ReleaseDevice();
         if (_hwnd != IntPtr.Zero)
         {
@@ -514,6 +585,8 @@ internal sealed class GpuLayerWindow : IDisposable
         // the dock animates (see VisualizerPacing).
         double fps = Fps > 0 ? Fps : Performance.VisualizerFps;
         if (fps <= 0) fps = VisualizerPacing.DockAnimating ? 30 : 60;
+        // the screensaver without music moves slowly; it needs no more than 30 frames a second
+        if (IdleDream.Active) fps = Math.Min(fps, 30);
         long interval = (long)(Stopwatch.Frequency / fps);
         while (!_exit)
         {
@@ -593,6 +666,8 @@ internal sealed class GpuLayerWindow : IDisposable
     private void ResizeScene()
     {
         _scene.Resize(SceneWidth, SceneHeight);
+        _outgoing?.Resize(SceneWidth, SceneHeight);
+        _transitionPass?.Resize(SceneWidth, SceneHeight);
         _ledPass?.Resize(SceneWidth, SceneHeight);
         _turnPass?.Resize(SceneWidth, SceneHeight);
     }
@@ -600,6 +675,7 @@ internal sealed class GpuLayerWindow : IDisposable
     private void DrawFrame(float dt)
     {
         if (_swapChain is null || _renderTarget is null || _context is null) return;
+        TakePendingScene();
 
         _frame.Dt = dt;
         _frame.Time = (float)_time;
@@ -656,17 +732,17 @@ internal sealed class GpuLayerWindow : IDisposable
             if (_ledPass?.SceneTarget is { } sceneTarget)
             {
                 _context.ClearRenderTargetView(sceneTarget, new Color4(0, 0, 0, 0));
-                _scene.Render(_context, sceneTarget, _frame);
+                RenderScenes(sceneTarget);
                 _ledPass.Apply(_context, output, SceneWidth, SceneHeight, (float)_ppd, (float)_time);
             }
             else
             {
-                _scene.Render(_context, output, _frame);
+                RenderScenes(output);
             }
         }
         else
         {
-            _scene.Render(_context, output, _frame);
+            RenderScenes(output);
         }
 
         // the cleared spans are the taskbar's, which lies on the bottom edge only
@@ -690,6 +766,100 @@ internal sealed class GpuLayerWindow : IDisposable
         }
     }
 
+    // ---- scene changes ---------------------------------------------------------------------------
+
+    private void TakePendingScene()
+    {
+        IGpuScene? next;
+        SceneTransition move;
+        lock (_sceneGate)
+        {
+            next = _pendingScene;
+            move = _pendingMove;
+            _pendingScene = null;
+        }
+
+        if (next is null || _device is null) return;
+        try
+        {
+            next.Initialize(_device);
+            next.Resize(SceneWidth, SceneHeight);
+        }
+        catch (Exception ex)
+        {
+            // a scene that cannot start leaves the one that plays alone
+            Log(ex);
+            try { next.ReleaseDevice(); next.Dispose(); } catch (Exception inner) { Log(inner); }
+            return;
+        }
+
+        // a move still running ends at once: its old scene goes, the scene it brought in becomes the old one
+        DropOutgoing();
+        _outgoing = _scene;
+        _scene = next;
+        _move = move;
+        _moveStart = _time;
+    }
+
+    private void DropOutgoing()
+    {
+        if (_outgoing is null) return;
+        try { _outgoing.ReleaseDevice(); _outgoing.Dispose(); } catch (Exception ex) { Log(ex); }
+        _outgoing = null;
+    }
+
+    /// <summary>The scene into <paramref name="target"/>; during a move, both scenes through the transition pass.</summary>
+    private void RenderScenes(ID3D11RenderTargetView target)
+    {
+        if (_outgoing is not null && _context is not null)
+        {
+            double progress = (_time - _moveStart) / MoveSeconds;
+            if (progress >= 1 || progress < 0)
+            {
+                DropOutgoing();
+            }
+            else
+            {
+                if (!_transitionUnavailable) _transitionPass ??= CreateTransitionPass();
+                if (_transitionPass is { OldTarget: { } oldTarget, NewTarget: { } newTarget })
+                {
+                    var clear = new Color4(0, 0, 0, 0);
+                    _context.ClearRenderTargetView(oldTarget, clear);
+                    _context.ClearRenderTargetView(newTarget, clear);
+                    _outgoing.Render(_context, oldTarget, _frame);
+                    _scene.Render(_context, newTarget, _frame);
+                    _transitionPass.Apply(_context, target, _move, (float)progress);
+                    return;
+                }
+
+                // without the pass the change is a cut
+                DropOutgoing();
+            }
+        }
+
+        _scene.Render(_context!, target, _frame);
+    }
+
+    private SceneTransitionPass? CreateTransitionPass()
+    {
+        if (_device is null) return null;
+        SceneTransitionPass? pass = null;
+        try
+        {
+            pass = new SceneTransitionPass();
+            pass.Initialize(_device);
+            pass.Resize(SceneWidth, SceneHeight);
+            return pass;
+        }
+        catch (Exception ex)
+        {
+            pass?.Dispose();
+            _transitionUnavailable = true;
+            Debug.WriteLine($"[Floe.Gpu] transition pass: {ex.Message}");
+            return null;
+        }
+    }
+
     // ---- device ----------------------------------------------------------------------------------
 
     private void CreateDevice()
@@ -698,8 +868,6 @@ internal sealed class GpuLayerWindow : IDisposable
         _context = _device.ImmediateContext;
         _swapChain = GpuSwapChain.Create(_device, _hwnd, _width, _height);
         CreateTarget();
-        _scene.Initialize(_device);
-        _scene.Resize(SceneWidth, SceneHeight);
     }
 
     private void CreateTarget()
@@ -773,6 +941,7 @@ internal sealed class GpuLayerWindow : IDisposable
 
     private void RecoverDevice()
     {
+        DropOutgoing();
         _scene.ReleaseDevice();
         ReleaseDevice();
         _device = GpuDevice.Create();
@@ -789,6 +958,9 @@ internal sealed class GpuLayerWindow : IDisposable
     {
         _ledPass?.Dispose();
         _ledPass = null;
+        _transitionPass?.Dispose();
+        _transitionPass = null;
+        _transitionUnavailable = false;
         _turnPass?.Dispose();
         _turnPass = null;
         _turnUnavailable = false;

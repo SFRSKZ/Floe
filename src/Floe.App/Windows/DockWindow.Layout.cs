@@ -202,7 +202,7 @@ public partial class DockWindow
         var max = 0.0;
         for (var i = 0; i < count; i++)
         {
-            var distance = Math.Abs(hoverWindow - (_restCapsuleLeft + _slots[i].CenterLocal));
+            var distance = Math.Abs(hoverWindow - RestCenter(_slots[i]));
             falloffs[i] = Falloff(distance, FalloffRadius);
             max = Math.Max(max, falloffs[i]);
         }

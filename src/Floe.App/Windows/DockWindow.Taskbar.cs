@@ -70,6 +70,12 @@ public partial class DockWindow
     /// Where the icon row begins: in the strip the start button and the icons are centred as one group, the icons
     /// right after the start button; in the crown both sit at the left.
     /// </summary>
+    /// <summary>
+    /// Where an icon stands at rest, in window DIP: the magnification falls off from these and the hovered icon is
+    /// found by them. On the taskbar the row starts where TaskbarIconStart puts it, not after the capsule's lead.
+    /// </summary>
+    private double RestCenter(IconSlot slot) => TaskbarOn ? TaskbarIconStart(_restContent) - LeadX + slot.CenterLocal : _restCapsuleLeft + slot.CenterLocal;
+
     private double TaskbarIconStart(double total) => Crown ? BarLeft + LeadX : ((_windowWidth - total - StartRun) / 2) + StartRun;
 
     /// <summary>Where the start button stands: at the bar's left end, or in the strip just before the icons.</summary>
@@ -109,6 +115,7 @@ public partial class DockWindow
         _targetBulge = _currentBulge = _bulgeVel = 0;
         _targetDockScale = CompactScale;
         ApplyTaskbarMedia();
+        ApplyButtonGlyphSize();
         RebuildIcons();
         Reposition();
         if (wasOn && !TaskbarOn)

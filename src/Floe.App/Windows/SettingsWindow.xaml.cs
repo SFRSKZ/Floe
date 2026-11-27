@@ -122,6 +122,18 @@ public partial class SettingsWindow : Window
         VisualizerLookCyberDogtownFlir.Visibility = Visibility.Collapsed;
         VisualizerLookCyberMonowire.Visibility = Visibility.Collapsed;
         VisualizerLookCyberStrands.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBrHorizon.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBrLightBands.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBrPulseLine.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBrHangingFlames.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBrWarmColumns.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBrGlitchBlocks.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBrFrostPanels.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBrLedColumns.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBrBarcode.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBrLances.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBrGreenOrbs.Visibility = Visibility.Collapsed;
+        VisualizerLookCyberBrChevron.Visibility = Visibility.Collapsed;
         // the desktop scenes are the Cyber dock's alone
         TabDesktop.Visibility = Visibility.Collapsed;
         DesktopPage.Visibility = Visibility.Collapsed;
@@ -696,6 +708,24 @@ public partial class SettingsWindow : Window
         LedOverlayToggle.IsChecked = GlassSettings.LedOverlay;
         LedOverlayToggle.Checked += (_, _) => GlassSettings.SetLedOverlay(true);
         LedOverlayToggle.Unchecked += (_, _) => GlassSettings.SetLedOverlay(false);
+        AutoCycleToggle.IsChecked = GlassSettings.AutoCycle;
+        AutoCycleRow.IsEnabled = GlassSettings.AutoCycle;
+        AutoCycleToggle.Checked += (_, _) => { GlassSettings.SetAutoCycle(true); AutoCycleRow.IsEnabled = true; };
+        AutoCycleToggle.Unchecked += (_, _) => { GlassSettings.SetAutoCycle(false); AutoCycleRow.IsEnabled = false; };
+        foreach (var (button, seconds) in new[] { (AutoCycle30, 30), (AutoCycle60, 60), (AutoCycle180, 180), (AutoCycle300, 300) })
+        {
+            button.IsChecked = GlassSettings.AutoCycleSeconds == seconds;
+            button.Checked += (_, _) => GlassSettings.SetAutoCycleSeconds(seconds);
+        }
+
+        // the Kiroshi standby HUD belongs to the cyber themes; elsewhere it would show nothing
+        if (!GlassSettings.Cyber) IdleShowKiroshi.Visibility = Visibility.Collapsed;
+        IdleShowAnimation.IsChecked = GlassSettings.IdleShow == IdleShow.Animation;
+        IdleShowKiroshi.IsChecked = GlassSettings.IdleShow == IdleShow.Kiroshi;
+        IdleShowOff.IsChecked = GlassSettings.IdleShow == IdleShow.Off;
+        IdleShowAnimation.Checked += (_, _) => GlassSettings.SetIdleShow(IdleShow.Animation);
+        IdleShowKiroshi.Checked += (_, _) => GlassSettings.SetIdleShow(IdleShow.Kiroshi);
+        IdleShowOff.Checked += (_, _) => GlassSettings.SetIdleShow(IdleShow.Off);
         GpuVisualizerToggle.IsChecked = GlassSettings.GpuVisualizer;
         GpuVisualizerToggle.Checked += (_, _) => GlassSettings.SetGpuVisualizer(true);
         GpuVisualizerToggle.Unchecked += (_, _) => GlassSettings.SetGpuVisualizer(false);
@@ -802,7 +832,8 @@ public partial class SettingsWindow : Window
             (VisualizerLookCyberBraindanceSuite, VisualizerStyle.CyberBraindanceSuite), (VisualizerLookCyberApogee, VisualizerStyle.CyberApogee),
             (VisualizerLookCyberCantoDaemon, VisualizerStyle.CyberCantoDaemon), (VisualizerLookCyberNightCity, VisualizerStyle.CyberNightCity),
             (VisualizerLookCyberTraumaTeam, VisualizerStyle.CyberTraumaTeam), (VisualizerLookCyberLiquidChrome, VisualizerStyle.CyberLiquidChrome),
-            (VisualizerLookCyberDogtownFlir, VisualizerStyle.CyberDogtownFlir), (VisualizerLookCyberMonowire, VisualizerStyle.CyberMonowire), (VisualizerLookCyberStrands, VisualizerStyle.CyberStrands) })
+            (VisualizerLookCyberDogtownFlir, VisualizerStyle.CyberDogtownFlir), (VisualizerLookCyberMonowire, VisualizerStyle.CyberMonowire), (VisualizerLookCyberStrands, VisualizerStyle.CyberStrands),
+            (VisualizerLookCyberBrHorizon, VisualizerStyle.CyberBrHorizon), (VisualizerLookCyberBrLightBands, VisualizerStyle.CyberBrLightBands), (VisualizerLookCyberBrPulseLine, VisualizerStyle.CyberBrPulseLine), (VisualizerLookCyberBrHangingFlames, VisualizerStyle.CyberBrHangingFlames), (VisualizerLookCyberBrWarmColumns, VisualizerStyle.CyberBrWarmColumns), (VisualizerLookCyberBrGlitchBlocks, VisualizerStyle.CyberBrGlitchBlocks), (VisualizerLookCyberBrFrostPanels, VisualizerStyle.CyberBrFrostPanels), (VisualizerLookCyberBrLedColumns, VisualizerStyle.CyberBrLedColumns), (VisualizerLookCyberBrBarcode, VisualizerStyle.CyberBrBarcode), (VisualizerLookCyberBrLances, VisualizerStyle.CyberBrLances), (VisualizerLookCyberBrGreenOrbs, VisualizerStyle.CyberBrGreenOrbs), (VisualizerLookCyberBrChevron, VisualizerStyle.CyberBrChevron) })
         {
             toggle.IsChecked = GlassSettings.VisualizerLook == look;
             toggle.Checked += (_, _) => GlassSettings.SetVisualizerLook(look);
@@ -830,6 +861,7 @@ public partial class SettingsWindow : Window
             (VisualizerLookCyberCantoDaemon, VisualizerStyle.CyberCantoDaemon), (VisualizerLookCyberNightCity, VisualizerStyle.CyberNightCity),
             (VisualizerLookCyberTraumaTeam, VisualizerStyle.CyberTraumaTeam), (VisualizerLookCyberLiquidChrome, VisualizerStyle.CyberLiquidChrome),
             (VisualizerLookCyberDogtownFlir, VisualizerStyle.CyberDogtownFlir), (VisualizerLookCyberMonowire, VisualizerStyle.CyberMonowire), (VisualizerLookCyberStrands, VisualizerStyle.CyberStrands),
+            (VisualizerLookCyberBrHorizon, VisualizerStyle.CyberBrHorizon), (VisualizerLookCyberBrLightBands, VisualizerStyle.CyberBrLightBands), (VisualizerLookCyberBrPulseLine, VisualizerStyle.CyberBrPulseLine), (VisualizerLookCyberBrHangingFlames, VisualizerStyle.CyberBrHangingFlames), (VisualizerLookCyberBrWarmColumns, VisualizerStyle.CyberBrWarmColumns), (VisualizerLookCyberBrGlitchBlocks, VisualizerStyle.CyberBrGlitchBlocks), (VisualizerLookCyberBrFrostPanels, VisualizerStyle.CyberBrFrostPanels), (VisualizerLookCyberBrLedColumns, VisualizerStyle.CyberBrLedColumns), (VisualizerLookCyberBrBarcode, VisualizerStyle.CyberBrBarcode), (VisualizerLookCyberBrLances, VisualizerStyle.CyberBrLances), (VisualizerLookCyberBrGreenOrbs, VisualizerStyle.CyberBrGreenOrbs), (VisualizerLookCyberBrChevron, VisualizerStyle.CyberBrChevron),
         });
         MarkTaskbarLooks();
 
@@ -850,7 +882,8 @@ public partial class SettingsWindow : Window
             // the cyber looks too: Signal and Glyph each have a toggle that must come and go with them
             VisualizerLookCyberSignal, VisualizerLookCyberBlackwall, VisualizerLookCyberCircuit, VisualizerLookCyberGlyph, VisualizerLookCyberRain, VisualizerLookCyberSamurai,
             VisualizerLookCyberSandevistan, VisualizerLookCyberBreach, VisualizerLookCyberCollar, VisualizerLookCyberPulse, VisualizerLookCyberRift, VisualizerLookCyberZiggurat, VisualizerLookCyberNetdive, VisualizerLookCyberRedline, VisualizerLookCyberJaws,
-            VisualizerLookCyberBlackwallCinder, VisualizerLookCyberArasakaOs, VisualizerLookCyberBraindanceSuite, VisualizerLookCyberApogee, VisualizerLookCyberCantoDaemon, VisualizerLookCyberNightCity, VisualizerLookCyberTraumaTeam, VisualizerLookCyberLiquidChrome, VisualizerLookCyberDogtownFlir, VisualizerLookCyberMonowire, VisualizerLookCyberStrands })
+            VisualizerLookCyberBlackwallCinder, VisualizerLookCyberArasakaOs, VisualizerLookCyberBraindanceSuite, VisualizerLookCyberApogee, VisualizerLookCyberCantoDaemon, VisualizerLookCyberNightCity, VisualizerLookCyberTraumaTeam, VisualizerLookCyberLiquidChrome, VisualizerLookCyberDogtownFlir, VisualizerLookCyberMonowire, VisualizerLookCyberStrands,
+            VisualizerLookCyberBrHorizon, VisualizerLookCyberBrLightBands, VisualizerLookCyberBrPulseLine, VisualizerLookCyberBrHangingFlames, VisualizerLookCyberBrWarmColumns, VisualizerLookCyberBrGlitchBlocks, VisualizerLookCyberBrFrostPanels, VisualizerLookCyberBrLedColumns, VisualizerLookCyberBrBarcode, VisualizerLookCyberBrLances, VisualizerLookCyberBrGreenOrbs, VisualizerLookCyberBrChevron })
         {
             look.Checked += (_, _) => ShowLookOptions();
         }

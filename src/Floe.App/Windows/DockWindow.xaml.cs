@@ -578,6 +578,7 @@ public partial class DockWindow : Window
             }
 
             InitializeSections();
+            ApplyButtonGlyphSize();
             ApplyCyberInk(); // the section glyphs exist only now
 
             _fullscreenTimer.Tick += (_, _) => UpdateFullscreenState();

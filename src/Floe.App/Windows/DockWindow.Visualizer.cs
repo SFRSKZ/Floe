@@ -27,6 +27,8 @@ public partial class DockWindow
         }
 
         SetIconsDimmed(true);
+        // the GPU looks' shaders compile once into the disk cache in the background, so changing looks never waits on them
+        if (GlassSettings.GpuVisualizer) Effects.Gpu.GpuShaderWarmup.Start(GlassSettings.VisualizerLook, GlassSettings.Cyber);
 
         _visualizerPoll = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1.5) };
         _visualizerPoll.Tick += async (_, _) =>
@@ -48,17 +50,15 @@ public partial class DockWindow
             try
             {
                 var playing = await VisualizerGlow.ShouldRunAsync();
-                // the OLED panel stays on without music: its robot comes out when nothing plays;
-                // a cyber theme shows its subtle standby HUD when no music is playing
-                bool panel = !GlassSettings.Cyber && GlassSettings.VisualizerLook is (VisualizerStyle.Oled or VisualizerStyle.Led);
-                bool cyberIdle = GlassSettings.Cyber && GlassSettings.GpuVisualizer;
+                // the OLED panel stays on without music: its robot comes out when nothing plays; the other looks
+                // play on as a screensaver (or the cyber theme's Kiroshi standby HUD), unless that is turned off
                 _musicPlaying = playing;
-                _visualizerRunning = GlassSettings.Visualizer && IsVisible && _shown && !_fullscreenHidden && (playing || panel || cyberIdle);
+                _visualizerRunning = GlassSettings.Visualizer && IsVisible && _shown && !_fullscreenHidden && (playing || PanelLook || IdleShows);
                 LogVisualizerState($"visualizer run={_visualizerRunning} playing={playing} visible={IsVisible} shown={_shown} fullscreen={_fullscreenHidden} look={GlassSettings.VisualizerLook} taskbar={DockSettings.Taskbar}");
                 ApplyVisualizerState();
                 // the catalog's looks read the cover and where the player sits in the dock
                 bool novel = Effects.Gpu.GpuSceneCatalog.Has(GlassSettings.VisualizerLook) && _visualizerRunning;
-                if ((panel || novel) && _visualizerWindow is not null)
+                if ((PanelLook || novel) && _visualizerWindow is not null)
                 {
                     var media = await MediaService.GetAsync();
                     _visualizerWindow.SetMusic(playing, media, PlayerIconX(media?.Source));
@@ -94,14 +94,30 @@ public partial class DockWindow
         Dispatcher.BeginInvoke(() =>
         {
             if (!GlassSettings.Visualizer) _visualizerRunning = false;
-            else if (GlassSettings.Cyber && GlassSettings.GpuVisualizer && IsVisible && _shown && !_fullscreenHidden) _visualizerRunning = true;
+            else if (IsVisible && _shown && !_fullscreenHidden && (_musicPlaying || PanelLook || IdleShows)) _visualizerRunning = true;
+            else if (!_musicPlaying) _visualizerRunning = false;
             ApplyVisualizerState();
         });
     }
 
+    private static bool PanelLook => !GlassSettings.Cyber && GlassSettings.VisualizerLook is (VisualizerStyle.Oled or VisualizerStyle.Led);
+
+    /// <summary>Whether the strip has something to show while no music plays.</summary>
+    private static bool IdleShows => GlassSettings.IdleShow switch
+    {
+        IdleShow.Animation => true,
+        IdleShow.Kiroshi => GlassSettings.Cyber && GlassSettings.GpuVisualizer,
+        _ => false,
+    };
+
+    // the Kiroshi standby HUD stands in for the look while nothing plays
+    private bool KiroshiIdle => !_musicPlaying && GlassSettings.IdleShow == IdleShow.Kiroshi && GlassSettings.Cyber;
+
     private void ApplyVisualizerState()
     {
         HangWatch.Mark("visualizer state");
+        // without music the looks play on a calm made-up spectrum (the OLED panel has its own robot for that)
+        IdleDream.Active = _visualizerRunning && !_musicPlaying && GlassSettings.IdleShow == IdleShow.Animation && !PanelLook;
         if (!_visualizerRunning && _visualizerWindow is null)
         {
             return;
@@ -117,7 +133,7 @@ public partial class DockWindow
         {
             // the strip lies over the bar, in the free glass between the start button, the icons and the clock
             PlaceTaskbarVisualizer();
-            _visualizerWindow.SetRunning(_visualizerRunning, idle: GlassSettings.Cyber && !_musicPlaying);
+            _visualizerWindow.SetRunning(_visualizerRunning, idle: KiroshiIdle);
             PlaceTaskbarVisualizer();
             PutDockUnderVisualizer();
             return;
@@ -147,9 +163,11 @@ public partial class DockWindow
             _visualizerWindow.Place(strip, scale, _hwnd, dockRect);
         }
 
+        // the decal beside a horizontal cyber dock: the Kiroshi HUD's right wing starts after it
+        _visualizerWindow.SetIdleReserve(_cyberDecal.Visibility == Visibility.Visible && !DockSettings.Vertical ? CyberDecalGap + CyberDecalWidth + CyberDecalPad : 0);
         bool tall = _visualizerWindow.CyberGpuPlaying;
         Place(tall);
-        _visualizerWindow.SetRunning(_visualizerRunning, idle: GlassSettings.Cyber && !_musicPlaying);
+        _visualizerWindow.SetRunning(_visualizerRunning, idle: KiroshiIdle);
         if (_visualizerWindow.CyberGpuPlaying != tall) Place(!tall);
 
         SinkBelowVisualizer();

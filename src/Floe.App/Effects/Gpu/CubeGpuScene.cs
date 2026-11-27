@@ -538,7 +538,7 @@ public sealed class CubeGpuScene : IGpuScene
     }
 
     private static ReadOnlyMemory<byte> Compile(string profile, string entry) =>
-        Compiler.Compile(Source, entry, "Cubes", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
+        Floe.App.Effects.Gpu.GpuShaderCache.Compile(Source, entry, "Cubes", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
 
     private sealed class VertexList
     {

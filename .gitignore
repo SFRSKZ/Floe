@@ -4,3 +4,10 @@ publish/
 .venv/
 *.user
 .ds-tasks/
+
+# Blade Runner barkod kareleri: yalniz yerel, repoya girmez
+work/hizli/app/br/
+work/blade-runner-viz/lab-br/
+
+# 4K jenerik videosundan kareler: yalniz yerel
+work/blade-runner-viz/ref-4k/

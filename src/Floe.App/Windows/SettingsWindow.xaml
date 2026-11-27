@@ -462,6 +462,23 @@
                           Content="Müzik görselleştirici"
                           Margin="0,6,0,0" />
                 <StackPanel x:Name="VisualizerBody">
+                <TextBlock Text="Müzik yokken" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
+                <WrapPanel>
+                    <RadioButton x:Name="IdleShowAnimation" GroupName="IdleShow" Style="{StaticResource ModeToggle}" Content="Ekran koruyucu"
+                                 ToolTip="Seçili görselleştirici müzik yokken de yavaş, sakin bir animasyonla oynar" />
+                    <RadioButton x:Name="IdleShowKiroshi" GroupName="IdleShow" Style="{StaticResource ModeToggle}" Content="Kiroshi bekleme"
+                                 ToolTip="Müzik yokken Kiroshi bekleme ekranı görünür" />
+                    <RadioButton x:Name="IdleShowOff" GroupName="IdleShow" Style="{StaticResource ModeToggle}" Content="Gizle"
+                                 ToolTip="Müzik yokken görselleştirici gizlenir" />
+                </WrapPanel>
+                <CheckBox x:Name="AutoCycleToggle" Style="{StaticResource GlassToggle}" Content="Otomatik geçiş" Margin="0,8,0,0"
+                          ToolTip="Belli bir süre sonra yakınlaşma, uzaklaşma ya da kaydırmayla başka bir görselleştiriciye geçer" />
+                <WrapPanel x:Name="AutoCycleRow" Margin="0,6,0,0">
+                    <RadioButton x:Name="AutoCycle30" GroupName="AutoCycle" Style="{StaticResource ModeToggle}" Content="30 sn" />
+                    <RadioButton x:Name="AutoCycle60" GroupName="AutoCycle" Style="{StaticResource ModeToggle}" Content="1 dk" />
+                    <RadioButton x:Name="AutoCycle180" GroupName="AutoCycle" Style="{StaticResource ModeToggle}" Content="3 dk" />
+                    <RadioButton x:Name="AutoCycle300" GroupName="AutoCycle" Style="{StaticResource ModeToggle}" Content="5 dk" />
+                </WrapPanel>
                 <TextBlock Text="Görselleştirici stili" Foreground="#8AFFFFFF" FontSize="11.5" Margin="2,12,0,6" />
                 <WrapPanel>
                     <RadioButton x:Name="VisualizerLookGlow" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Işıltı" />
@@ -495,7 +512,7 @@
                     <RadioButton x:Name="VisualizerLookCyberCircuit" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Devre" ToolTip="Müzik devreden akım olarak geçer: ısınır, yanar, yeniden bağlanır" />
                     <RadioButton x:Name="VisualizerLookCyberSandevistan" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Sandevistan"
                                  ToolTip="Zaman bükülmesi: dışa akan ışık izleri, vuruşta donan hayalet kareler ve asılı kıvılcımlar" />
-                    <RadioButton x:Name="VisualizerLookCyberBreach" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Breach"
+                    <RadioButton x:Name="VisualizerLookCyberBreach" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Breach"
                                  ToolTip="ICE kırma: hex kod matrisi, satır-sütun seçim yolu, kilitlenen hücreler ve buffer" />
                     <RadioButton x:Name="VisualizerLookCyberCollar" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Samurai yaka"
                                  ToolTip="Ceketin neon yakası: yumuşak COB tüplerde ışık iki uçtan yukarı, dock'un arkasına tırmanır" />
@@ -505,7 +522,7 @@
                                  ToolTip="Ufuk yarılır: bas çizgiyi ikiye ayırır, vuruşta kıvılcım sıçrar, snare'de ışık sütunları yanar" />
                     <RadioButton x:Name="VisualizerLookCyberZiggurat" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Veri ovası"
                                  ToolTip="Ufka uzanan bir veri ovasında akan yağmur; bandı şeritleri yakar, kick uzağa koşan bir ışık dalgası yollar, snare ovaya sarı iğne düşürür" />
-                    <RadioButton x:Name="VisualizerLookCyberNetdive" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Ağ dalışı"
+                    <RadioButton x:Name="VisualizerLookCyberNetdive" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Ağ dalışı"
                                  ToolTip="Dock kenarına doğru veri bloklarından bir koridora dalış; bloklar bandıyla öne çıkar, kick dalışı hızlandırıp magenta ICE kapısından geçirir, snare şeritleri yakar" />
                     <RadioButton x:Name="VisualizerLookCyberRedline" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Kızıl hat"
                                  ToolTip="Arasaka devre kartı: sabit hatlar ve via&apos;lar, beyaz başlı paketler; kick kartı kızıla boğar, snare via&apos;ları kıvılcımlandırır" />
@@ -513,7 +530,7 @@
                                  ToolTip="Krom çene: dock&apos;un iki yanından dışarı uzanan iki sıra metal diş; her diş kendi bandıyla iner, kick çeneyi bir an kapatıp dikişi akkor yakar, snare uçlarda kıvılcım saçar" />
                     <RadioButton x:Name="VisualizerLookCyberBlackwallCinder" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Kara Duvar Külü"
                                  ToolTip="Blackwall VFX: kızıl kriptografik kırık hatları ve yukarı yükselen dijital kül parçacıkları; kick yatay glitch yırtılması açar" />
-                    <RadioButton x:Name="VisualizerLookCyberArasakaOs" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Arasaka OS"
+                    <RadioButton x:Name="VisualizerLookCyberArasakaOs" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Arasaka OS"
                                  ToolTip="Arasaka kurumsal telemetri: mat obsidyen şasi üzerinde beyaz/kızıl basamaklı RAM blokları ve lazer kilit taraması" />
                     <RadioButton x:Name="VisualizerLookCyberBraindanceSuite" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Braindance"
                                  ToolTip="3 katmanlı Braindance düzenleyici: termal FLIR, ses dalgası, görsel zaman çizgisi ve hareketli oynatma iğnesi" />
@@ -527,12 +544,36 @@
                                  ToolTip="Klinik Trauma Team biyometrik ekranı: cerrahi turkuaz/beyaz EKG kalp atışı, O2 çubukları ve kick&apos;te kritik kızıl uyarı" />
                     <RadioButton x:Name="VisualizerLookCyberLiquidChrome" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Sıvı Krom"
                                  ToolTip="Gerçek zamanlı PBR sıvı krom şerit: stüdyo metal yansımaları ve çatlaklardan sızan erimiş kızıl cam çekirdeği" />
-                    <RadioButton x:Name="VisualizerLookCyberDogtownFlir" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Dogtown FLIR"
+                    <RadioButton x:Name="VisualizerLookCyberDogtownFlir" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Dogtown FLIR"
                                  ToolTip="NUSA keşif dronu Ironbow FLIR termal tarayıcı: yükselen ısı bulutları ve en güçlü frekansa kilitlenen lazer nişangâh" />
-                    <RadioButton x:Name="VisualizerLookCyberMonowire" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Monowire"
+                    <RadioButton x:Name="VisualizerLookCyberMonowire" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Monowire"
                                  ToolTip="Termal Monowire plazma teli: karanlık duman içinde kırbaçlanan akkor tel ve kick&apos;te anamorfik sinema mercek parlaması" />
                     <RadioButton x:Name="VisualizerLookCyberStrands" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Tel Perde"
                                  ToolTip="Noktalı tellerden kızıl perde: müzikle dalgalanan, vuruşta saçılan hatlar ve mavi gölge" />
+                    <RadioButton x:Name="VisualizerLookCyberBrHorizon" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="BR Ufuk"
+                                 ToolTip="Bladerunner: ufka yayılan şehir ışıkları, yavaş nefes alan pencere ızgarası" />
+                    <RadioButton x:Name="VisualizerLookCyberBrLightBands" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="BR Işık bantları"
+                                 ToolTip="Bladerunner: ince dikmelerle hücrelenmiş ışık bandı, amber ve buz mavisi bloklar, ortada sıcak çizgi" />
+                    <RadioButton x:Name="VisualizerLookCyberBrPulseLine" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="BR Nabız hattı"
+                                 ToolTip="Bladerunner: sabit sütunlu nabız çizgisi, iğneler bantla yükselir" />
+                    <RadioButton x:Name="VisualizerLookCyberBrHangingFlames" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="BR Sarkan alevler"
+                                 ToolTip="Bladerunner: pembe-turuncu banttan sarkan mavi alev sütunları; kenardan dock&apos;a yanma dalgası" />
+                    <RadioButton x:Name="VisualizerLookCyberBrWarmColumns" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="BR Sıcak sütunlar"
+                                 ToolTip="Bladerunner: ıslak cam ardında sıcak ışık kütleleri" />
+                    <RadioButton x:Name="VisualizerLookCyberBrGlitchBlocks" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="BR Glitch blokları"
+                                 ToolTip="Bladerunner: yırtık analog tarama satırlı RGB bloklar, vuruşta yeni dizilim" />
+                    <RadioButton x:Name="VisualizerLookCyberBrFrostPanels" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="BR Buzlu panel"
+                                 ToolTip="Bladerunner: asimetrik buzlu cam şekilleri, açık mavi toz lekeleri, ara sıra bant yırtılması" />
+                    <RadioButton x:Name="VisualizerLookCyberBrLedColumns" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="BR LED sütunlar"
+                                 ToolTip="Bladerunner: basamak basamak yanan LED sütunları" />
+                    <RadioButton x:Name="VisualizerLookCyberBrBarcode" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="BR Barkod"
+                                 ToolTip="Bladerunner: yatay dilimli yanık ışık bandı, boğumlu koyu vazo sütunlar, yavaş zoom" />
+                    <RadioButton x:Name="VisualizerLookCyberBrLances" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="BR Mızraklar"
+                                 ToolTip="Bladerunner: ekran kenarına çakılı ışık mızrakları, parlaklık müziği izler" />
+                    <RadioButton x:Name="VisualizerLookCyberBrGreenOrbs" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="BR Yeşil küreler"
+                                 ToolTip="Bladerunner: yeşil metaball küreler, kenarlarında keskin taneler" />
+                    <RadioButton x:Name="VisualizerLookCyberBrChevron" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="BR Şerit ok"
+                                 ToolTip="Bladerunner: büyük ok formu, kenar ışıkları ve glitch şeritleri" />
                     <RadioButton x:Name="VisualizerLookPrism" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Cam prizma" />
                     <RadioButton x:Name="VisualizerLookWheat" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Başak tarlası" />
                     <RadioButton x:Name="VisualizerLookRibbon" Visibility="Collapsed" GroupName="VisualizerLook" Style="{StaticResource ModeToggle}" Content="Işık şeridi" />

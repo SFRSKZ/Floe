@@ -38,6 +38,10 @@ public abstract class FeedbackGpuScene : IGpuScene, IThemedGpuScene
     private readonly ID3D11Buffer[] _cb = new ID3D11Buffer[2];
     private readonly ID3D11SamplerState[] _sampler = new ID3D11SamplerState[1];
     private readonly ID3D11ShaderResourceView[] _oneSrv = new ID3D11ShaderResourceView[1];
+    private readonly ID3D11ShaderResourceView[] _twoSrv = new ID3D11ShaderResourceView[2];
+
+    /// <summary>An optional picture the field pass reads at t1 (a scene that plays footage); null for none.</summary>
+    protected virtual ID3D11ShaderResourceView? Extra => null;
     private Viewport[] _viewports = Array.Empty<Viewport>();
 
     private readonly BeatTracker _beat = new();
@@ -67,6 +71,14 @@ public abstract class FeedbackGpuScene : IGpuScene, IThemedGpuScene
     protected abstract void Advance(GpuFrame frame);
 
     protected abstract void Fill(GpuFrame frame);
+
+    /// <summary>Compiles this scene's shaders into the disk cache without a device, so building it later is quick.</summary>
+    internal void WarmShaders()
+    {
+        Compile("vs_5_0", FullscreenVs);
+        Compile("ps_5_0", _feedbackSource);
+        Compile("ps_5_0", _showSource);
+    }
 
     public virtual void Initialize(ID3D11Device device)
     {
@@ -143,9 +155,13 @@ public abstract class FeedbackGpuScene : IGpuScene, IThemedGpuScene
         // a) the last frame, warped and eaten, with the field on top
         context.OMSetRenderTargets(next, null);
         context.PSSetShader(_feedbackPs);
-        _oneSrv[0] = last;
-        context.PSSetShaderResources(0, _oneSrv);
+        _twoSrv[0] = last;
+        _twoSrv[1] = Extra!;
+        context.PSSetShaderResources(0, _twoSrv);
         context.Draw(3, 0);
+        _twoSrv[0] = null!;
+        _twoSrv[1] = null!;
+        context.PSSetShaderResources(0, _twoSrv);
 
         // b) that result as the picture
         context.OMSetRenderTargets(target, null);
@@ -225,7 +241,7 @@ public abstract class FeedbackGpuScene : IGpuScene, IThemedGpuScene
     public void Dispose() => ReleaseDevice();
 
     private static ReadOnlyMemory<byte> Compile(string profile, string source) =>
-        Compiler.Compile(source, "main", "Feedback", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
+        Floe.App.Effects.Gpu.GpuShaderCache.Compile(source, "main", "Feedback", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
 
     /// <summary>
     /// The analyser's onsets are one-frame values that a quiet or a dense song keeps far below 1, so a beat here

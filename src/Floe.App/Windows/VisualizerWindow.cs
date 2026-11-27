@@ -53,6 +53,9 @@ internal sealed class VisualizerWindow : Window
     private bool _gpuFailed;
     private int _gpuRebuilds;
     private DateTime _gpuFailedAt;
+    // failures in a row, for the retry's back-off, and when the last layer was built
+    private int _gpuFailures;
+    private DateTime _gpuBuiltAt;
     private IntPtr _hwnd;
     private IntPtr _dock;
     private Rect _bounds = Rect.Empty;
@@ -180,7 +183,8 @@ internal sealed class VisualizerWindow : Window
     }
 
     /// <summary>Spans of the strip (0..1 pairs) the GPU looks leave empty; an empty array clears nothing.</summary>
-    public void SetClear(float[] spans)
+    /// <param name="top">How far down the strip (0..1) the spans start: above that the light runs on unbroken.</param>
+    public void SetClear(float[] spans, float top = 0)
     {
         // a crowded bar gives overlapping spans: merged, the mask never fades back in where two of them meet
         spans = Floe.Core.Services.ClearSpans.Merge(spans);
@@ -188,24 +192,26 @@ internal sealed class VisualizerWindow : Window
         // the WPF looks (no GPU) keep the same spans empty through a mask over the whole strip, its ends as soft
         // as the GPU layers' (ClearFeatherPass)
         // the icons move while they animate and set the spans every frame: the mask is only redrawn when it changes
-        var maskKey = (string.Join(',', spans), _bounds.Width, _bounds.Height);
+        _clearTop = top;
+        var maskKey = (string.Join(',', spans) + "|" + top.ToString("F3", System.Globalization.CultureInfo.InvariantCulture), _bounds.Width, _bounds.Height);
         if (maskKey != _clearMaskKey)
         {
             _clearMaskKey = maskKey;
             _root.OpacityMask = _bounds.Width >= 1 && _bounds.Height >= 1
-                ? RoundClearMask(spans, _bounds.Width, _bounds.Height)
+                ? RoundClearMask(spans, _bounds.Width, _bounds.Height, top)
                 : ClearMask(spans, _bounds.Width > 0 ? ClearFeatherDip / _bounds.Width : 0);
         }
 
-        _gpu?.SetClear(spans);
-        _holo?.SetClear(spans);
-        _cubeLayer?.SetClear(spans);
-        _novelLayer?.SetClear(spans);
-        _idleLayer?.SetClear(spans);
-        _oled?.SetClear(spans);
+        _gpu?.SetClear(spans, top);
+        _holo?.SetClear(spans, top);
+        _cubeLayer?.SetClear(spans, top);
+        _novelLayer?.SetClear(spans, top);
+        _idleLayer?.SetClear(spans, top);
+        _oled?.SetClear(spans, top);
     }
 
     private (string, double, double) _clearMaskKey;
+    private float _clearTop;
 
     // how far the light thins out outside a cleared span, in DIP (the GPU layers use the same)
     private const double ClearFeatherDip = 36;
@@ -214,14 +220,17 @@ internal sealed class VisualizerWindow : Window
     /// Keeps every icon/group span completely clear (alpha = 0) and feathers smoothly outside each open boundary
     /// into the free glass, matching ClearFeatherPass on the GPU.
     /// </summary>
-    private static Brush? RoundClearMask(float[] spans, double widthDip, double heightDip)
+    private static Brush? RoundClearMask(float[] spans, double widthDip, double heightDip, float top = 0)
     {
         if (spans.Length < 2) return null;
         int width = Math.Clamp((int)Math.Round(widthDip), 1, 8192), height = Math.Clamp((int)Math.Round(heightDip), 1, 512);
         double feather = ClearFeatherDip * width / widthDip;
         var pixels = new byte[width * height * 4];
+        double topRow = top * height;
         for (int y = 0; y < height; y++)
         {
+            // above the bar the light is left whole, the clearing fades in over 4 DIP down to its top
+            double cover = Smooth(topRow - 4, topRow, y + .5);
             for (int x = 0; x < width; x++)
             {
                 double px = x + .5, keep = 1;
@@ -239,7 +248,7 @@ internal sealed class VisualizerWindow : Window
                 }
 
                 // premultiplied white: only the alpha counts in a mask
-                byte alpha = (byte)Math.Round(Math.Clamp(keep, 0, 1) * 255);
+                byte alpha = (byte)Math.Round(Math.Clamp(1 - ((1 - keep) * cover), 0, 1) * 255);
                 int at = ((y * width) + x) * 4;
                 pixels[at] = pixels[at + 1] = pixels[at + 2] = pixels[at + 3] = alpha;
             }
@@ -295,7 +304,8 @@ internal sealed class VisualizerWindow : Window
         or VisualizerStyle.CyberBlackwallCinder or VisualizerStyle.CyberArasakaOs or VisualizerStyle.CyberBraindanceSuite
         or VisualizerStyle.CyberApogee or VisualizerStyle.CyberCantoDaemon or VisualizerStyle.CyberNightCity
         or VisualizerStyle.CyberTraumaTeam or VisualizerStyle.CyberLiquidChrome or VisualizerStyle.CyberDogtownFlir
-        or VisualizerStyle.CyberMonowire
+        or VisualizerStyle.CyberMonowire or VisualizerStyle.CyberStrands
+        or VisualizerStyle.CyberBrHorizon or VisualizerStyle.CyberBrLightBands or VisualizerStyle.CyberBrPulseLine or VisualizerStyle.CyberBrHangingFlames or VisualizerStyle.CyberBrWarmColumns or VisualizerStyle.CyberBrGlitchBlocks or VisualizerStyle.CyberBrFrostPanels or VisualizerStyle.CyberBrLedColumns or VisualizerStyle.CyberBrBarcode or VisualizerStyle.CyberBrLances or VisualizerStyle.CyberBrGreenOrbs or VisualizerStyle.CyberBrChevron
         or VisualizerStyle.Chladni or VisualizerStyle.Fireflies or VisualizerStyle.Ferrofluid
         or VisualizerStyle.Stardust or VisualizerStyle.DustWave or VisualizerStyle.DustMilk;
 
@@ -312,9 +322,65 @@ internal sealed class VisualizerWindow : Window
         _web?.PlaceBelowDock(dock);
     }
 
+    // ---- automatic round ----------------------------------------------------------------------
+
+    private static readonly Random Dice = new();
+    private DispatcherTimer? _roundTimer;
+    private double _roundPlayed;
+    // the look the round moved on to (null: the one picked in the settings), and the pick it started from
+    private VisualizerStyle? _roundLook;
+    private VisualizerStyle _roundPick;
+    private bool _lastRunning, _lastIdle;
+
+    // the round counts only while a GPU look actually plays, so a hidden strip does not skip through looks
+    private void KeepRound(bool playing)
+    {
+        if (GlassSettings.AutoCycle && playing)
+        {
+            if (_roundTimer is null)
+            {
+                _roundTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1) };
+                _roundTimer.Tick += (_, _) => RoundTick();
+            }
+
+            _roundTimer.Start();
+        }
+        else
+        {
+            _roundTimer?.Stop();
+        }
+    }
+
+    private void RoundTick()
+    {
+        if (!GlassSettings.AutoCycle || _novelLayer is not { IsRunning: true }) return;
+        _roundPlayed += 1;
+        if (_roundPlayed < GlassSettings.AutoCycleSeconds) return;
+        _roundPlayed = 0;
+
+        var round = GpuSceneCatalog.Round(GlassSettings.Cyber, look => !DockSettings.TaskbarOn || FitsTaskbar(look));
+        if (round.Length < 2) return;
+        VisualizerStyle next;
+        do next = round[Dice.Next(round.Length)];
+        while (next == _novelLook);
+        _roundLook = next;
+        GpuLog($"auto cycle -> {next}");
+        SetRunning(_lastRunning, _lastIdle);
+    }
+
     public void SetRunning(bool running, bool idle = false)
     {
+        _lastRunning = running;
+        _lastIdle = idle;
         var look = GlassSettings.VisualizerLook;
+        // a pick in the settings starts the round over from it; with the round off the pick plays
+        if (look != _roundPick || !GlassSettings.AutoCycle)
+        {
+            _roundPick = look;
+            _roundLook = null;
+            _roundPlayed = 0;
+        }
+        if (_roundLook is { } turn) look = turn;
         // a cyber theme plays its own strips, whatever the glass themes were left on
         if (GlassSettings.Cyber && !GlassSettings.IsCyberLook(look)) look = VisualizerStyle.CyberBlackwall;
         // on the taskbar a look that does not fit gives way to one that does
@@ -365,14 +431,27 @@ internal sealed class VisualizerWindow : Window
         {
             if (idleOn) _idleLayer.Fps = 24;
             _idleLayer.SetRunning(idleOn);
+            if (idleOn) PlacePanel(_bounds);
         }
 
         bool novel = running && !wantIdle && GlassSettings.GpuVisualizer && GpuSceneCatalog.Has(look);
         if (novel && _novelLayer is not null && _novelLook != look)
         {
-            _novelLayer.Dispose();
-            _novelLayer = null;
-            _themed = null;
+            if (_novelLayer is { IsRunning: true })
+            {
+                // a playing layer hands over to the next look with a zoom or a push instead of a cut
+                var scene = GpuSceneCatalog.Create(look);
+                _themed = scene as IThemedGpuScene;
+                var move = (SceneTransition)Dice.Next(Enum.GetValues<SceneTransition>().Length);
+                _novelLayer.ChangeScene(scene, move);
+                _novelLook = look;
+            }
+            else
+            {
+                _novelLayer.Dispose();
+                _novelLayer = null;
+                _themed = null;
+            }
         }
         if (novel)
         {
@@ -386,6 +465,7 @@ internal sealed class VisualizerWindow : Window
             if (!novel) _themed = null;
         }
         _novelLayer?.SetRunning(novel);
+        KeepRound(novel);
         ApplySceneColours();
         // without the GPU these looks play as stardust; the cyber looks have nothing to fall back on
         if (GpuSceneCatalog.Has(look) && !novel && !wantIdle && !GlassSettings.Cyber) look = VisualizerStyle.Stardust;
@@ -536,8 +616,21 @@ internal sealed class VisualizerWindow : Window
         if (dock.IsEmpty) return;
         var (left, right) = AlongStrip(bounds, dock);
         _novelLayer?.SetDock(left, right);
-        _idleLayer?.SetDock(left, right);
         _panel?.SetDock(left, right);
+        if (_idleLayer is null) return;
+        // the standby HUD's right wing starts past the cyber decal beside the dock, not under it
+        if (_idleReserve > 0) (left, right) = AlongStrip(bounds, new Rect(dock.X, dock.Y, dock.Width + _idleReserve, dock.Height));
+        _idleLayer.SetDock(left, right);
+    }
+
+    private double _idleReserve;
+
+    /// <summary>How far past the dock's right end (strip DIPs) the Kiroshi standby HUD keeps clear: the cyber decal's room.</summary>
+    public void SetIdleReserve(double dips)
+    {
+        if (dips == _idleReserve) return;
+        _idleReserve = dips;
+        PlacePanel(_bounds);
     }
 
     /// <summary>Where <paramref name="rect"/> stands along the strip, 0..1 as the looks draw it (foot down, left to right).</summary>
@@ -634,10 +727,13 @@ internal sealed class VisualizerWindow : Window
         if (_gpuFailed)
         {
             // a fullscreen game or a display change can take the GPU away for a while: try again later
-            if (DateTime.UtcNow - _gpuFailedAt < TimeSpan.FromSeconds(10)) return false;
+            // each failure in a row waits twice as long (10 s up to 10 min): a scene that can never start (a shader
+            // that does not compile) is not rebuilt every few seconds for as long as the dock runs
+            var wait = TimeSpan.FromSeconds(Math.Min(600, 10 * Math.Pow(2, Math.Max(0, _gpuFailures - 1))));
+            if (DateTime.UtcNow - _gpuFailedAt < wait) return false;
             _gpuFailed = false;
             _gpuRebuilds = 0;
-            GpuLog("gpu retry");
+            GpuLog($"gpu retry (failure {_gpuFailures}, waited {wait.TotalSeconds:0} s)");
         }
 
         // a layer that stopped on an error is rebuilt with a fresh scene; one that keeps failing sends the looks
@@ -653,8 +749,13 @@ internal sealed class VisualizerWindow : Window
             }
         }
 
+        // a layer that has drawn for a minute without halting clears the failure count
+        if (layer is { Halted: false } && _gpuFailures > 0 && DateTime.UtcNow - _gpuBuiltAt > TimeSpan.FromMinutes(1))
+            _gpuFailures = 0;
+
         if (layer is null)
         {
+            _gpuBuiltAt = DateTime.UtcNow;
             try
             {
                 layer = new GpuLayerWindow(scene(), capturable, needAudio);
@@ -673,7 +774,7 @@ internal sealed class VisualizerWindow : Window
                 return false;
             }
 
-            layer.SetClear(_clear);
+            layer.SetClear(_clear, _clearTop);
             layer.SetEdge(_edge);
 
             PlaceGpu();
@@ -686,6 +787,7 @@ internal sealed class VisualizerWindow : Window
     {
         _gpuFailed = true;
         _gpuFailedAt = DateTime.UtcNow;
+        _gpuFailures++;
         GpuLog(why);
     }
 

@@ -79,7 +79,7 @@ internal sealed class DesktopWallpaper : IDisposable
             scene.Initialize(device);
             scene.Resize(w, h);
             using (var back = chain.Chain.GetBuffer<ID3D11Texture2D>(0)) target = device.CreateRenderTargetView(back, null);
-            audio = new AudioSpectrum();
+            audio = new AudioSpectrum { Dreams = false }; // the wallpaper rests without music; only the strip dreams
             Running = true;
             Log($"wallpaper: on {w}x{h} in 0x{_host.ToInt64():X}");
             _ready.Set();

@@ -127,7 +127,7 @@ public partial class DockWindow
         var pinnedCount = Math.Min(_pinnedList.Count, _slots.Count);
         for (var i = 0; i < pinnedCount; i++)
         {
-            if (x > _restCapsuleLeft + _slots[i].CenterLocal)
+            if (x > RestCenter(_slots[i]))
             {
                 index = i + 1;
             }
@@ -218,7 +218,7 @@ public partial class DockWindow
         var best = double.MaxValue;
         for (var i = 0; i < _slots.Count; i++)
         {
-            var distance = Math.Abs(windowX - (_restCapsuleLeft + _slots[i].CenterLocal));
+            var distance = Math.Abs(windowX - RestCenter(_slots[i]));
             if (distance < best && distance <= IconBox)
             {
                 best = distance;

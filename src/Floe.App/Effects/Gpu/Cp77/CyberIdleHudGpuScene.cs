@@ -62,6 +62,9 @@ public sealed class CyberIdleHudGpuScene : FeedbackGpuScene
             float4 Params;
         };
 
+        // the shared helpers' Band() reads the spectrum; the idle HUD plays without music, so it reads silence
+        static const float4 Bands[6] = { float4(0, 0, 0, 0), float4(0, 0, 0, 0), float4(0, 0, 0, 0), float4(0, 0, 0, 0), float4(0, 0, 0, 0), float4(0, 0, 0, 0) };
+
         """ + ShaderHelpers + Cp77ShaderLib.CoreHelpers + Cp77ShaderLib.FontHlsl
         + Cp77ShaderLib.LabelFn("LeftTag", "KIROSHI // STBY")
         + Cp77ShaderLib.LabelFn("RightTag", "NC-77 // LINK");

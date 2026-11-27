@@ -762,7 +762,7 @@ public sealed class GpuBackdropCapture : IDisposable
     }
 
     private static ReadOnlyMemory<byte> Compile(string profile, string source) =>
-        Compiler.Compile(source, "main", "GpuBackdrop", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
+        Floe.App.Effects.Gpu.GpuShaderCache.Compile(source, "main", "GpuBackdrop", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
 
     private const string FullscreenVs = """
         struct VSOut

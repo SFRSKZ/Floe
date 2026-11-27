@@ -20,6 +20,12 @@ public partial class DockWindow
     private const double StartWidth = 40;
     private const double StartGap = 14;
     private const double StartGlyph = 28;
+    // the start and quick-settings glyphs: larger on the dock, and larger still on the taskbar, whose root is drawn
+    // at TaskbarScale (about 0.7), so they come out about 28 DIP on screen in both
+    private const double DockButtonGlyph = 34, TaskbarButtonGlyph = 40;
+
+    private double ButtonGlyph => TaskbarOn ? TaskbarButtonGlyph : DockButtonGlyph;
+    private double _appliedButtonGlyph = StartGlyph;
 
     // icons begin after the start button and its divider
     private const double LeadX = PadX + StartWidth + StartGap;
@@ -72,6 +78,20 @@ public partial class DockWindow
 
     private void OnStartSettingsChanged() => Dispatcher.BeginInvoke(UpdateStartGlyph);
 
+    /// <summary>Sizes the start and quick-settings glyphs for the dock or the taskbar.</summary>
+    private void ApplyButtonGlyphSize()
+    {
+        var size = ButtonGlyph;
+        if (size == _appliedButtonGlyph) return;
+        _appliedButtonGlyph = size;
+        _cyberStart.SetSize(size);
+        _startGlyph.Width = _startGlyph.Height = size;
+        _cyberSettings.SetSize(size);
+        _settingsGlyph.Width = _settingsGlyph.Height = size;
+        UpdateStartGlyph();
+        if (!GlassSettings.Cyber) _settingsGlyph.Source = DotMatrixIcons.Render("settings", size, InkGlyphColor, VisualTreeHelper.GetDpi(this).DpiScaleX);
+    }
+
     private void UpdateStartGlyph()
     {
         var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
@@ -85,7 +105,7 @@ public partial class DockWindow
             return;
         }
 
-        _startGlyph.Source = DotMatrixIcons.Render("desktop", StartGlyph, StartGlyphColor, dpi);
+        _startGlyph.Source = DotMatrixIcons.Render("desktop", _appliedButtonGlyph, StartGlyphColor, dpi);
         _startGlyph.Opacity = 0.82;
     }
 

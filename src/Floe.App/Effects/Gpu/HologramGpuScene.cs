@@ -311,7 +311,7 @@ public sealed class HologramGpuScene : IGpuScene
     // ---- shaders ----------------------------------------------------------------------------------
 
     private static ReadOnlyMemory<byte> Compile(string profile, string source) =>
-        Compiler.Compile(source, "main", "Hologram", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
+        Floe.App.Effects.Gpu.GpuShaderCache.Compile(source, "main", "Hologram", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
 
     /// <summary>One premultiplied colour texture: its render target and its shader view, always together.</summary>
     private sealed class Target : IDisposable

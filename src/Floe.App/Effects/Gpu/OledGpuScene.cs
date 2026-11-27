@@ -514,7 +514,7 @@ public sealed class OledGpuScene : IGpuScene
     // ---- shaders ----------------------------------------------------------------------------------
 
     private static ReadOnlyMemory<byte> Compile(string profile, string source) =>
-        Compiler.Compile(source, "main", "Oled", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
+        Floe.App.Effects.Gpu.GpuShaderCache.Compile(source, "main", "Oled", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
 
     /// <summary>One float texture: its render target and its shader view, always together.</summary>
     private sealed class Target : IDisposable

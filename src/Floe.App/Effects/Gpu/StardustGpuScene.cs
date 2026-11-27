@@ -802,7 +802,7 @@ public sealed partial class StardustGpuScene : IGpuScene
     // ---- shaders and states -----------------------------------------------------------------------
 
     private static ReadOnlyMemory<byte> Compile(string profile, string source) =>
-        Compiler.Compile(source, "main", "Stardust", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
+        Floe.App.Effects.Gpu.GpuShaderCache.Compile(source, "main", "Stardust", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
 
     private static BlendDescription AdditiveBlend()
     {

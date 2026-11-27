@@ -20,6 +20,7 @@ public sealed record MediaInfo(string Title, string Artist, double Progress, Ima
 public static class MediaService
 {
     private static GlobalSystemMediaTransportControlsSessionManager? _manager;
+    private static DateTime _managerAt = DateTime.UtcNow;
 
     // the artwork of the current track, so the 1 s poll does not decode it again
     private static string? _artworkTitle;
@@ -234,6 +235,21 @@ public static class MediaService
                 if (session.GetPlaybackInfo()?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
                 {
                     return session;
+                }
+            }
+
+            // nothing reports Playing: a long-lived manager can also go stale and stop seeing a player that paused and
+            // resumed (Spotify does this), so while nothing plays it is asked for afresh every few seconds
+            if (DateTime.UtcNow - _managerAt > TimeSpan.FromSeconds(4))
+            {
+                _managerAt = DateTime.UtcNow;
+                _manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
+                foreach (var session in _manager.GetSessions())
+                {
+                    if (session.GetPlaybackInfo()?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                    {
+                        return session;
+                    }
                 }
             }
 

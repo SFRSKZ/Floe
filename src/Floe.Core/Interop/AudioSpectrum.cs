@@ -223,7 +223,25 @@ public sealed class AudioSpectrum : IDisposable
         frame.Mid = _heldMid;
         frame.Treble = _heldTreble;
         frame.Level = _heldLevel;
+
+        // no music: the visualizers play on with a calm made-up spectrum, like a screensaver
+        if (Dreams && IdleDream.Active)
+        {
+            _dream.Fill(frame);
+            _dreamt = true;
+        }
+        else if (_dreamt)
+        {
+            _dreamt = false;
+            if (silent) Array.Clear(frame.Wave);
+        }
     }
+
+    /// <summary>Whether this reader plays the <see cref="IdleDream"/> while it is on; off for readers that should stay still without music.</summary>
+    public bool Dreams { get; set; } = true;
+
+    private readonly IdleDream _dream = new();
+    private bool _dreamt;
 
     private void Analyse(SpectrumFrame frame, float rate, double dt)
     {

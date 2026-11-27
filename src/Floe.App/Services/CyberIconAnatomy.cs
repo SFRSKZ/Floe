@@ -54,6 +54,14 @@ public static class CyberIconAnatomy
         IconPart? FpsBadge,
         IconPart? BezelSlider);
 
+    public sealed record OrcaSlicerAnatomy(
+        BitmapSource BaseDisc,
+        BitmapSource UpperOrca,
+        BitmapSource MiddleSlice,
+        BitmapSource LowerOrca,
+        Point TipNormalized,
+        Vector SliceAxis);
+
     private static readonly ConditionalWeakTable<ImageSource, IReadOnlyList<IconPart>?> IslandsCache = new();
     private static readonly ConditionalWeakTable<ImageSource, CutoutStencil?> CutoutCache = new();
     private static readonly ConditionalWeakTable<ImageSource, SteamAnatomy?> SteamCache = new();
@@ -61,6 +69,7 @@ public static class CyberIconAnatomy
     private static readonly ConditionalWeakTable<ImageSource, StarburstAnatomy?> StarburstCache = new();
     private static readonly ConditionalWeakTable<ImageSource, TerminalAnatomy?> TerminalCache = new();
     private static readonly ConditionalWeakTable<ImageSource, RivatunerAnatomy?> RivatunerCache = new();
+    private static readonly ConditionalWeakTable<ImageSource, OrcaSlicerAnatomy?> OrcaSlicerCache = new();
     private static readonly ConditionalWeakTable<ImageSource, Dictionary<int, (BitmapSource A, BitmapSource B)>> SeamCache = new();
 
     /// <summary>Clears all cached topological decompositions.</summary>
@@ -73,6 +82,7 @@ public static class CyberIconAnatomy
         StarburstCache.Clear();
         TerminalCache.Clear();
         RivatunerCache.Clear();
+        OrcaSlicerCache.Clear();
         SeamCache.Clear();
     }
 
@@ -991,36 +1001,481 @@ public static class CyberIconAnatomy
             new Point(0.5, 0.72));
     }
 
+    /// <summary>
+    /// Extracts the 4 authentic topological parts of the OrcaSlicer icon:
+    /// stationary circular badge, upper Orca head (with its enclosed oval eye patch),
+    /// the diagonal middle slicer wedge, and the lower Orca belly/tail.
+    /// </summary>
+    public static OrcaSlicerAnatomy? GetOrcaSlicerAnatomy(ImageSource logo)
+    {
+        if (OrcaSlicerCache.TryGetValue(logo, out var cached)) return cached;
+        if (!CopyBgra32(logo, out int w, out int h, out var px)) return null;
+
+        if (CardIcons.TryGetMonoLogo(logo, out var monoLogo))
+        {
+            if (GetOrcaSlicerAnatomy(monoLogo) is not { } monoOrca
+                || !CopyBgra32(monoLogo, out int mw, out int mh, out var monoPx)
+                || mw != w || mh != h)
+            {
+                OrcaSlicerCache.AddOrUpdate(logo, null);
+                return null;
+            }
+
+            var colored = BuildColoredOrcaSlicerAnatomy(w, h, monoPx, monoOrca);
+            OrcaSlicerCache.AddOrUpdate(logo, colored);
+            return colored;
+        }
+
+        var extracted = ExtractOrcaSlicerMonoAnatomy(w, h, px);
+        OrcaSlicerCache.AddOrUpdate(logo, extracted);
+        return extracted;
+    }
+
+    private static OrcaSlicerAnatomy? ExtractOrcaSlicerMonoAnatomy(int w, int h, byte[] px)
+    {
+        GetToneRange(w, h, px, out byte minT, out byte maxT, out byte brightB, out byte brightG, out byte brightR, out byte darkB, out byte darkG, out byte darkR);
+        if (maxT - minT < 35) return null;
+
+        int total = w * h;
+        double span = Math.Max(20.0, maxT - minT);
+        var tones = new byte[total];
+        var norms = new double[total];
+        for (int i = 0; i < total; i++)
+        {
+            int bi = i * 4;
+            byte t = Math.Max(px[bi], Math.Max(px[bi + 1], px[bi + 2]));
+            tones[i] = t;
+            norms[i] = (t - minT) / span;
+        }
+
+        // 1. Detect flat mid-tone interior seeds of the diagonal slicer wedge (avoids steep 1px outer AA edges).
+        var isFlatSeed = new bool[total];
+        for (int y = 1; y < h - 1; y++)
+        {
+            for (int x = 1; x < w - 1; x++)
+            {
+                int idx = (y * w) + x;
+                if (px[(idx * 4) + 3] < 180) continue;
+                double n = norms[idx];
+                if (n < 0.30 || n > 0.56) continue;
+
+                byte lo = 255, hi = 0;
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    int row = (y + dy) * w;
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        byte nt = tones[row + x + dx];
+                        if (nt < lo) lo = nt;
+                        if (nt > hi) hi = nt;
+                    }
+                }
+
+                if (hi - lo <= 26)
+                {
+                    isFlatSeed[idx] = true;
+                }
+            }
+        }
+
+        // Keep the largest 8-connected component of flat mid-tone seeds.
+        var visited = new bool[total];
+        var queue = new Queue<int>();
+        List<int>? bestSeeds = null;
+        ReadOnlySpan<(int Dx, int Dy)> dirs = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)];
+
+        for (int i = 0; i < total; i++)
+        {
+            if (!isFlatSeed[i] || visited[i]) continue;
+            visited[i] = true;
+            queue.Enqueue(i);
+            var comp = new List<int>();
+            while (queue.Count > 0)
+            {
+                int cur = queue.Dequeue();
+                comp.Add(cur);
+                int cx0 = cur % w;
+                int cy0 = (cur - cx0) / w;
+                foreach (var (dx, dy) in dirs)
+                {
+                    int nx = cx0 + dx, ny = cy0 + dy;
+                    if ((uint)nx >= (uint)w || (uint)ny >= (uint)h) continue;
+                    int ni = (ny * w) + nx;
+                    if (isFlatSeed[ni] && !visited[ni])
+                    {
+                        visited[ni] = true;
+                        queue.Enqueue(ni);
+                    }
+                }
+            }
+
+            if (bestSeeds is null || comp.Count > bestSeeds.Count)
+            {
+                bestSeeds = comp;
+            }
+        }
+
+        if (bestSeeds is null || bestSeeds.Count < 30) return null;
+
+        double sumX = 0, sumY = 0;
+        long sumMidB = 0, sumMidG = 0, sumMidR = 0;
+        int blIdx = bestSeeds[0], urIdx = bestSeeds[0];
+        int minDiag = int.MaxValue, maxDiag = int.MinValue;
+        foreach (int idx in bestSeeds)
+        {
+            int sx = idx % w;
+            int sy = (idx - sx) / w;
+            sumX += sx;
+            sumY += sy;
+            int bi = idx * 4;
+            sumMidB += px[bi];
+            sumMidG += px[bi + 1];
+            sumMidR += px[bi + 2];
+
+            int diag = sx - sy;
+            if (diag < minDiag) { minDiag = diag; blIdx = idx; }
+            if (diag > maxDiag) { maxDiag = diag; urIdx = idx; }
+        }
+
+        double meanX = sumX / bestSeeds.Count;
+        double meanY = sumY / bestSeeds.Count;
+        byte midB = (byte)(sumMidB / bestSeeds.Count);
+        byte midG = (byte)(sumMidG / bestSeeds.Count);
+        byte midR = (byte)(sumMidR / bestSeeds.Count);
+
+        var axis = new Vector((urIdx % w) - (blIdx % w), ((urIdx / w) - (blIdx / w)));
+        if (axis.Length > 1.0) axis.Normalize();
+        else axis = new Vector(0.789, -0.614);
+
+        double nxPerp = -axis.Y;
+        double nyPerp = axis.X;
+
+        double minProj = double.MaxValue, maxProj = double.MinValue;
+        double minPerp = double.MaxValue, maxPerp = double.MinValue;
+        foreach (int idx in bestSeeds)
+        {
+            double dx = (idx % w) - meanX;
+            double dy = (idx / w) - meanY;
+            double proj = (dx * axis.X) + (dy * axis.Y);
+            double perp = (dx * nxPerp) + (dy * nyPerp);
+            if (proj < minProj) minProj = proj;
+            if (proj > maxProj) maxProj = proj;
+            if (perp < minPerp) minPerp = perp;
+            if (perp > maxPerp) maxPerp = perp;
+        }
+
+        double midPerp = 0.5 * (minPerp + maxPerp);
+
+        // 2. Grow the slice region along the wedge band to include its sharp bottom-left tip and anti-aliased seams.
+        var inSliceZone = new bool[total];
+        var dist = new int[total];
+        Array.Fill(dist, -1);
+        foreach (int idx in bestSeeds)
+        {
+            inSliceZone[idx] = true;
+            dist[idx] = 0;
+            queue.Enqueue(idx);
+        }
+
+        while (queue.Count > 0)
+        {
+            int cur = queue.Dequeue();
+            int d = dist[cur];
+            if (d >= 14) continue;
+            int cx0 = cur % w;
+            int cy0 = (cur - cx0) / w;
+            foreach (var (dx, dy) in dirs)
+            {
+                int nx = cx0 + dx, ny = cy0 + dy;
+                if ((uint)nx >= (uint)w || (uint)ny >= (uint)h) continue;
+                int ni = (ny * w) + nx;
+                if (dist[ni] >= 0 || px[(ni * 4) + 3] < 80) continue;
+
+                double rdx = nx - meanX;
+                double rdy = ny - meanY;
+                double proj = (rdx * axis.X) + (rdy * axis.Y);
+                double perp = (rdx * nxPerp) + (rdy * nyPerp);
+                if (proj < minProj - 10.5 || proj > maxProj + 9.5) continue;
+                if (perp < minPerp - 5.5 || perp > maxPerp + 6.5) continue;
+
+                double n = norms[ni];
+                if (n < 0.13 || n > 0.74) continue;
+
+                // Reject outer black-to-white AA pixels (which touch both dark Orca <0.16 and bright badge >0.70),
+                // while allowing pure teal-to-badge outer curve pixels and teal-to-dark inner seam pixels.
+                if (d >= 2 && nx > 0 && nx < w - 1 && ny > 0 && ny < h - 1)
+                {
+                    double loN = 1.0, hiN = 0.0;
+                    for (int sy = -1; sy <= 1; sy++)
+                    {
+                        int row = (ny + sy) * w;
+                        for (int sx = -1; sx <= 1; sx++)
+                        {
+                            double nn = norms[row + nx + sx];
+                            if (nn < loN) loN = nn;
+                            if (nn > hiN) hiN = nn;
+                        }
+                    }
+
+                    if (loN < 0.16 && hiN > 0.70) continue;
+                }
+
+                dist[ni] = d + 1;
+                inSliceZone[ni] = true;
+                queue.Enqueue(ni);
+            }
+        }
+
+        double tipPxX = Math.Clamp(meanX + (axis.X * (minProj - 5.0)), 0, w - 1);
+        double tipPxY = Math.Clamp(meanY + (axis.Y * (minProj - 5.0)), 0, h - 1);
+        var tipNorm = new Point(tipPxX / Math.Max(1, w - 1), tipPxY / Math.Max(1, h - 1));
+
+        // 3. Separate into BaseDisc, UpperOrca (including enclosed oval eye), MiddleSlice, and LowerOrca.
+        var plateBuf = new byte[px.Length];
+        var upperBuf = new byte[px.Length];
+        var sliceBuf = new byte[px.Length];
+        var lowerBuf = new byte[px.Length];
+
+        double cx = (w - 1) * 0.5;
+        double cy = (h - 1) * 0.5;
+        double minDim = Math.Min(w, h);
+        double innerMaxR = minDim * 0.445;
+
+        for (int y = 0; y < h; y++)
+        {
+            double ny = y / (double)Math.Max(1, h - 1);
+            for (int x = 0; x < w; x++)
+            {
+                int idx = (y * w) + x;
+                int bi = idx * 4;
+                byte a = px[bi + 3];
+                if (a == 0) continue;
+
+                plateBuf[bi] = brightB;
+                plateBuf[bi + 1] = brightG;
+                plateBuf[bi + 2] = brightR;
+                plateBuf[bi + 3] = a;
+
+                double r = Math.Sqrt(((x - cx) * (x - cx)) + ((y - cy) * (y - cy)));
+                if (r > innerMaxR) continue;
+                double edgeSoft = Math.Clamp((innerMaxR - r) / 2.0, 0.0, 1.0);
+
+                double nx = x / (double)Math.Max(1, w - 1);
+                double n = norms[idx];
+                double perp = ((x - meanX) * nxPerp) + ((y - meanY) * nyPerp);
+
+                // Enclosed oval eye patch strictly inside the upper Orca head.
+                double edx = (nx - 0.578) / 0.092;
+                double edy = (ny - 0.272) / 0.072;
+                bool inEyeZone = ((edx * edx) + (edy * edy)) <= 1.0;
+
+                if (inEyeZone)
+                {
+                    double eyeT = Math.Clamp((n - 0.20) / 0.56, 0.0, 1.0);
+                    upperBuf[bi] = (byte)Math.Round(darkB + ((brightB - darkB) * eyeT));
+                    upperBuf[bi + 1] = (byte)Math.Round(darkG + ((brightG - darkG) * eyeT));
+                    upperBuf[bi + 2] = (byte)Math.Round(darkR + ((brightR - darkR) * eyeT));
+                    upperBuf[bi + 3] = (byte)Math.Round(a * edgeSoft);
+                }
+                else if (inSliceZone[idx])
+                {
+                    double fgTotal = Math.Clamp((0.74 - n) / 0.22, 0.0, 1.0) * edgeSoft;
+                    double sliceFrac = Math.Clamp((n - 0.13) / 0.24, 0.0, 1.0);
+                    double sliceWeight = fgTotal * sliceFrac;
+                    double orcaWeight = fgTotal * Math.Clamp((0.92 - sliceFrac) / 0.24, 0.0, 1.0);
+
+                    if (sliceWeight > 0.01)
+                    {
+                        sliceBuf[bi] = midB;
+                        sliceBuf[bi + 1] = midG;
+                        sliceBuf[bi + 2] = midR;
+                        sliceBuf[bi + 3] = (byte)Math.Round(a * sliceWeight);
+                    }
+
+                    if (orcaWeight > 0.01)
+                    {
+                        byte[] dst = perp < midPerp ? upperBuf : lowerBuf;
+                        dst[bi] = darkB;
+                        dst[bi + 1] = darkG;
+                        dst[bi + 2] = darkR;
+                        dst[bi + 3] = (byte)Math.Round(a * orcaWeight);
+                    }
+                }
+                else
+                {
+                    double darkWeight = Math.Clamp((0.60 - n) / 0.28, 0.0, 1.0) * edgeSoft;
+                    if (darkWeight > 0.01)
+                    {
+                        byte[] dst = perp < midPerp ? upperBuf : lowerBuf;
+                        dst[bi] = darkB;
+                        dst[bi + 1] = darkG;
+                        dst[bi + 2] = darkR;
+                        dst[bi + 3] = (byte)Math.Round(a * darkWeight);
+                    }
+                }
+            }
+        }
+
+        return new OrcaSlicerAnatomy(
+            FreezeBgra(w, h, plateBuf),
+            FreezeBgra(w, h, upperBuf),
+            FreezeBgra(w, h, sliceBuf),
+            FreezeBgra(w, h, lowerBuf),
+            tipNorm,
+            axis);
+    }
+
+    private static OrcaSlicerAnatomy BuildColoredOrcaSlicerAnatomy(int w, int h, byte[] monoPx, OrcaSlicerAnatomy monoOrca)
+    {
+        GetToneRange(w, h, monoPx, out byte minT, out byte maxT, out _, out _, out _, out _, out _, out _);
+        double span = Math.Max(20.0, maxT - minT);
+
+        CopyBgra32(monoOrca.BaseDisc, out _, out _, out var baseMask);
+        CopyBgra32(monoOrca.UpperOrca, out _, out _, out var upperMask);
+        CopyBgra32(monoOrca.MiddleSlice, out _, out _, out var sliceMask);
+        CopyBgra32(monoOrca.LowerOrca, out _, out _, out var lowerMask);
+
+        var plateOut = new byte[monoPx.Length];
+        var upperOut = new byte[monoPx.Length];
+        var sliceOut = new byte[monoPx.Length];
+        var lowerOut = new byte[monoPx.Length];
+
+        for (int y = 0; y < h; y++)
+        {
+            double ny = y / (double)Math.Max(1, h - 1);
+            for (int x = 0; x < w; x++)
+            {
+                int idx = (y * w) + x;
+                int bi = idx * 4;
+                double nx = x / (double)Math.Max(1, w - 1);
+
+                // 1. Clean cool silver-white circular badge (#E3E5E7 -> #F4F5F6) matching authentic OrcaSlicer icon.
+                byte ba = baseMask[bi + 3];
+                if (ba > 0)
+                {
+                    double grad = Math.Clamp((0.45 * nx) + (0.55 * ny), 0.0, 1.0);
+                    plateOut[bi] = (byte)Math.Round(0xE7 + ((0xF6 - 0xE7) * grad));
+                    plateOut[bi + 1] = (byte)Math.Round(0xE5 + ((0xF5 - 0xE5) * grad));
+                    plateOut[bi + 2] = (byte)Math.Round(0xE3 + ((0xF4 - 0xE3) * grad));
+                    plateOut[bi + 3] = ba;
+                }
+
+                // 2. Upper Orca head/fin (#262522) + enclosed pure white oval eye patch (#FFFFFF).
+                byte ua = upperMask[bi + 3];
+                if (ua > 0)
+                {
+                    double edx = (nx - 0.578) / 0.092;
+                    double edy = (ny - 0.272) / 0.072;
+                    double eyeT = 0.0;
+                    if (((edx * edx) + (edy * edy)) <= 1.0)
+                    {
+                        byte mTone = Math.Max(monoPx[bi], Math.Max(monoPx[bi + 1], monoPx[bi + 2]));
+                        eyeT = Math.Clamp(((mTone - minT) / span - 0.20) / 0.56, 0.0, 1.0);
+                    }
+
+                    upperOut[bi] = (byte)Math.Round(0x22 + ((0xFF - 0x22) * eyeT));
+                    upperOut[bi + 1] = (byte)Math.Round(0x25 + ((0xFF - 0x25) * eyeT));
+                    upperOut[bi + 2] = (byte)Math.Round(0x26 + ((0xFF - 0x26) * eyeT));
+                    upperOut[bi + 3] = ua;
+                }
+
+                // 3. Authentic OrcaSlicer Teal middle slicer wedge (#008D80 -> #00A192, centered on #009789).
+                byte sa = sliceMask[bi + 3];
+                if (sa > 0)
+                {
+                    double along = Math.Clamp(((nx - 0.28) * monoOrca.SliceAxis.X) + ((ny - 0.74) * monoOrca.SliceAxis.Y), 0.0, 0.60) / 0.60;
+                    sliceOut[bi] = (byte)Math.Round(0x80 + ((0x92 - 0x80) * along));
+                    sliceOut[bi + 1] = (byte)Math.Round(0x8D + ((0xA1 - 0x8D) * along));
+                    sliceOut[bi + 2] = 0x00;
+                    sliceOut[bi + 3] = sa;
+                }
+
+                // 4. Lower Orca belly/tail (#292825).
+                byte la = lowerMask[bi + 3];
+                if (la > 0)
+                {
+                    lowerOut[bi] = 0x25;
+                    lowerOut[bi + 1] = 0x28;
+                    lowerOut[bi + 2] = 0x29;
+                    lowerOut[bi + 3] = la;
+                }
+            }
+        }
+
+        return monoOrca with
+        {
+            BaseDisc = FreezeBgra(w, h, plateOut),
+            UpperOrca = FreezeBgra(w, h, upperOut),
+            MiddleSlice = FreezeBgra(w, h, sliceOut),
+            LowerOrca = FreezeBgra(w, h, lowerOut),
+        };
+    }
+
     private static ToneAnatomy? ExtractOrcaSlicerTones(int w, int h, byte[] px)
     {
-        GetToneRange(w, h, px, out byte minT, out byte maxT, out _, out _, out _, out byte darkB, out byte darkG, out byte darkR);
+        GetToneRange(w, h, px, out byte minT, out byte maxT, out byte brightB, out byte brightG, out byte brightR, out byte darkB, out byte darkG, out byte darkR);
         if (maxT - minT < 35) return null;
+
+        long perimBright = 0, perimDark = 0;
+        byte mid = (byte)((minT + maxT) / 2);
+        double cx = (w - 1) * 0.5;
+        double cy = (h - 1) * 0.5;
+        double innerMaxR = Math.Min(w, h) * 0.445;
+
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                double r = Math.Sqrt(((x - cx) * (x - cx)) + ((y - cy) * (y - cy)));
+                if (r < Math.Min(w, h) * 0.36) continue;
+                int bi = ((y * w) + x) * 4;
+                if (px[bi + 3] < 180) continue;
+                byte tone = Math.Max(px[bi], Math.Max(px[bi + 1], px[bi + 2]));
+                if (tone >= mid) perimBright++;
+                else perimDark++;
+            }
+        }
+
+        bool baseIsBright = perimBright >= perimDark;
+        byte plateB = baseIsBright ? brightB : darkB;
+        byte plateG = baseIsBright ? brightG : darkG;
+        byte plateR = baseIsBright ? brightR : darkR;
 
         var plateBuf = new byte[px.Length];
         var orcaBuf = new byte[px.Length];
         double span = Math.Max(20.0, maxT - minT);
 
-        for (int i = 0; i < w * h; i++)
+        for (int y = 0; y < h; y++)
         {
-            int bi = i * 4;
-            byte a = px[bi + 3];
-            if (a == 0) continue;
-
-            // Grounded dark circular build plate.
-            plateBuf[bi] = darkB;
-            plateBuf[bi + 1] = darkG;
-            plateBuf[bi + 2] = darkR;
-            plateBuf[bi + 3] = a;
-
-            // Bright leaping Orca whale & diagonal slicer cut on top of the build plate.
-            byte tone = Math.Max(px[bi], Math.Max(px[bi + 1], px[bi + 2]));
-            double lightness = Math.Clamp((tone - (minT + 14.0)) / (span * 0.75), 0.0, 1.0);
-            if (lightness > 0.03)
+            for (int x = 0; x < w; x++)
             {
-                orcaBuf[bi] = px[bi];
-                orcaBuf[bi + 1] = px[bi + 1];
-                orcaBuf[bi + 2] = px[bi + 2];
-                orcaBuf[bi + 3] = (byte)Math.Round(a * lightness);
+                int bi = ((y * w) + x) * 4;
+                byte a = px[bi + 3];
+                if (a == 0) continue;
+
+                // Grounded circular badge disc.
+                plateBuf[bi] = plateB;
+                plateBuf[bi + 1] = plateG;
+                plateBuf[bi + 2] = plateR;
+                plateBuf[bi + 3] = a;
+
+                double r = Math.Sqrt(((x - cx) * (x - cx)) + ((y - cy) * (y - cy)));
+                if (r > innerMaxR) continue;
+
+                // Inner Orca whale contrasting against the circular badge.
+                byte tone = Math.Max(px[bi], Math.Max(px[bi + 1], px[bi + 2]));
+                double contrast = baseIsBright
+                    ? Math.Clamp((maxT - 12.0 - tone) / (span * 0.72), 0.0, 1.0)
+                    : Math.Clamp((tone - (minT + 12.0)) / (span * 0.72), 0.0, 1.0);
+                double edgeSoft = Math.Clamp((innerMaxR - r) / 2.0, 0.0, 1.0);
+                double weight = contrast * edgeSoft;
+                if (weight > 0.03)
+                {
+                    orcaBuf[bi] = baseIsBright ? darkB : px[bi];
+                    orcaBuf[bi + 1] = baseIsBright ? darkG : px[bi + 1];
+                    orcaBuf[bi + 2] = baseIsBright ? darkR : px[bi + 2];
+                    orcaBuf[bi + 3] = (byte)Math.Round(a * weight);
+                }
             }
         }
 
@@ -1538,8 +1993,8 @@ public static class CyberIconAnatomy
                     int bi = i * 4;
                     byte ma = midMask[bi + 3];
                     if (ma == 0) continue;
-                    midOut[bi] = 0x9E;
-                    midOut[bi + 1] = 0x8B;
+                    midOut[bi] = 0xD4;
+                    midOut[bi + 1] = 0x78;
                     midOut[bi + 2] = 0x00;
                     midOut[bi + 3] = ma;
                 }

@@ -63,6 +63,22 @@ public abstract class HairlineGlyph : FrameworkElement
         InvalidateVisual();
     }
 
+    /// <summary>
+    /// The rim under every lit pixel: the dark one, or with <see cref="ContrastRim"/> the opposite of the ink, so a dark
+    /// glyph keeps a light edge where the bar under it turns dark (the visualizer's light, a dark theme colour).
+    /// </summary>
+    protected virtual bool ContrastRim => false;
+
+    private Color RimColor => ContrastRim ? Fade(Floe.App.Services.CyberLook.InkOn(Ink), .9) : Rim;
+
+    /// <summary>Resizes the glyph's box; the subclass lays its lines out from <see cref="FrameworkElement.Width"/>.</summary>
+    public void SetSize(double size)
+    {
+        if (Width == size && Height == size) return;
+        Width = Height = size;
+        InvalidateVisual();
+    }
+
     /// <summary>Eases hover in or out.</summary>
     public void Engage(bool on) => Ease(HoverProperty, on, on ? HoverInMs : HoverOutMs);
 
@@ -87,7 +103,7 @@ public abstract class HairlineGlyph : FrameworkElement
         dc.PushTransform(new MatrixTransform(1 / scale, 0, 0, 1 / scale, -fx / scale, -fy / scale));
         _painter.Begin(scale);
         Draw(_painter);
-        _painter.Flush(dc);
+        _painter.Flush(dc, RimColor);
         dc.Pop();
     }
 
@@ -223,11 +239,11 @@ public abstract class HairlineGlyph : FrameworkElement
             list.Add((new Int32Rect(x0, y0, x1 - x0 + 1, y1 - y0 + 1), c));
         }
 
-        internal void Flush(DrawingContext dc)
+        internal void Flush(DrawingContext dc, Color rim)
         {
             // one rim pass under everything, so a rim never cuts through a neighbouring line
-            foreach (var (box, c) in _fills) dc.DrawRectangle(Brush(Fade(Rim, c.A / 255.0)), null, new Rect(box.X - 1, box.Y - 1, box.Width + 2, box.Height + 2));
-            foreach (var (box, c) in _lines) dc.DrawRectangle(Brush(Fade(Rim, c.A / 255.0)), null, new Rect(box.X - 1, box.Y - 1, box.Width + 2, box.Height + 2));
+            foreach (var (box, c) in _fills) dc.DrawRectangle(Brush(Fade(rim, c.A / 255.0)), null, new Rect(box.X - 1, box.Y - 1, box.Width + 2, box.Height + 2));
+            foreach (var (box, c) in _lines) dc.DrawRectangle(Brush(Fade(rim, c.A / 255.0)), null, new Rect(box.X - 1, box.Y - 1, box.Width + 2, box.Height + 2));
             foreach (var (box, c) in _fills) dc.DrawRectangle(Brush(c), null, new Rect(box.X, box.Y, box.Width, box.Height));
             foreach (var (box, c) in _lines) dc.DrawRectangle(Brush(c), null, new Rect(box.X, box.Y, box.Width, box.Height));
         }

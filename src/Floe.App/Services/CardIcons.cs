@@ -439,7 +439,7 @@ public static class CardIcons
             AnimatedIconKind.Antigravity => PaintAntigravityColor(lw, lh, monoPx, colorPx),
             AnimatedIconKind.OpenCode => PaintOpenCodeColor(lw, lh, monoPx, colorPx, monoLogo),
             AnimatedIconKind.Claude => PaintClaudeColor(lw, lh, monoPx, colorPx),
-            AnimatedIconKind.OrcaSlicer => PaintOrcaSlicerColor(lw, lh, monoPx, colorPx),
+            AnimatedIconKind.OrcaSlicer => PaintOrcaSlicerColor(lw, lh, monoPx, colorPx, monoLogo),
             AnimatedIconKind.FileExplorer => PaintFileExplorerColor(lw, lh, monoPx, colorPx),
             AnimatedIconKind.Terminal => PaintTerminalColor(lw, lh, colorPx, monoLogo),
             AnimatedIconKind.TaskManager => PaintTaskManagerColor(lw, lh, monoPx, colorPx),
@@ -449,11 +449,11 @@ public static class CardIcons
             AnimatedIconKind.VSCode => PaintGradientToneColor(lw, lh, monoPx, colorPx, Color.FromRgb(0x00, 0x66, 0xB8), Color.FromRgb(0x29, 0xAD, 0xFF)),
             AnimatedIconKind.GitHub => PaintCutoutPlateColor(
                 lw, lh, colorPx, monoLogo, isCircular: true,
-                Color.FromRgb(0x2D, 0x33, 0x3B), Color.FromRgb(0x1C, 0x21, 0x28),
-                Color.FromRgb(0xF0, 0xF6, 0xFC)),
-            AnimatedIconKind.SevenZip => PaintSevenZipColor(lw, lh, colorPx, monoLogo),
-            AnimatedIconKind.Fusion => PaintGradientToneColor(lw, lh, monoPx, colorPx, Color.FromRgb(0xE8, 0x5D, 0x04), Color.FromRgb(0xFF, 0xB7, 0x03)),
-            AnimatedIconKind.RivaTuner => PaintRivatunerColor(lw, lh, colorPx, monoLogo),
+                Color.FromRgb(0x7C, 0x3A, 0xED), Color.FromRgb(0x55, 0x21, 0xB5),
+                Color.FromRgb(0xFF, 0xFF, 0xFF)),
+            AnimatedIconKind.SevenZip => PaintSevenZipColor(lw, lh, monoPx, colorPx, monoLogo),
+            AnimatedIconKind.Fusion => PaintGradientToneColor(lw, lh, monoPx, colorPx, Color.FromRgb(0xE8, 0x5D, 0x04), Color.FromRgb(0xFF, 0xA2, 0x00)),
+            AnimatedIconKind.RivaTuner => PaintRivatunerColor(lw, lh, monoPx, colorPx, monoLogo),
             AnimatedIconKind.MSIAfterburner => PaintGradientToneColor(lw, lh, monoPx, colorPx, Color.FromRgb(0xB8, 0x0F, 0x22), Color.FromRgb(0xFF, 0x47, 0x57)),
             _ => false,
         };
@@ -813,8 +813,38 @@ public static class CardIcons
         return true;
     }
 
-    private static bool PaintOrcaSlicerColor(int w, int h, byte[] monoPx, byte[] outPx)
+    private static bool PaintOrcaSlicerColor(int w, int h, byte[] monoPx, byte[] outPx, ImageSource monoLogo)
     {
+        if (CyberIconAnatomy.GetOrcaSlicerAnatomy(monoLogo) is not { } orca) return false;
+        if (!CopyStraightBgra32(orca.UpperOrca, out _, out _, out var upperMask)
+            || !CopyStraightBgra32(orca.MiddleSlice, out _, out _, out var sliceMask)
+            || !CopyStraightBgra32(orca.LowerOrca, out _, out _, out var lowerMask))
+        {
+            return false;
+        }
+
+        byte minT = 255, maxT = 0;
+        for (int i = 0; i < w * h; i++)
+        {
+            int bi = i * 4;
+            if (monoPx[bi + 3] < 180) continue;
+            byte t = Math.Max(monoPx[bi], Math.Max(monoPx[bi + 1], monoPx[bi + 2]));
+            if (t < minT) minT = t;
+            if (t > maxT) maxT = t;
+        }
+
+        float span = MathF.Max(20f, maxT - minT);
+
+        static void BlendOver(ref byte dstB, ref byte dstG, ref byte dstR, byte srcB, byte srcG, byte srcR, byte srcA)
+        {
+            if (srcA == 0) return;
+            float k = srcA / 255f;
+            dstB = Mix(dstB, srcB, k);
+            dstG = Mix(dstG, srcG, k);
+            dstR = Mix(dstR, srcR, k);
+        }
+
+        Array.Clear(outPx, 0, outPx.Length);
         for (int y = 0; y < h; y++)
         {
             float ny = y / (float)Math.Max(1, h - 1);
@@ -823,17 +853,53 @@ public static class CardIcons
                 int bi = ((y * w) + x) * 4;
                 byte a = monoPx[bi + 3];
                 if (a == 0) continue;
-                float cardTone = Math.Max(monoPx[bi], Math.Max(monoPx[bi + 1], monoPx[bi + 2])) / (float)Grey.B;
-                float orcaT = Math.Clamp((cardTone - 0.36f) / 0.54f, 0f, 1f);
+                float nx = x / (float)Math.Max(1, w - 1);
+                byte mTone = Math.Max(monoPx[bi], Math.Max(monoPx[bi + 1], monoPx[bi + 2]));
+                float norm = (mTone - minT) / span;
 
-                byte plateB = 0x2C, plateG = 0x22, plateR = 0x13;
-                byte orcaB = Mix(0xC8, 0xF8, 1f - ny);
-                byte orcaG = Mix(0xD8, 0xFF, 1f - ny);
-                byte orcaR = Mix(0x00, 0x90, 1f - ny);
+                // 1. Authentic OrcaSlicer cool silver-white circular badge (#E3E5E7 -> #F4F5F6) with subtle natural drop shadow.
+                float grad = Math.Clamp((0.45f * nx) + (0.55f * ny), 0f, 1f);
+                float shadow = 0.87f + (0.13f * Math.Clamp((norm - 0.68f) / 0.30f, 0f, 1f));
+                byte b = (byte)Math.Round(Mix(0xE7, 0xF6, grad) * shadow);
+                byte g = (byte)Math.Round(Mix(0xE5, 0xF5, grad) * shadow);
+                byte r = (byte)Math.Round(Mix(0xE3, 0xF4, grad) * shadow);
 
-                outPx[bi] = Mix(plateB, orcaB, orcaT);
-                outPx[bi + 1] = Mix(plateG, orcaG, orcaT);
-                outPx[bi + 2] = Mix(plateR, orcaR, orcaT);
+                // 2. Lower Orca charcoal belly/tail (#292825).
+                BlendOver(ref b, ref g, ref r, 0x25, 0x28, 0x29, lowerMask[bi + 3]);
+
+                // 3. Upper Orca charcoal head/fin (#262522) + enclosed pure white oval eye (#FFFFFF).
+                byte ua = upperMask[bi + 3];
+                if (ua > 0)
+                {
+                    float edx = (nx - 0.578f) / 0.092f;
+                    float edy = (ny - 0.272f) / 0.072f;
+                    float eyeT = ((edx * edx) + (edy * edy)) <= 1f
+                        ? Math.Clamp((norm - 0.20f) / 0.56f, 0f, 1f)
+                        : 0f;
+                    BlendOver(
+                        ref b, ref g, ref r,
+                        Mix(0x22, 0xFF, eyeT),
+                        Mix(0x25, 0xFF, eyeT),
+                        Mix(0x26, 0xFF, eyeT),
+                        ua);
+                }
+
+                // 4. Authentic OrcaSlicer Teal diagonal middle slice (#008D80 -> #00A192, centered on #009789).
+                byte sa = sliceMask[bi + 3];
+                if (sa > 0)
+                {
+                    float along = (float)Math.Clamp(((nx - 0.28) * orca.SliceAxis.X) + ((ny - 0.74) * orca.SliceAxis.Y), 0.0, 0.60) / 0.60f;
+                    BlendOver(
+                        ref b, ref g, ref r,
+                        Mix(0x80, 0x92, along),
+                        Mix(0x8D, 0xA1, along),
+                        0x00,
+                        sa);
+                }
+
+                outPx[bi] = b;
+                outPx[bi + 1] = g;
+                outPx[bi + 2] = r;
                 outPx[bi + 3] = a;
             }
         }
@@ -953,26 +1019,22 @@ public static class CardIcons
             byte a = monoPx[bi + 3];
             if (a == 0) continue;
             float cardTone = Math.Max(monoPx[bi], Math.Max(monoPx[bi + 1], monoPx[bi + 2])) / (float)Grey.B;
-            if (cardTone < 0.45f)
+
+            // Smooth anti-aliased Windows 11 Task Manager tones:
+            // Sky (#16202E) -> Secondary Azure wave (#0078D4) -> Primary Sky-Cyan wave (#38BDF8)
+            if (cardTone < 0.60f)
             {
-                // Monitor sky: Deep Navy (#121D28)
-                outPx[bi] = 0x28;
-                outPx[bi + 1] = 0x1D;
-                outPx[bi + 2] = 0x12;
-            }
-            else if (cardTone < 0.76f)
-            {
-                // Secondary CPU wave: Teal-Blue (#008B9E)
-                outPx[bi] = 0x9E;
-                outPx[bi + 1] = 0x8B;
-                outPx[bi + 2] = 0x00;
+                float t = Math.Clamp((cardTone - 0.34f) / 0.22f, 0f, 1f);
+                outPx[bi] = Mix(0x2E, 0xD4, t);
+                outPx[bi + 1] = Mix(0x20, 0x78, t);
+                outPx[bi + 2] = Mix(0x16, 0x00, t);
             }
             else
             {
-                // Primary CPU wave: Electric Cyan-Mint (#00F5D4)
-                outPx[bi] = 0xD4;
-                outPx[bi + 1] = 0xF5;
-                outPx[bi + 2] = 0x00;
+                float t = Math.Clamp((cardTone - 0.68f) / 0.20f, 0f, 1f);
+                outPx[bi] = Mix(0xD4, 0xF8, t);
+                outPx[bi + 1] = Mix(0x78, 0xBD, t);
+                outPx[bi + 2] = Mix(0x00, 0x38, t);
             }
 
             outPx[bi + 3] = a;
@@ -1089,7 +1151,7 @@ public static class CardIcons
         return true;
     }
 
-    private static bool PaintSevenZipColor(int w, int h, byte[] outPx, ImageSource monoLogo)
+    private static bool PaintSevenZipColor(int w, int h, byte[] monoPx, byte[] outPx, ImageSource monoLogo)
     {
         if (CyberIconAnatomy.GetConnectedIslands(monoLogo) is not { Count: >= 3 } islands) return false;
         Array.Clear(outPx, 0, outPx.Length);
@@ -1097,7 +1159,7 @@ public static class CardIcons
         var frame = sorted[0];
         var inner = sorted.Skip(1).OrderBy(i => i.NormalizedCenter.X).ToList();
 
-        void PaintPart(ImageSource bmp, Color c)
+        void PaintPart(ImageSource bmp, Color darkC, Color brightC)
         {
             if (!CopyStraightBgra32(bmp, out _, out _, out var bytes)) return;
             for (int i = 0; i < w * h; i++)
@@ -1105,28 +1167,31 @@ public static class CardIcons
                 int bi = i * 4;
                 byte a = bytes[bi + 3];
                 if (a == 0) continue;
-                outPx[bi] = c.B;
-                outPx[bi + 1] = c.G;
-                outPx[bi + 2] = c.R;
+                float tone = Math.Clamp(Math.Max(monoPx[bi], Math.Max(monoPx[bi + 1], monoPx[bi + 2])) / (float)Grey.B, 0.3f, 1f);
+                float t = (tone - 0.3f) / 0.7f;
+                outPx[bi] = Mix(darkC.B, brightC.B, t);
+                outPx[bi + 1] = Mix(darkC.G, brightC.G, t);
+                outPx[bi + 2] = Mix(darkC.R, brightC.R, t);
                 outPx[bi + 3] = a;
             }
         }
 
-        PaintPart(frame.Bitmap, Color.FromRgb(0x32, 0x3C, 0x4E));
+        // Authentic 7-Zip monochrome palette: Charcoal-Black frame + crisp Pure White '7' and 'z' glyphs.
+        PaintPart(frame.Bitmap, Color.FromRgb(0x20, 0x25, 0x2E), Color.FromRgb(0x38, 0x41, 0x52));
         for (int i = 0; i < inner.Count; i++)
         {
-            PaintPart(inner[i].Bitmap, i == 0 ? Color.FromRgb(0x00, 0xE5, 0xFF) : Color.FromRgb(0xFF, 0xB7, 0x03));
+            PaintPart(inner[i].Bitmap, Color.FromRgb(0xE2, 0xE8, 0xF0), Color.FromRgb(0xFF, 0xFF, 0xFF));
         }
 
         return true;
     }
 
-    private static bool PaintRivatunerColor(int w, int h, byte[] outPx, ImageSource monoLogo)
+    private static bool PaintRivatunerColor(int w, int h, byte[] monoPx, byte[] outPx, ImageSource monoLogo)
     {
         if (CyberIconAnatomy.GetRivatunerAnatomy(monoLogo) is not { } riva) return false;
         Array.Clear(outPx, 0, outPx.Length);
 
-        void PaintLayer(ImageSource? bmp, Color c)
+        void PaintLayer(ImageSource? bmp, Color darkC, Color brightC)
         {
             if (bmp is null || !CopyStraightBgra32(bmp, out _, out _, out var bytes)) return;
             for (int i = 0; i < w * h; i++)
@@ -1134,17 +1199,19 @@ public static class CardIcons
                 int bi = i * 4;
                 byte a = bytes[bi + 3];
                 if (a == 0) continue;
-                outPx[bi] = c.B;
-                outPx[bi + 1] = c.G;
-                outPx[bi + 2] = c.R;
+                float tone = Math.Clamp(Math.Max(monoPx[bi], Math.Max(monoPx[bi + 1], monoPx[bi + 2])) / (float)Grey.B, 0.25f, 1f);
+                float t = (tone - 0.25f) / 0.75f;
+                outPx[bi] = Mix(darkC.B, brightC.B, t);
+                outPx[bi + 1] = Mix(darkC.G, brightC.G, t);
+                outPx[bi + 2] = Mix(darkC.R, brightC.R, t);
                 outPx[bi + 3] = a;
             }
         }
 
-        PaintLayer(riva.ScreenBody, Color.FromRgb(0x25, 0x63, 0xEB));
-        PaintLayer(riva.StandBase, Color.FromRgb(0x64, 0x74, 0x8B));
-        PaintLayer(riva.FpsBadge?.Bitmap, Color.FromRgb(0xF7, 0x25, 0x85));
-        PaintLayer(riva.BezelSlider?.Bitmap, Color.FromRgb(0x00, 0xF0, 0xFF));
+        PaintLayer(riva.ScreenBody, Color.FromRgb(0x1D, 0x4E, 0xD8), Color.FromRgb(0x3B, 0x82, 0xF6));
+        PaintLayer(riva.StandBase, Color.FromRgb(0x64, 0x74, 0x8B), Color.FromRgb(0x94, 0xA3, 0xB8));
+        PaintLayer(riva.FpsBadge?.Bitmap, Color.FromRgb(0xDB, 0x27, 0x77), Color.FromRgb(0xF4, 0x72, 0xB6));
+        PaintLayer(riva.BezelSlider?.Bitmap, Color.FromRgb(0xCB, 0xD5, 0xE1), Color.FromRgb(0xF8, 0xFA, 0xFC));
         return true;
     }
 
@@ -1173,8 +1240,9 @@ public static class CardIcons
     private static void PaintGeneralRealIconColor(
         int lw, int lh, byte[] monoPx, byte[] outPx, ImageSource monoLogo, ImageSource? realIcon)
     {
-        float domR = 0.38f, domG = 0.86f, domB = 1.0f;
-        float centerR = 1.0f, centerG = 0.55f, centerB = 0.25f;
+        // Preserve authentic RGB colors (including white, silver, dark, and multi-color regions) directly from realIcon
+        // without artificial hue/saturation filters or fake cyan fallbacks.
+        float fallbackR = 230f, fallbackG = 234f, fallbackB = 240f;
         var colorGrid = new (float R, float G, float B, float Weight)[lw * lh];
 
         if (realIcon is not null)
@@ -1200,108 +1268,46 @@ public static class CardIcons
             {
                 int cropW = maxX - minX + 1;
                 int cropH = maxY - minY + 1;
-                double dR = 0, dG = 0, dB = 0, dW = 0;
-                double cR = 0, cG = 0, cB = 0, cW = 0;
+                double avgR = 0, avgG = 0, avgB = 0, avgW = 0;
 
                 for (int ly = 0; ly < lh; ly++)
                 {
                     int sy = minY + Math.Clamp((int)((ly + 0.5) * cropH / lh), 0, cropH - 1);
-                    float ny = (ly / (float)Math.Max(1, lh - 1)) - 0.5f;
                     for (int lx = 0; lx < lw; lx++)
                     {
                         int sx = minX + Math.Clamp((int)((lx + 0.5) * cropW / lw), 0, cropW - 1);
-                        float nx = (lx / (float)Math.Max(1, lw - 1)) - 0.5f;
                         int si = ((sy * rw) + sx) * 4;
                         byte b = realBytes[si], g = realBytes[si + 1], r = realBytes[si + 2], a = realBytes[si + 3];
                         if (a < 24) continue;
-                        byte maxC = Math.Max(r, Math.Max(g, b));
-                        byte minC = Math.Min(r, Math.Min(g, b));
-                        if (maxC < 20) continue;
-
-                        float sat = (maxC - minC) / (float)maxC;
-                        float val = maxC / 255f;
-                        float nR = r / (float)maxC, nG = g / (float)maxC, nB = b / (float)maxC;
-                        float w = (a / 255f) * (0.12f + (sat * 2.4f)) * (0.25f + (val * 0.75f));
-                        colorGrid[(ly * lw) + lx] = (nR, nG, nB, w);
-
-                        float dw = (a / 255f) * (0.04f + (sat * sat * 4.0f)) * val;
-                        dR += nR * dw; dG += nG * dw; dB += nB * dw; dW += dw;
-
-                        if ((nx * nx) + (ny * ny) <= 0.08f && sat > 0.25f)
-                        {
-                            cR += nR * dw; cG += nG * dw; cB += nB * dw; cW += dw;
-                        }
+                        float w = a / 255f;
+                        colorGrid[(ly * lw) + lx] = (r, g, b, w);
+                        avgR += r * w;
+                        avgG += g * w;
+                        avgB += b * w;
+                        avgW += w;
                     }
                 }
 
-                if (dW > 0.01)
+                if (avgW > 0.01)
                 {
-                    domR = (float)(dR / dW); domG = (float)(dG / dW); domB = (float)(dB / dW);
-                    float fMax = Math.Max(domR, Math.Max(domG, domB));
-                    float fMin = Math.Min(domR, Math.Min(domG, domB));
-                    if (fMax > 0.01f) { domR /= fMax; domG /= fMax; domB /= fMax; }
-                    if (fMax - fMin < 0.12f) { domR = 0.42f; domG = 0.88f; domB = 1.0f; }
-                }
-
-                if (cW > 0.01)
-                {
-                    centerR = (float)(cR / cW); centerG = (float)(cG / cW); centerB = (float)(cB / cW);
-                    float cMax = Math.Max(centerR, Math.Max(centerG, centerB));
-                    if (cMax > 0.01f) { centerR /= cMax; centerG /= cMax; centerB /= cMax; }
-                }
-                else
-                {
-                    centerR = 0.96f; centerG = 0.98f; centerB = 1.0f;
+                    fallbackR = (float)(avgR / avgW);
+                    fallbackG = (float)(avgG / avgW);
+                    fallbackB = (float)(avgB / avgW);
                 }
             }
         }
 
-        // Check if this card has a dark inner well (e.g. Media Player) or multi-tone layers.
-        byte minT = 255, maxT = 0;
-        for (int i = 0; i < lw * lh; i++)
-        {
-            if (monoPx[(i * 4) + 3] < 200) continue;
-            byte t = Math.Max(monoPx[i * 4], Math.Max(monoPx[(i * 4) + 1], monoPx[(i * 4) + 2]));
-            if (t < minT) minT = t;
-            if (t > maxT) maxT = t;
-        }
-
-        bool hasThreeToneWell = (maxT - minT) >= 40;
-        const int radius = 5;
-
+        const int radius = 4;
         for (int y = 0; y < lh; y++)
         {
-            float ny = (y / (float)Math.Max(1, lh - 1)) - 0.5f;
             for (int x = 0; x < lw; x++)
             {
                 int bi = ((y * lw) + x) * 4;
                 byte cardA = monoPx[bi + 3];
                 if (cardA == 0) continue;
 
-                float nx = (x / (float)Math.Max(1, lw - 1)) - 0.5f;
-                float rDist = MathF.Sqrt((nx * nx) + (ny * ny));
                 byte cardMax = Math.Max(monoPx[bi], Math.Max(monoPx[bi + 1], monoPx[bi + 2]));
-                float cardTone = Math.Clamp(cardMax / (float)Grey.B, 0f, 1.15f);
-
-                if (hasThreeToneWell && cardTone < 0.46f)
-                {
-                    // Dark inner well: rich deep shade of the dominant color.
-                    outPx[bi] = (byte)Math.Clamp(Math.Round(domB * 58f), 18, 70);
-                    outPx[bi + 1] = (byte)Math.Clamp(Math.Round(domG * 46f), 14, 58);
-                    outPx[bi + 2] = (byte)Math.Clamp(Math.Round(domR * 58f), 18, 70);
-                    outPx[bi + 3] = cardA;
-                    continue;
-                }
-
-                if (hasThreeToneWell && rDist <= 0.25f && cardTone >= 0.65f)
-                {
-                    // Inner high-contrast center emblem (e.g. Media Player's coral-orange '►' play triangle).
-                    outPx[bi] = (byte)Math.Clamp(Math.Round(centerB * 248f), 0, 255);
-                    outPx[bi + 1] = (byte)Math.Clamp(Math.Round(centerG * 248f), 0, 255);
-                    outPx[bi + 2] = (byte)Math.Clamp(Math.Round(centerR * 248f), 0, 255);
-                    outPx[bi + 3] = cardA;
-                    continue;
-                }
+                float cardTone = Math.Clamp(cardMax / (float)Grey.B, 0.35f, 1.08f);
 
                 float sumR = 0, sumG = 0, sumB = 0, sumW = 0;
                 for (int dy = -radius; dy <= radius; dy++)
@@ -1315,36 +1321,27 @@ public static class CardIcons
                         if ((uint)cx >= (uint)lw) continue;
                         var cell = colorGrid[gRow + cx];
                         if (cell.Weight <= 0) continue;
-                        float w = cell.Weight / (1f + (dx * dx) + (dy * dy));
-                        sumR += cell.R * w; sumG += cell.G * w; sumB += cell.B * w; sumW += w;
+                        float w = cell.Weight / (1f + ((dx * dx) + (dy * dy)) * 0.75f);
+                        sumR += cell.R * w;
+                        sumG += cell.G * w;
+                        sumB += cell.B * w;
+                        sumW += w;
                     }
                 }
 
-                float nR = domR, nG = domG, nB = domB;
-                if (sumW > 0.05f)
-                {
-                    float lR = sumR / sumW, lG = sumG / sumW, lB = sumB / sumW;
-                    float lMax = Math.Max(lR, Math.Max(lG, lB));
-                    float lMin = Math.Min(lR, Math.Min(lG, lB));
-                    if (lMax > 0.01f) { lR /= lMax; lG /= lMax; lB /= lMax; }
-                    float localBlend = Math.Clamp(((lMax - lMin) - 0.12f) / 0.25f, 0f, 1f);
-                    nR = (domR * (1f - localBlend)) + (lR * localBlend);
-                    nG = (domG * (1f - localBlend)) + (lG * localBlend);
-                    nB = (domB * (1f - localBlend)) + (lB * localBlend);
-                    float bMax = Math.Max(nR, Math.Max(nG, nB));
-                    if (bMax > 0.01f) { nR /= bMax; nG /= bMax; nB /= bMax; }
-                }
+                float baseR = sumW > 0.02f ? (sumR / sumW) : fallbackR;
+                float baseG = sumW > 0.02f ? (sumG / sumW) : fallbackG;
+                float baseB = sumW > 0.02f ? (sumB / sumW) : fallbackB;
+                float relief = 0.72f + (0.28f * cardTone);
 
-                float peak = Math.Clamp(242f * cardTone, 0f, 255f);
-                outPx[bi] = (byte)Math.Clamp(Math.Round(nB * peak), 0, 255);
-                outPx[bi + 1] = (byte)Math.Clamp(Math.Round(nG * peak), 0, 255);
-                outPx[bi + 2] = (byte)Math.Clamp(Math.Round(nR * peak), 0, 255);
+                outPx[bi] = (byte)Math.Clamp(Math.Round(baseB * relief), 0, 255);
+                outPx[bi + 1] = (byte)Math.Clamp(Math.Round(baseG * relief), 0, 255);
+                outPx[bi + 2] = (byte)Math.Clamp(Math.Round(baseR * relief), 0, 255);
                 outPx[bi + 3] = cardA;
             }
         }
 
-        // If the synthesized card has transparent interior cutout holes, fill them with crisp white
-        // so the dock background colour never bleeds through the symbol.
+        // Fill any transparent interior cutout holes with clean crisp white so the dock colour does not bleed through.
         if (CyberIconAnatomy.GetCutoutStencil(monoLogo) is { Parts.Count: >= 1 } stencil)
         {
             foreach (var part in stencil.Parts)
@@ -1357,8 +1354,8 @@ public static class CardIcons
                     if (pa == 0) continue;
                     double t = pa / 255.0;
                     outPx[bi] = Mix(outPx[bi], 0xFF, t);
-                    outPx[bi + 1] = Mix(outPx[bi + 1], 0xF8, t);
-                    outPx[bi + 2] = Mix(outPx[bi + 2], 0xF4, t);
+                    outPx[bi + 1] = Mix(outPx[bi + 1], 0xFA, t);
+                    outPx[bi + 2] = Mix(outPx[bi + 2], 0xF8, t);
                     if (pa > outPx[bi + 3]) outPx[bi + 3] = pa;
                 }
             }

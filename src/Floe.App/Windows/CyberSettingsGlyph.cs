@@ -26,15 +26,15 @@ public sealed class CyberSettingsGlyph : Canvas
     private readonly SolidColorBrush _accentBrush = new(Colors.Red);
     private readonly TranslateTransform[] _knobShifts = new TranslateTransform[3];
     private readonly Ellipse[] _knobs = new Ellipse[3];
+    private readonly ScaleTransform _scale = new(1, 1);
     private Color _ink, _accent;
     private bool _engaged;
 
     public CyberSettingsGlyph(double size)
     {
-        Width = Height = size;
         IsHitTestVisible = false;
 
-        var root = new Canvas { RenderTransform = new ScaleTransform(size / View, size / View) };
+        var root = new Canvas { RenderTransform = _scale };
         for (int i = 0; i < RailSpecs.Length; i++)
         {
             var (y, restX, _) = RailSpecs[i];
@@ -68,6 +68,14 @@ public sealed class CyberSettingsGlyph : Canvas
         }
 
         Children.Add(root);
+        SetSize(size);
+    }
+
+    /// <summary>Resizes the glyph (dock or taskbar); the rails keep their proportions.</summary>
+    public void SetSize(double size)
+    {
+        Width = Height = size;
+        _scale.ScaleX = _scale.ScaleY = size / View;
     }
 
     /// <summary>Updates ink and accent colors for the rails and sliding knobs.</summary>

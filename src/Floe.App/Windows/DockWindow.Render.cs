@@ -196,8 +196,6 @@ public partial class DockWindow
             var cursorY = IsMouseOver ? Math.Clamp((Mouse.GetPosition(Root).Y - RestTop) / RestBarHeight, 0, 1) : 0;
             if (Changed(ref _metalCursorY, cursorY)) _metalEffect.CursorY = cursorY;
         }
-        // the taskbar neither swells nor magnifies under the cursor
-        if (TaskbarOn) _targetBulge = _currentBulge = _bulgeVel = 0;
         _currentHoverX = Spring(_currentHoverX, ref _hoverVel, _targetHoverX, dt);
         _currentBulge = Spring(_currentBulge, ref _bulgeVel, _targetBulge, dt);
         _dockScale = Spring(_dockScale, ref _dockScaleVel, _targetDockScale, dt, 180, 24);
@@ -332,7 +330,7 @@ public partial class DockWindow
 
     private void UpdateGlow()
     {
-        if (_slots.Count == 0 || _currentBulge <= 0.5 || GlassSettings.Cyber)
+        if (_slots.Count == 0 || _currentBulge <= 0.5 || GlassSettings.Cyber || TaskbarOn)
         {
             _glow.Visibility = Visibility.Collapsed;
             return;
@@ -574,7 +572,8 @@ public partial class DockWindow
         _ => (0.72, 0, 52),
     };
 
-    private double EffectiveBulge => _currentBulge * BulgeShape.Height;
+    // the taskbar's icons magnify under the cursor, but its glass stays a flat bar
+    private double EffectiveBulge => TaskbarOn ? 0 : _currentBulge * BulgeShape.Height;
 
     private static double BulgeProfile(double distance)
     {

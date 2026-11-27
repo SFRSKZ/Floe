@@ -1,3 +1,4 @@
+using Floe.App.Effects.Gpu.BladeRunner;
 using Floe.App.Effects.Gpu.Cp77;
 using Floe.App.Services;
 
@@ -15,7 +16,14 @@ public static class GpuSceneCatalog
         or VisualizerStyle.CyberBlackwallCinder or VisualizerStyle.CyberArasakaOs or VisualizerStyle.CyberBraindanceSuite
         or VisualizerStyle.CyberApogee or VisualizerStyle.CyberCantoDaemon or VisualizerStyle.CyberNightCity
         or VisualizerStyle.CyberTraumaTeam or VisualizerStyle.CyberLiquidChrome or VisualizerStyle.CyberDogtownFlir
-        or VisualizerStyle.CyberMonowire or VisualizerStyle.CyberStrands;
+        or VisualizerStyle.CyberMonowire or VisualizerStyle.CyberStrands
+        or VisualizerStyle.CyberBrHorizon or VisualizerStyle.CyberBrLightBands or VisualizerStyle.CyberBrPulseLine or VisualizerStyle.CyberBrHangingFlames or VisualizerStyle.CyberBrWarmColumns or VisualizerStyle.CyberBrGlitchBlocks or VisualizerStyle.CyberBrFrostPanels or VisualizerStyle.CyberBrLedColumns or VisualizerStyle.CyberBrBarcode or VisualizerStyle.CyberBrLances or VisualizerStyle.CyberBrGreenOrbs or VisualizerStyle.CyberBrChevron;
+
+    /// <summary>The looks the automatic round moves through: this theme's GPU looks that the settings offer.</summary>
+    public static VisualizerStyle[] Round(bool cyber, Func<VisualizerStyle, bool> fits) =>
+        Enum.GetValues<VisualizerStyle>()
+            .Where(look => Has(look) && GlassSettings.IsCyberLook(look) == cyber && !GlassSettings.IsDroppedCyberLook(look) && !GlassSettings.IsRetiredLook(look) && fits(look))
+            .ToArray();
 
     public static IGpuScene Create(VisualizerStyle look) => look switch
     {
@@ -48,6 +56,18 @@ public static class GpuSceneCatalog
         VisualizerStyle.CyberDogtownFlir => new DogtownThermalGpuScene(),
         VisualizerStyle.CyberMonowire => new MonowireArcGpuScene(),
         VisualizerStyle.CyberStrands => new StrandCurtainGpuScene(),
+        VisualizerStyle.CyberBrHorizon => new BrHorizon(),
+        VisualizerStyle.CyberBrLightBands => new BrLightBands(),
+        VisualizerStyle.CyberBrPulseLine => new BrPulseLine(),
+        VisualizerStyle.CyberBrHangingFlames => new BrHangingFlames(),
+        VisualizerStyle.CyberBrWarmColumns => new BrWarmColumns(),
+        VisualizerStyle.CyberBrGlitchBlocks => new BrGlitchBlocks(),
+        VisualizerStyle.CyberBrFrostPanels => new BrFrostPanels(),
+        VisualizerStyle.CyberBrLedColumns => new BrLedColumns(),
+        VisualizerStyle.CyberBrBarcode => new BrBarcode(),
+        VisualizerStyle.CyberBrLances => new BrLances(),
+        VisualizerStyle.CyberBrGreenOrbs => new BrGreenOrbs(),
+        VisualizerStyle.CyberBrChevron => new BrChevron(),
         _ => throw new ArgumentOutOfRangeException(nameof(look)),
     };
 }

@@ -122,7 +122,7 @@ internal sealed class EdgeTurnPass : IDisposable
     }
 
     private static ReadOnlyMemory<byte> Compile(string profile, string source) =>
-        Compiler.Compile(source, "main", "EdgeTurn", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
+        Floe.App.Effects.Gpu.GpuShaderCache.Compile(source, "main", "EdgeTurn", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
 
     private const string FullscreenVs = """
         float4 main(uint id : SV_VertexID) : SV_Position

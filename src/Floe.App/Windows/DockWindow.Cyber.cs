@@ -22,6 +22,8 @@ public partial class DockWindow
     private readonly Path _slotFill = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed, Fill = CyberFxLayer.Solid(FxInk) };
     private static double CyberChamfer => 14 * GlassSettings.CyberCut;
     private const double DecalRoom = 160;
+    // the decal stands this far right of the capsule
+    private const double CyberDecalGap = 12;
     private const double CardBleed = 10; // the Cyberpunk card's frame takes this much room around the logo
     private const int SecondBars = 6;
     private const double ClockLight = 11;
@@ -153,7 +155,7 @@ public partial class DockWindow
         AddPlate(_shapeGeometry, left, top, right, bottom, CyberChamfer);
         AddPlate(accent, left + 20, bottom + 4, left + 110, bottom + 8, 0);
         _cyberAccent.Data = accent;
-        Canvas.SetLeft(_cyberDecal, right + 12);
+        Canvas.SetLeft(_cyberDecal, right + CyberDecalGap);
         Canvas.SetTop(_cyberDecal, top + 6);
     }
 
@@ -318,7 +320,8 @@ public partial class DockWindow
 
         foreach (var (image, key, size) in _inkGlyphs)
         {
-            image.Source = cyber ? CyberIcons.Draw(CyberGlyph(key), brush) : DotMatrixIcons.Render(key, size, InkGlyphColor, DpiScale);
+            var drawn = image == _settingsGlyph ? _appliedButtonGlyph : size;
+            image.Source = cyber ? CyberIcons.Draw(CyberGlyph(key), brush) : DotMatrixIcons.Render(key, drawn, InkGlyphColor, DpiScale);
             image.Opacity = cyber ? 1 : 0.82;
         }
 

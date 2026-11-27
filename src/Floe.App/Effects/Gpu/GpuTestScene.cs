@@ -62,8 +62,8 @@ internal sealed class GpuTestScene : IGpuScene
 
     public void Initialize(ID3D11Device device)
     {
-        var vertexCode = Compiler.Compile(ShaderSource, "VSMain", "GpuTestScene", "vs_5_0", ShaderFlags.OptimizationLevel3, EffectFlags.None);
-        var pixelCode = Compiler.Compile(ShaderSource, "PSMain", "GpuTestScene", "ps_5_0", ShaderFlags.OptimizationLevel3, EffectFlags.None);
+        var vertexCode = Floe.App.Effects.Gpu.GpuShaderCache.Compile(ShaderSource, "VSMain", "GpuTestScene", "vs_5_0", ShaderFlags.OptimizationLevel3, EffectFlags.None);
+        var pixelCode = Floe.App.Effects.Gpu.GpuShaderCache.Compile(ShaderSource, "PSMain", "GpuTestScene", "ps_5_0", ShaderFlags.OptimizationLevel3, EffectFlags.None);
         _vertexShader = device.CreateVertexShader(vertexCode.Span, null);
         _pixelShader = device.CreatePixelShader(pixelCode.Span, null);
         _buffer = device.CreateBuffer(new BufferDescription(

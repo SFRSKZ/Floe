@@ -337,7 +337,7 @@ public abstract class DesktopPointScene : IGpuScene
     }
 
     private ReadOnlyMemory<byte> Compile(string profile, string source) =>
-        Compiler.Compile(source, "main", GetType().Name, profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
+        Floe.App.Effects.Gpu.GpuShaderCache.Compile(source, "main", GetType().Name, profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
 
     private sealed class Target : IDisposable
     {

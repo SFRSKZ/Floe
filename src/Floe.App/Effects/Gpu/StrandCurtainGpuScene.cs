@@ -509,7 +509,7 @@ public sealed class StrandCurtainGpuScene : IGpuScene, IThemedGpuScene
     public void Dispose() => ReleaseDevice();
 
     private static ReadOnlyMemory<byte> Compile(string profile, string source) =>
-        Compiler.Compile(source, "main", "StrandCurtain", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
+        Floe.App.Effects.Gpu.GpuShaderCache.Compile(source, "main", "StrandCurtain", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
 
     private sealed class Target : IDisposable
     {

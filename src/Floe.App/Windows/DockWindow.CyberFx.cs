@@ -1094,7 +1094,7 @@ public partial class DockWindow
     /// <summary>One still of an effect, for --render with --fx=name:progress.</summary>
     internal void PreviewCyberFx(string name, double progress)
     {
-        var slot = _slots.Count > 2 ? _slots[2] : _slots.FirstOrDefault();
+        var slot = _fxHover ?? (_slots.Count > 2 ? _slots[2] : _slots.FirstOrDefault());
         if (slot is null) return;
         switch (name)
         {

@@ -735,7 +735,7 @@ public sealed class MeltGpuScene : IGpuScene
     // ---- shaders and states ---------------------------------------------------------------------
 
     private static ReadOnlyMemory<byte> Compile(string profile, string source) =>
-        Compiler.Compile(source, "main", "Melt", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
+        Floe.App.Effects.Gpu.GpuShaderCache.Compile(source, "main", "Melt", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
 
     private static ReadOnlyMemory<byte> Compute(string body) =>
         Compile("cs_5_0", SimPrelude + "\n" + body);

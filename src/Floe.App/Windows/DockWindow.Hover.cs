@@ -58,7 +58,8 @@ public partial class DockWindow
             return;
         }
 
-        _targetHoverX = Math.Min(_windowWidth, Math.Max(0, position.X));
+        // the taskbar's root is wider than its window and starts left of 0: the icons there would all read as x = 0
+        _targetHoverX = TaskbarOn ? Math.Clamp(position.X, BarLeft, BarRight) : Math.Min(_windowWidth, Math.Max(0, position.X));
         _targetBulge = MaxBulge;
         _targetDockScale = FullScale;
         SetIconsDimmed(false);
@@ -125,7 +126,7 @@ public partial class DockWindow
         var best = double.MaxValue;
         for (var i = 0; i < _slots.Count; i++)
         {
-            var distance = Math.Abs(_currentHoverX - (_restCapsuleLeft + _slots[i].CenterLocal));
+            var distance = Math.Abs(_currentHoverX - RestCenter(_slots[i]));
             if (distance < best && distance <= IconBox)
             {
                 best = distance;

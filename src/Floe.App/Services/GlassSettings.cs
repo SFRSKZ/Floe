@@ -39,6 +39,17 @@ public enum AppLanguage
 }
 
 /// <summary>How the desktop's strand curtain moves from one camera shot to the next.</summary>
+/// <summary>What the visualizer strip shows while no music plays.</summary>
+public enum IdleShow
+{
+    /// <summary>The chosen look plays on, slowly, as a screensaver driven by a calm made-up spectrum.</summary>
+    Animation,
+    /// <summary>The Kiroshi standby HUD (cyber themes only; elsewhere nothing).</summary>
+    Kiroshi,
+    /// <summary>The strip goes away.</summary>
+    Off,
+}
+
 public enum StrandMotion
 {
     Glide,
@@ -114,6 +125,19 @@ public enum VisualizerStyle
     CyberDogtownFlir,
     CyberMonowire,
     CyberStrands,
+    // Blade Runner 2099 title-sequence looks
+    CyberBrHorizon,
+    CyberBrLightBands,
+    CyberBrPulseLine,
+    CyberBrHangingFlames,
+    CyberBrWarmColumns,
+    CyberBrGlitchBlocks,
+    CyberBrFrostPanels,
+    CyberBrLedColumns,
+    CyberBrBarcode,
+    CyberBrLances,
+    CyberBrGreenOrbs,
+    CyberBrChevron,
     // a WebGL2 visualizer from the plugins folder, run in a WebView2 strip
     Plugin,
 }
@@ -223,6 +247,15 @@ public static class GlassSettings
 
     /// <summary>The OLED panel lights in the user's colours, and glass drops swell on it with the beat.</summary>
     public static bool OledColour { get; private set; }
+
+    /// <summary>What the strip shows while no music plays: the look's own slow screensaver, the Kiroshi standby HUD (cyber), or nothing.</summary>
+    public static IdleShow IdleShow { get; private set; } = IdleShow.Animation;
+
+    /// <summary>Whether the strip moves on to another look by itself, with a zoom or a push, every <see cref="AutoCycleSeconds"/>.</summary>
+    public static bool AutoCycle { get; private set; }
+
+    /// <summary>How long each look plays before <see cref="AutoCycle"/> moves on.</summary>
+    public static int AutoCycleSeconds { get; private set; } = 60;
 
     /// <summary>Every other look is shown through a colour LED screen of RGB dots.</summary>
     public static bool LedOverlay { get; private set; }
@@ -344,6 +377,9 @@ public static class GlassSettings
             WeatherLatitude = model.WeatherLatitude;
             WeatherLongitude = model.WeatherLongitude;
             OledColour = model.OledColour;
+            IdleShow = Enum.TryParse<IdleShow>(model.IdleShow, true, out var idleShow) ? idleShow : IdleShow.Animation;
+            AutoCycle = model.AutoCycle;
+            AutoCycleSeconds = Math.Clamp(model.AutoCycleSeconds, 10, 3600);
             LedOverlay = model.LedOverlay;
             // a theme that is gone (Mordor) falls back to none, as does its visualizer (the eye flame)
             Theme = Enum.TryParse<DockTheme>(model.Theme, true, out var theme) ? theme : DockTheme.None;
@@ -436,7 +472,9 @@ public static class GlassSettings
     /// <summary>Cyber looks taken off the picker; whoever had one gets Blackwall.</summary>
     public static bool IsDroppedCyberLook(VisualizerStyle look) => look is VisualizerStyle.CyberRift or VisualizerStyle.CyberZiggurat
         or VisualizerStyle.CyberJaws or VisualizerStyle.CyberNightCity or VisualizerStyle.CyberApogee
-        or VisualizerStyle.CyberLiquidChrome or VisualizerStyle.CyberTraumaTeam;
+        or VisualizerStyle.CyberLiquidChrome or VisualizerStyle.CyberTraumaTeam
+        or VisualizerStyle.CyberBreach or VisualizerStyle.CyberNetdive or VisualizerStyle.CyberArasakaOs
+        or VisualizerStyle.CyberDogtownFlir or VisualizerStyle.CyberMonowire;
 
     public static bool IsRetiredLook(VisualizerStyle look) =>
         look is VisualizerStyle.Swirl or VisualizerStyle.CyberBraindance or VisualizerStyle.CyberBiometric
@@ -451,7 +489,8 @@ public static class GlassSettings
         or VisualizerStyle.CyberBlackwallCinder or VisualizerStyle.CyberArasakaOs or VisualizerStyle.CyberBraindanceSuite
         or VisualizerStyle.CyberApogee or VisualizerStyle.CyberCantoDaemon or VisualizerStyle.CyberNightCity
         or VisualizerStyle.CyberTraumaTeam or VisualizerStyle.CyberLiquidChrome or VisualizerStyle.CyberDogtownFlir
-        or VisualizerStyle.CyberMonowire or VisualizerStyle.CyberStrands;
+        or VisualizerStyle.CyberMonowire or VisualizerStyle.CyberStrands
+        or VisualizerStyle.CyberBrHorizon or VisualizerStyle.CyberBrLightBands or VisualizerStyle.CyberBrPulseLine or VisualizerStyle.CyberBrHangingFlames or VisualizerStyle.CyberBrWarmColumns or VisualizerStyle.CyberBrGlitchBlocks or VisualizerStyle.CyberBrFrostPanels or VisualizerStyle.CyberBrLedColumns or VisualizerStyle.CyberBrBarcode or VisualizerStyle.CyberBrLances or VisualizerStyle.CyberBrGreenOrbs or VisualizerStyle.CyberBrChevron;
 
     internal static void PreviewTheme(DockTheme theme)
     {
@@ -709,6 +748,31 @@ public static class GlassSettings
         RaiseChanged();
     }
 
+    public static void SetAutoCycle(bool on)
+    {
+        if (AutoCycle == on) return;
+        AutoCycle = on;
+        Save();
+        RaiseChanged();
+    }
+
+    public static void SetAutoCycleSeconds(int seconds)
+    {
+        seconds = Math.Clamp(seconds, 10, 3600);
+        if (AutoCycleSeconds == seconds) return;
+        AutoCycleSeconds = seconds;
+        Save();
+        RaiseChanged();
+    }
+
+    public static void SetIdleShow(IdleShow show)
+    {
+        if (IdleShow == show) return;
+        IdleShow = show;
+        Save();
+        RaiseChanged();
+    }
+
     public static void SetOledColour(bool enabled)
     {
         if (OledColour == enabled) return;
@@ -907,6 +971,9 @@ public static class GlassSettings
                 WeatherLatitude = WeatherLatitude,
                 WeatherLongitude = WeatherLongitude,
                 OledColour = OledColour,
+                IdleShow = IdleShow.ToString(),
+                AutoCycle = AutoCycle,
+                AutoCycleSeconds = AutoCycleSeconds,
                 LedOverlay = LedOverlay,
                 Theme = Theme.ToString(),
                 Bulge = Bulge.ToString(),
@@ -982,6 +1049,12 @@ public static class GlassSettings
         public double WeatherLongitude { get; set; }
 
         public bool OledColour { get; set; }
+
+        public string IdleShow { get; set; } = nameof(Services.IdleShow.Animation);
+
+        public bool AutoCycle { get; set; }
+
+        public int AutoCycleSeconds { get; set; } = 60;
 
         public bool LedOverlay { get; set; }
 

@@ -17,8 +17,8 @@ internal sealed class ClearFeatherPass : IDisposable
 {
     public const int MaxSpans = 8;
 
-    // Info (width, feather px, span count, height px), then the spans as pairs, two to a float4
-    private readonly float[] _values = new float[4 + (MaxSpans * 2)];
+    // Info (width, feather px, span count, height px), then the spans as pairs, two to a float4, then (top px, top ramp px)
+    private readonly float[] _values = new float[8 + (MaxSpans * 2)];
     private readonly ID3D11Buffer[] _constantBuffer = new ID3D11Buffer[1];
     private readonly ID3D11ShaderResourceView[] _noInputs = new ID3D11ShaderResourceView[1];
     private readonly Viewport[] _viewport = new Viewport[1];
@@ -57,7 +57,8 @@ internal sealed class ClearFeatherPass : IDisposable
 
     /// <param name="spans">Sorted, merged 0..1 pairs; past <see cref="MaxSpans"/> the rest are dropped.</param>
     /// <param name="feather">How far before each span the light starts to fade, in pixels.</param>
-    public void Apply(ID3D11DeviceContext context, ID3D11RenderTargetView target, int width, int height, float[] spans, float feather)
+    /// <param name="top">The row the spans start at, in pixels; above it (less the ramp) the light is left alone.</param>
+    public void Apply(ID3D11DeviceContext context, ID3D11RenderTargetView target, int width, int height, float[] spans, float feather, float top = 0, float ramp = 1)
     {
         if (_pixelShader is null || _vertexShader is null || _constants is null) return;
 
@@ -68,6 +69,8 @@ internal sealed class ClearFeatherPass : IDisposable
         _values[2] = count;
         _values[3] = Math.Max(1, height);
         for (int i = 0; i < count * 2; i++) _values[4 + i] = spans[i];
+        _values[4 + (MaxSpans * 2)] = Math.Max(0, top);
+        _values[5 + (MaxSpans * 2)] = Math.Max(.5f, ramp);
 
         context.PSSetShaderResources(0, _noInputs);
         _viewport[0] = new Viewport(0, 0, Math.Max(1, width), Math.Max(1, height), 0, 1);
@@ -89,7 +92,7 @@ internal sealed class ClearFeatherPass : IDisposable
     }
 
     private static ReadOnlyMemory<byte> Compile(string profile, string source) =>
-        Compiler.Compile(source, "main", "ClearFeather", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
+        Floe.App.Effects.Gpu.GpuShaderCache.Compile(source, "main", "ClearFeather", profile, ShaderFlags.OptimizationLevel3, EffectFlags.None);
 
     private const string FullscreenVs = """
         float4 main(uint id : SV_VertexID) : SV_Position
@@ -110,6 +113,9 @@ internal sealed class ClearFeatherPass : IDisposable
             float Count;
             float Height;
             float4 Spans[4];
+            float Top;
+            float TopRamp;
+            float2 Pad;
         };
 
         float4 main(float4 position : SV_Position) : SV_Target
@@ -139,7 +145,9 @@ internal sealed class ClearFeatherPass : IDisposable
                 }
             }
 
-            return float4(0, 0, 0, 1 - keep);
+            // above the bar the peaks run on: the clearing fades in over a few pixels down to its top
+            float cover = smoothstep(Top - TopRamp, Top, position.y);
+            return float4(0, 0, 0, (1 - keep) * cover);
         }
         """;
 }
